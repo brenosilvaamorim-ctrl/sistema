@@ -42,6 +42,7 @@ td{padding:10px 11px;border-bottom:1px solid var(--ln);vertical-align:top}tr:las
 .crit{color:var(--crit);border-color:var(--crit)}.ser{color:var(--ser);border-color:var(--ser)}
 .warn{color:var(--warn);border-color:var(--warn)}.good{color:var(--good);border-color:var(--good)}
 .cin{color:var(--i3);border-color:var(--ln)}
+.serie{color:var(--serie);border-color:var(--serie)}
 button,input,select,textarea{font:inherit}
 .btn{font-size:12.3px;font-weight:600;padding:5px 11px;border-radius:8px;border:1px solid var(--ln);background:var(--s0);color:var(--ink);cursor:pointer;white-space:nowrap}
 .btn:hover{border-color:var(--i3)}.btn.ok{border-color:var(--good);color:var(--good)}
@@ -201,10 +202,10 @@ function telaLogin(msg){
 }
 
 let ESC_NOME = 'Breno S. Amorim Advocacia', ESC_LOGO = null, ESC_ID = null, ESC_TOKEN = null;
-const MENU_PADRAO = [['prazos','Prazos'],['agenda','Agenda'],['captacao','Captação'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['clientes','Clientes'],['mensageria','Mensagens'],['metricas','Métricas'],['financeiro','Financeiro'],['minutas','Minutas'],['aprender','Aprender'],['dicionario','Dicionário'],['documentos','Documentos'],['tutoriais','Tutoriais'],['config','Configurações']];
+const MENU_PADRAO = [['prazos','Prazos'],['agenda','Agenda'],['captacao','Captação'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['clientes','Clientes'],['mensageria','Mensagens'],['metricas','Métricas'],['financeiro','Financeiro'],['parceiros','Parceiros'],['minutas','Minutas'],['aprender','Aprender'],['dicionario','Dicionário'],['documentos','Documentos'],['tutoriais','Tutoriais'],['config','Configurações']];
 let MENUCFG = MENU_PADRAO.map(([k,r]) => ({ k, r, v:true }));
 let ROTULOS = {};
-const PALAVRAS = {"Telas e seções": ["Prazos", "Agenda", "Captação", "Casos", "Processos", "Andamento", "Clientes", "Mensagens", "Métricas", "Financeiro", "Minutas", "Aprender", "Dicionário", "Documentos", "Tutoriais", "Configurações", "Calendário", "Pela frente", "Vencidos e ainda abertos", "Linha do tempo", "Todos os processos", "Andamento dos processos", "Os mais parados primeiro", "Precedentes", "Teses", "Fila de aprovação", "Minutas recentes", "Análise prévia", "Modo juiz", "Marcar prazo, audiência ou tarefa", "Levar tudo para o Google Agenda", "Equipe e acessos", "Dados do escritório", "Áreas de atuação", "Origens de captação", "Categorias financeiras", "Dicionário de movimentações", "Documentos a pedir", "Documentos do cliente", "Assinatura de documentos", "Tutoriais para clientes", "Ensinar uma peça ao banco", "Mensagem para o cliente", "Novo contato", "Novo lançamento", "Resultado da leitura"], "Colunas das tabelas": ["Feito", "Em trâmite", "Parado há", "Fase", "Situação e providência", "Aguardando até", "Chegou", "Documento", "Onde consigo", "Recebido em", "Vence", "Quando", "Situação", "Providência", "Cliente / vara", "Cliente / caso", "Processo", "Trecho lido e memória", "Conf.", "Ação", "Tipo", "O quê", "Descrição", "Origem", "Valor", "Vencimento", "Tribunal", "Relator", "Tema", "Órgão", "Área", "Nome", "Pessoa", "Perfil", "Ativo", "E-mail", "Telefone", "Telefone / WhatsApp", "Última movimentação", "Último informativo", "Encerrado em", "Motivo", "Resultado", "Vezes", "Cód."], "Números do topo": ["em aberto", "vencem em até 5 dias", "já vencidos", "aguardando confirmação", "compromissos à frente", "nos próximos 7 dias", "audiências", "já passaram e seguem abertos", "casos abertos", "casos ativos", "clientes", "processos", "pedindo providência", "merecendo conferência", "execuções com o prazo correndo", "tempo médio em trâmite", "em trâmite", "parado há", "sem telefone", "sem contato há mais de 30 dias", "parados há mais de 90 dias", "prescrevem em até 180 dias", "com prazo em até 5 dias", "com novidade desde o último informativo", "teses no banco", "esperando sua decisão", "precedentes a conferir", "teses novas", "refinamentos", "tempo de leitura", "a pagar", "a receber", "saldo do mês", "recebido neste mês", "projeção para o ano"]};
+const PALAVRAS = {"Telas e seções": ["Prazos", "Agenda", "Captação", "Casos", "Processos", "Andamento", "Clientes", "Mensagens", "Métricas", "Financeiro", "Parceiros", "Delegar um servi\u00e7o", "Acompanhamento", "Quem s\u00e3o os parceiros", "Delegado a parceiro", "Minutas", "Aprender", "Dicionário", "Documentos", "Tutoriais", "Configurações", "Calendário", "Pela frente", "Vencidos e ainda abertos", "Linha do tempo", "Todos os processos", "Andamento dos processos", "Os mais parados primeiro", "Precedentes", "Teses", "Fila de aprovação", "Minutas recentes", "Análise prévia", "Modo juiz", "Marcar prazo, audiência ou tarefa", "Levar tudo para o Google Agenda", "Equipe e acessos", "Dados do escritório", "Áreas de atuação", "Origens de captação", "Categorias financeiras", "Dicionário de movimentações", "Documentos a pedir", "Documentos do cliente", "Assinatura de documentos", "Tutoriais para clientes", "Ensinar uma peça ao banco", "Mensagem para o cliente", "Novo contato", "Novo lançamento", "Resultado da leitura"], "Colunas das tabelas": ["Feito", "Em trâmite", "Parado há", "Fase", "Situação e providência", "Aguardando até", "Chegou", "Documento", "Onde consigo", "Recebido em", "Vence", "Quando", "Situação", "Providência", "Cliente / vara", "Cliente / caso", "Processo", "Trecho lido e memória", "Conf.", "Ação", "Tipo", "O quê", "Descrição", "Origem", "Valor", "Vencimento", "Tribunal", "Relator", "Tema", "Órgão", "Área", "Nome", "Pessoa", "Perfil", "Ativo", "E-mail", "Telefone", "Telefone / WhatsApp", "Última movimentação", "Último informativo", "Encerrado em", "Motivo", "Resultado", "Vezes", "Cód."], "Números do topo": ["em aberto", "vencem em até 5 dias", "já vencidos", "aguardando confirmação", "compromissos à frente", "nos próximos 7 dias", "audiências", "já passaram e seguem abertos", "casos abertos", "casos ativos", "clientes", "processos", "pedindo providência", "merecendo conferência", "execuções com o prazo correndo", "tempo médio em trâmite", "em trâmite", "parado há", "sem telefone", "sem contato há mais de 30 dias", "parados há mais de 90 dias", "prescrevem em até 180 dias", "com prazo em até 5 dias", "com novidade desde o último informativo", "teses no banco", "esperando sua decisão", "precedentes a conferir", "teses novas", "refinamentos", "tempo de leitura", "a pagar", "a receber", "saldo do mês", "recebido neste mês", "projeção para o ano"]};
 function aplicarRotulos(raiz){
   const pares = Object.entries(ROTULOS).filter(([k,v]) => v && v !== k);
   if (!pares.length || !raiz) return;
@@ -1595,6 +1596,7 @@ const TIPOLINHA = {
   peca:       ['Peça', 'good'],
   documento:  ['Documento', 'cin'],
   assinatura: ['Assinatura', 'good'],
+  delegacao:  ['Parceria', 'serie'],
 };
 window.verCaso = (id) => { location.hash = '#/caso/' + id; };
 
@@ -1679,7 +1681,7 @@ function pintarLinha(){
   }).join('') : '<div class="vazio">Nada registrado com esse filtro.</div>';
 }
 async function telaCaso(id){
-  const [cs, pr, pz, ev, it, hn, dc, mn, cd, cm, asg] = await Promise.all([
+  const [cs, pr, pz, ev, it, hn, dc, mn, cd, cm, asg, dlg] = await Promise.all([
     sb.from('caso').select('*, cliente:cliente_id(id,nome,telefone,whatsapp,cpf_cnpj,cidade,uf), responsavel:responsavel_id(nome)').eq('id', id).single(),
     sb.from('processo').select('*').eq('caso_id', id).order('criado_em'),
     sb.from('prazo').select('*').eq('caso_id', id).order('data_fatal'),
@@ -1691,6 +1693,8 @@ async function telaCaso(id){
     sb.from('caso_documento').select('*').eq('caso_id', id).order('ordem'),
     sb.from('checklist_modelo').select('id,nome,itens').eq('ativo', true).order('ordem'),
     sb.from('assinatura').select('*').eq('caso_id', id).order('criado_em'),
+    sb.from('delegacao').select('*, parceiro:parceiro_id(nome,telefone,cidade,oab,uf_oab)')
+      .eq('caso_id', id).order('criado_em'),
   ]);
   if (cs.error) return erro(cs.error.message);
   CASO = cs.data; CASOPROC = pr.data || [];
@@ -1719,6 +1723,13 @@ async function telaCaso(id){
     titulo:n.tipo_comunicacao || 'Intimação', detalhe:n.orgao || '' });
   for (const d of (dc.data||[])) L.push({ tipo:'documento', data:String(d.criado_em).slice(0,10),
     titulo:d.nome || 'documento', detalhe:d.tipo || '' });
+  for (const g of (dlg.data||[])) {
+    L.push({ tipo:'delegacao', data:String(g.criado_em).slice(0,10),
+      titulo:'Delegado a ' + (g.parceiro?.nome || 'parceiro') + ': ' + g.titulo,
+      detalhe:[TIPODEL[g.tipo]||g.tipo, valorDel(g)].filter(Boolean).join(' · '), situacao:g.situacao });
+    if (g.entregue_em) L.push({ tipo:'delegacao', data:g.entregue_em,
+      titulo:'Parceiro entregou: ' + g.titulo, detalhe:(g.parceiro?.nome || '') });
+  }
   for (const a of (asg.data||[])) {
     if (a.enviado_em) L.push({ tipo:'assinatura', data:a.enviado_em,
       titulo:'Enviado para assinatura: ' + a.titulo, detalhe:a.plataforma || '' });
@@ -1828,6 +1839,19 @@ async function telaCaso(id){
       <button class="btn ok" type="submit">Registrar</button>
       <span class="sub" id="at-st" style="margin:0"></span>
     </form></div>
+
+  <div class="card"><h2>Delegado a parceiro</h2>
+    ${(dlg.data||[]).length ? `<table><thead><tr><th>Parceiro</th><th>O quê</th><th>Quando</th>
+      <th>Situação</th><th>Honorário</th></tr></thead><tbody>
+      ${(dlg.data||[]).map(g=>{ const sd = semDel(g); return `<tr>
+        <td><b>${esc(g.parceiro?.nome || '—')}</b><span class="sub">${esc(g.parceiro?.cidade || '')}</span></td>
+        <td>${esc(g.titulo)}<span class="sub">${esc(TIPODEL[g.tipo]||g.tipo)}</span></td>
+        <td class="dt">${g.data_ato ? br(String(g.data_ato).slice(0,10)) : (g.prazo_retorno ? br(g.prazo_retorno) : '—')}</td>
+        <td><span class="pill ${sd.cor}">${esc(sd.texto)}</span></td>
+        <td class="proc">${esc(valorDel(g))}</td>
+      </tr>`; }).join('')}</tbody></table>` : '<div class="vazio">Nada delegado neste caso.</div>'}
+    <p class="nota">Para delegar uma audiência, diligência ou peça deste caso, abra o menu
+      <a class="lnk" href="#/parceiros">Parceiros</a> — lá o caso já aparece na lista.</p></div>
 
   <div class="card"><h2>Assinatura de documentos</h2>
     <p class="nota">Gere a procuração já preenchida com a qualificação do cliente, suba na ZapSign e cole aqui o link.
@@ -2694,6 +2718,321 @@ window.salvarEscritorio = async (ev) => {
     .eq('id', e1.id);
   document.getElementById('esc-st').textContent = error ? 'erro: '+error.message : 'salvo ✓';
 };
+/* --------------------------------------------- parceiros e delegação */
+const TIPODEL = {
+  audiencia:  'Audiência',
+  diligencia: 'Diligência',
+  peca:       'Redação de peça',
+  caso:       'Caso inteiro',
+  parceria:   'Parceria na condução',
+};
+const SITDEL = {
+  combinada:    ['Combinada', 'warn'],
+  aceita:       ['Aceita', 'ser'],
+  em_andamento: ['Em andamento', 'ser'],
+  entregue:     ['Entregue', 'good'],
+  cancelada:    ['Cancelada', 'cin'],
+};
+let PARC = [], DELEG = [], DELFILTRO = 'abertas';
+const dinheiro = v => v == null ? '—' :
+  Number(v).toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
+function valorDel(d){
+  if (d.honorario_tipo === 'percentual' && d.honorario_percentual != null)
+    return String(d.honorario_percentual).replace('.', ',') + '% do êxito';
+  if (d.honorario_valor != null) return dinheiro(d.honorario_valor);
+  return 'a combinar';
+}
+/* semáforo da delegação: atraso do retorno e pendência de pagamento */
+function semDel(d){
+  if (d.situacao === 'cancelada') return { cor:'cin', peso:0, texto:'Cancelada' };
+  if (d.situacao === 'entregue') {
+    if (d.pago_em) return { cor:'good', peso:0, texto:'Entregue e paga' };
+    const temValor = d.honorario_valor != null || d.honorario_percentual != null;
+    return temValor
+      ? { cor:'warn', peso:2, texto:'Entregue — falta pagar' }
+      : { cor:'good', peso:0, texto:'Entregue' };
+  }
+  const alvo = d.prazo_retorno || (d.data_ato ? String(d.data_ato).slice(0,10) : null);
+  if (!alvo) return { cor:'cin', peso:1, texto:'Sem data de retorno' };
+  const n = diasDesde(alvo);
+  if (n > 0)  return { cor:'crit', peso:5, texto:'Atrasada há ' + humano(n) };
+  if (n === 0) return { cor:'crit', peso:4, texto:'Vence hoje' };
+  if (n >= -3) return { cor:'ser',  peso:3, texto:'Faltam ' + Math.abs(n) + ' dia(s)' };
+  return { cor:'good', peso:1, texto:'Faltam ' + humano(Math.abs(n)) };
+}
+function textoDelegacao(d){
+  const p = PARC.find(x => x.id === d.parceiro_id);
+  const c = d.caso ? d.caso.titulo : '';
+  const pr = d.processo ? (d.processo.numero_formatado || d.processo.numero_cnj) : '';
+  const l = ['Olá' + (p ? ', ' + primeiroNome(p.nome) : '') + '! Tudo bem?', ''];
+  l.push('Preciso passar para você ' + (TIPODEL[d.tipo] || 'um serviço').toLowerCase() + ':');
+  l.push('');
+  l.push('• O quê: ' + d.titulo);
+  if (pr) l.push('• Processo: ' + pr);
+  if (d.processo?.orgao) l.push('• Vara: ' + d.processo.orgao);
+  if (c) l.push('• Caso: ' + c);
+  if (d.data_ato) l.push('• Quando: ' + br(String(d.data_ato).slice(0,10)) +
+    (String(d.data_ato).slice(11,16) !== '00:00' ? ' às ' + String(d.data_ato).slice(11,16) : ''));
+  if (d.local_ato) l.push('• Onde: ' + d.local_ato);
+  if (d.prazo_retorno) l.push('• Retorno até: ' + br(d.prazo_retorno));
+  l.push('• Honorários: ' + valorDel(d));
+  if (d.descricao) { l.push(''); l.push(d.descricao); }
+  l.push('');
+  l.push('Consegue assumir? Qualquer coisa me chama.');
+  return l.join('\n');
+}
+window.mandarDelegacao = id => {
+  const d = DELEG.find(x => x.id === id); if (!d) return;
+  const p = PARC.find(x => x.id === d.parceiro_id);
+  const fone = p && p.telefone;
+  const t = textoDelegacao(d);
+  window.open(fone ? linkWa(fone, t) : 'https://wa.me/?text=' + encodeURIComponent(t), '_blank');
+};
+window.copiarDelegacao = async id => {
+  const el = document.getElementById('dl' + id);
+  try { await navigator.clipboard.writeText(textoDelegacao(DELEG.find(x=>x.id===id))); el.textContent = 'copiado'; }
+  catch(e){ el.textContent = 'não deu para copiar'; }
+  setTimeout(()=>{ if (el) el.textContent=''; }, 2500);
+};
+window.mudarSitDel = async (id, v) => {
+  const campos = { situacao: v, atualizado_em: new Date().toISOString() };
+  if (v === 'entregue') campos.entregue_em = hoje();
+  const { error } = await sb.from('delegacao').update(campos).eq('id', id);
+  if (error) return alert('Não foi possível: ' + error.message);
+  Object.assign(DELEG.find(x => x.id === id), campos);
+  pintarDelegacoes();
+};
+window.pagarDelegacao = async id => {
+  const d = DELEG.find(x => x.id === id); if (!d) return;
+  const el = document.getElementById('dl' + id);
+  if (d.honorario_valor == null) {
+    if (el) el.textContent = 'sem valor fechado — preencha o honorário primeiro';
+    setTimeout(()=>{ if (el) el.textContent=''; }, 3500);
+    return;
+  }
+  if (el) el.textContent = 'lançando…';
+  const p = PARC.find(x => x.id === d.parceiro_id);
+  const eid = await escId();
+  let lanc = d.lancamento_id;
+  if (!lanc) {
+    const { data, error } = await sb.from('lancamento').insert({
+      escritorio_id: eid, caso_id: d.caso_id || null, tipo: 'saida',
+      descricao: 'Parceria — ' + d.titulo, contraparte: p?.nome || 'parceiro',
+      valor: d.honorario_valor, vencimento: hoje(), pagamento: hoje(), situacao: 'pago',
+      observacoes: 'Gerado pela delegação registrada no sistema.',
+    }).select('id').single();
+    if (error) { if (el) el.textContent = 'erro: ' + error.message; return; }
+    lanc = data.id;
+  } else {
+    await sb.from('lancamento').update({ pagamento: hoje(), situacao: 'pago' }).eq('id', lanc);
+  }
+  const { error: e2 } = await sb.from('delegacao')
+    .update({ pago_em: hoje(), lancamento_id: lanc, atualizado_em: new Date().toISOString() }).eq('id', id);
+  if (e2) { if (el) el.textContent = 'erro: ' + e2.message; return; }
+  Object.assign(d, { pago_em: hoje(), lancamento_id: lanc });
+  if (el) el.textContent = 'pago e lançado no Financeiro ✓';
+  pintarDelegacoes();
+};
+window.tirarDelegacao = async id => {
+  if (!confirm('Apagar este registro de delegação? O lançamento no Financeiro, se houver, continua lá.')) return;
+  const { error } = await sb.from('delegacao').delete().eq('id', id);
+  if (error) return alert('Não foi possível: ' + error.message);
+  DELEG = DELEG.filter(x => x.id !== id); pintarDelegacoes();
+};
+window.filtrarDeleg = v => { DELFILTRO = v; pintarDelegacoes(); };
+function pintarDelegacoes(){
+  const alvo = document.getElementById('dellista'); if (!alvo) return;
+  for (const b of document.querySelectorAll('#delf .btn')) b.classList.toggle('ok', b.dataset.f === DELFILTRO);
+  let l = DELEG.map(d => ({ d, s: semDel(d) }));
+  if (DELFILTRO === 'abertas') l = l.filter(x => !['entregue','cancelada'].includes(x.d.situacao));
+  if (DELFILTRO === 'pagar')   l = l.filter(x => x.d.situacao === 'entregue' && !x.d.pago_em);
+  l.sort((a,b) => b.s.peso - a.s.peso || String(a.d.prazo_retorno||'').localeCompare(String(b.d.prazo_retorno||'')));
+  if (!l.length) return alvo.innerHTML = '<div class="vazio">Nada aqui.</div>';
+  alvo.innerHTML = `<table><thead><tr>
+    <th>Parceiro</th><th>O quê</th><th>Caso / processo</th><th style="width:110px">Retorno</th>
+    <th style="width:150px">Situação</th><th style="width:130px">Honorário</th><th style="width:230px"></th>
+    </tr></thead><tbody>
+    ${l.map(({d,s}) => { const p = PARC.find(x=>x.id===d.parceiro_id); return `<tr>
+      <td><b>${esc(p?.nome || '—')}</b><span class="sub">${esc([p?.oab && 'OAB '+p.oab+(p.uf_oab?'/'+p.uf_oab:''), p?.cidade].filter(Boolean).join(' · '))}</span></td>
+      <td>${esc(d.titulo)}<span class="sub">${esc(TIPODEL[d.tipo]||d.tipo)}</span></td>
+      <td>${d.caso_id ? `<a class="lnk" href="#/caso/${d.caso_id}">${esc(d.caso?.titulo || 'ver o caso')}</a>` : '<span class="sub" style="display:inline">sem caso</span>'}
+        <span class="sub">${esc(d.processo ? (d.processo.numero_formatado || d.processo.numero_cnj) : '')}</span></td>
+      <td class="dt">${d.prazo_retorno ? br(d.prazo_retorno) : (d.data_ato ? br(String(d.data_ato).slice(0,10)) : '—')}
+        <span class="sub">${esc(s.texto)}</span></td>
+      <td><select onchange="mudarSitDel('${d.id}', this.value)" style="font-size:12px;width:100%">
+          ${Object.entries(SITDEL).map(([k,[r]])=>`<option value="${k}" ${d.situacao===k?'selected':''}>${r}</option>`).join('')}
+        </select><span class="pill ${s.cor}" style="margin-top:4px;display:inline-block">${esc(s.texto)}</span></td>
+      <td class="proc">${esc(valorDel(d))}<span class="sub">${d.pago_em ? 'pago em ' + br(d.pago_em) : 'em aberto'}</span></td>
+      <td style="white-space:normal">
+        <button class="btn ok" onclick="mandarDelegacao('${d.id}')">WhatsApp</button>
+        <button class="btn" onclick="copiarDelegacao('${d.id}')">Copiar</button>
+        ${d.situacao === 'entregue' && !d.pago_em ? `<button class="btn" onclick="pagarDelegacao('${d.id}')">Marcar pago</button>` : ''}
+        <button class="btn" onclick="tirarDelegacao('${d.id}')">×</button>
+        <span class="sub" id="dl${d.id}"></span></td>
+    </tr>`; }).join('')}</tbody></table>`;
+  aplicarRotulos(alvo);
+}
+window.novoParceiro = async ev => {
+  ev.preventDefault();
+  const f = ev.target, st = document.getElementById('pa-st');
+  const v = n => (f.elements[n]?.value || '').trim() || null;
+  st.textContent = 'gravando…';
+  const { data, error } = await sb.from('parceiro').insert({
+    escritorio_id: await escId(), nome: v('nome'), oab: v('oab'), uf_oab: (v('uf_oab')||'').slice(0,2) || null,
+    escritorio: v('escritorio'), telefone: v('telefone'), email: v('email'), cidade: v('cidade'),
+    areas: v('areas'), percentual_padrao: v('percentual_padrao'),
+  }).select().single();
+  if (error) { st.textContent = 'erro: ' + error.message; return; }
+  PARC.push(data); f.reset(); st.textContent = ''; telaParceiros();
+};
+window.salvarParceiro = async (id, campo, valor) => {
+  const c = {}; c[campo] = valor.trim() || null;
+  await sb.from('parceiro').update(c).eq('id', id);
+  const p = PARC.find(x => x.id === id); if (p) p[campo] = c[campo];
+};
+window.desativarParceiro = async id => {
+  const p = PARC.find(x => x.id === id); if (!p) return;
+  await sb.from('parceiro').update({ ativo: !p.ativo }).eq('id', id);
+  p.ativo = !p.ativo; telaParceiros();
+};
+window.novaDelegacao = async ev => {
+  ev.preventDefault();
+  const f = ev.target, st = document.getElementById('nd-st');
+  const v = n => (f.elements[n]?.value || '').trim() || null;
+  if (!v('parceiro_id')) { st.textContent = 'escolha o parceiro'; return; }
+  st.textContent = 'gravando…';
+  const hora = v('hora') || '09:00';
+  const linha = {
+    escritorio_id: await escId(), parceiro_id: v('parceiro_id'), caso_id: v('caso_id'),
+    tipo: v('tipo') || 'audiencia', titulo: v('titulo'), descricao: v('descricao'),
+    local_ato: v('local_ato'), prazo_retorno: v('prazo_retorno'),
+    data_ato: v('data_ato') ? v('data_ato') + 'T' + hora + ':00' : null,
+    honorario_tipo: v('honorario_valor') ? 'valor' : (v('honorario_percentual') ? 'percentual' : null),
+    honorario_valor: v('honorario_valor'), honorario_percentual: v('honorario_percentual'),
+    situacao: 'combinada',
+  };
+  const { data, error } = await sb.from('delegacao').insert(linha)
+    .select('*, caso:caso_id(titulo), processo:processo_id(numero_formatado,numero_cnj,orgao)').single();
+  if (error) { st.textContent = 'erro: ' + error.message; return; }
+  DELEG.push(data); f.reset(); st.textContent = 'registrada — mande no WhatsApp abaixo';
+  setTimeout(()=>{ const e = document.getElementById('nd-st'); if (e) e.textContent=''; }, 4000);
+  pintarDelegacoes();
+};
+async function telaParceiros(){
+  const [pa, de, ca] = await Promise.all([
+    sb.from('parceiro').select('*').order('nome'),
+    sb.from('delegacao').select('*, caso:caso_id(titulo), processo:processo_id(numero_formatado,numero_cnj,orgao)')
+      .order('criado_em', { ascending:false }).limit(500),
+    sb.from('caso').select('id,titulo').is('encerrado_em', null).order('titulo').limit(1000),
+  ]);
+  if (pa.error) return erro(pa.error.message);
+  PARC = pa.data || []; DELEG = de.data || []; CASOSLISTA = ca.data || [];
+  const abertas = DELEG.filter(d => !['entregue','cancelada'].includes(d.situacao));
+  const atrasadas = abertas.filter(d => semDel(d).peso >= 4).length;
+  const aPagar = DELEG.filter(d => d.situacao === 'entregue' && !d.pago_em);
+  const somaPagar = aPagar.reduce((a,d) => a + Number(d.honorario_valor || 0), 0);
+  app.innerHTML = menu('parceiros') + `
+  <main><h1>Parceiros</h1>
+  <p class="meta">Quem faz audiência, diligência ou peça por você, e o que já foi combinado com cada um.
+    O parceiro não entra no sistema — nada da sua carteira fica exposto. A comunicação sai por WhatsApp,
+    com tudo o que ele precisa saber já escrito.</p>
+  <div class="kpis">
+    <div class="kpi ${atrasadas?'al':''}"><div class="n">${atrasadas}</div><div class="l">delegações atrasadas</div></div>
+    <div class="kpi"><div class="n">${abertas.length}</div><div class="l">em aberto</div></div>
+    <div class="kpi ${aPagar.length?'al':''}"><div class="n">${aPagar.length}</div><div class="l">entregues a pagar</div></div>
+    <div class="kpi"><div class="n" style="font-size:19px">${dinheiro(somaPagar)}</div><div class="l">a pagar aos parceiros</div></div>
+  </div>
+
+  <div class="card"><h2>Delegar um serviço</h2>
+    <p class="nota">Preencha e o sistema monta a mensagem para o parceiro com processo, vara, data, o que fazer e o valor.</p>
+    <form onsubmit="novaDelegacao(event)" style="display:flex;gap:9px;flex-wrap:wrap;padding:0 18px 18px;align-items:flex-end">
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:200px">
+        <span class="sub" style="margin:0">Parceiro</span>
+        <select name="parceiro_id" required><option value="">— escolher —</option>
+          ${PARC.filter(p=>p.ativo).map(p=>`<option value="${p.id}">${esc(p.nome)}${p.cidade?' · '+esc(p.cidade):''}</option>`).join('')}
+        </select></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:170px">
+        <span class="sub" style="margin:0">O que é</span>
+        <select name="tipo">${Object.entries(TIPODEL).map(([k,r])=>`<option value="${k}">${r}</option>`).join('')}</select></label>
+      <label style="display:flex;flex-direction:column;gap:3px;flex:2;min-width:250px">
+        <span class="sub" style="margin:0">O quê</span>
+        <input name="titulo" required placeholder="Ex.: audiência de instrução"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:230px">
+        <span class="sub" style="margin:0">Caso</span>
+        <select name="caso_id"><option value="">— sem caso vinculado —</option>
+          ${CASOSLISTA.map(k=>`<option value="${k.id}">${esc(k.titulo)}</option>`).join('')}</select></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:145px">
+        <span class="sub" style="margin:0">Data do ato</span>
+        <input name="data_ato" type="date"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:105px">
+        <span class="sub" style="margin:0">Hora</span>
+        <input name="hora" type="time" value="09:00"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:200px">
+        <span class="sub" style="margin:0">Onde</span>
+        <input name="local_ato" placeholder="vara, sala, endereço"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:145px">
+        <span class="sub" style="margin:0">Retorno até</span>
+        <input name="prazo_retorno" type="date"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:130px">
+        <span class="sub" style="margin:0">Valor (R$)</span>
+        <input name="honorario_valor" type="number" step="0.01" placeholder="350,00"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:120px">
+        <span class="sub" style="margin:0">ou % do êxito</span>
+        <input name="honorario_percentual" type="number" step="0.01" placeholder="30"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:250px">
+        <span class="sub" style="margin:0">Instruções</span>
+        <input name="descricao" placeholder="o que o parceiro precisa saber"></label>
+      <button class="btn ok" type="submit">Registrar delegação</button>
+      <span class="sub" id="nd-st" style="margin:0"></span>
+    </form></div>
+
+  <div class="card"><h2>Acompanhamento</h2>
+    <p class="nota">Vermelho é atraso no retorno. Amarelo é serviço entregue que ainda não foi pago.
+      Ao marcar como pago, o sistema lança a saída no Financeiro em nome do parceiro.</p>
+    <div id="delf" style="padding:0 18px 12px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" data-f="abertas" onclick="filtrarDeleg('abertas')">em aberto</button>
+      <button class="btn" data-f="pagar" onclick="filtrarDeleg('pagar')">a pagar</button>
+      <button class="btn" data-f="tudo" onclick="filtrarDeleg('tudo')">tudo</button>
+    </div>
+    <div id="dellista"></div></div>
+
+  <div class="card"><h2>Quem são os parceiros</h2>
+    <p class="nota">Clique em qualquer campo para corrigir. O telefone alimenta o botão de WhatsApp.</p>
+    ${PARC.length ? `<table><thead><tr><th>Nome</th><th>OAB</th><th>Cidade</th><th>Telefone</th>
+      <th>Áreas</th><th style="width:80px">% padrão</th><th style="width:110px"></th></tr></thead><tbody>
+      ${PARC.map(p=>`<tr${p.ativo?'':' style="opacity:.5"'}>
+        <td><input value="${esc(p.nome)}" onchange="salvarParceiro('${p.id}','nome',this.value)" style="width:100%"></td>
+        <td><input value="${esc((p.oab||'') + (p.uf_oab?'/'+p.uf_oab:''))}" onchange="salvarParceiro('${p.id}','oab',this.value)" style="width:90px"></td>
+        <td><input value="${esc(p.cidade||'')}" onchange="salvarParceiro('${p.id}','cidade',this.value)" style="width:110px"></td>
+        <td><input value="${esc(p.telefone||'')}" onchange="salvarParceiro('${p.id}','telefone',this.value)" style="width:130px"></td>
+        <td><input value="${esc(p.areas||'')}" onchange="salvarParceiro('${p.id}','areas',this.value)" style="width:100%" placeholder="previdenciário, cível"></td>
+        <td><input value="${esc(p.percentual_padrao||'')}" onchange="salvarParceiro('${p.id}','percentual_padrao',this.value)" style="width:60px"></td>
+        <td><button class="btn" onclick="desativarParceiro('${p.id}')">${p.ativo?'Desativar':'Reativar'}</button></td>
+      </tr>`).join('')}</tbody></table>` : '<div class="vazio">Nenhum parceiro cadastrado ainda.</div>'}
+    <form onsubmit="novoParceiro(event)" style="display:flex;gap:9px;flex-wrap:wrap;padding:14px 18px 18px;align-items:flex-end">
+      <label style="display:flex;flex-direction:column;gap:3px;flex:2;min-width:200px">
+        <span class="sub" style="margin:0">Nome</span><input name="nome" required></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:110px">
+        <span class="sub" style="margin:0">OAB</span><input name="oab" placeholder="12345"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:70px">
+        <span class="sub" style="margin:0">UF</span><input name="uf_oab" placeholder="PE"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:150px">
+        <span class="sub" style="margin:0">Cidade</span><input name="cidade"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:150px">
+        <span class="sub" style="margin:0">Telefone</span><input name="telefone" placeholder="(87) 90000-0000"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:190px">
+        <span class="sub" style="margin:0">E-mail</span><input name="email" type="email"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:190px">
+        <span class="sub" style="margin:0">Áreas que atende</span><input name="areas" placeholder="previdenciário, família"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:100px">
+        <span class="sub" style="margin:0">% padrão</span><input name="percentual_padrao" type="number" step="0.01"></label>
+      <button class="btn ok" type="submit">Cadastrar parceiro</button>
+      <span class="sub" id="pa-st" style="margin:0"></span>
+    </form></div>
+  </main>` + rodape();
+  pintarDelegacoes();
+}
+
 /* ------------------------------------- vincular processos soltos a casos */
 let SOLTOS = [], CASOSLISTA = [];
 const areaDoTribunal = t => {
@@ -3559,6 +3898,7 @@ async function rota(){
   if(h.startsWith('#/mensageria')) return telaMensageria();
   if(h.startsWith('#/metricas'))   return telaMetricas();
   if(h.startsWith('#/financeiro')) return telaFinanceiro();
+  if(h.startsWith('#/parceiros'))  return telaParceiros();
   if(h.startsWith('#/mensagens'))  return telaMensageria();
   if(h.startsWith('#/minutas'))    return telaMinutas();
   if(h.startsWith('#/aprender'))   return telaAprender();
