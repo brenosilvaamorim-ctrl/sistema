@@ -201,10 +201,10 @@ function telaLogin(msg){
 }
 
 let ESC_NOME = 'Breno S. Amorim Advocacia', ESC_LOGO = null, ESC_ID = null, ESC_TOKEN = null;
-const MENU_PADRAO = [['prazos','Prazos'],['agenda','Agenda'],['captacao','Captação'],['casos','Casos'],['processos','Processos'],['clientes','Clientes'],['mensageria','Mensagens'],['metricas','Métricas'],['financeiro','Financeiro'],['minutas','Minutas'],['aprender','Aprender'],['dicionario','Dicionário'],['config','Configurações']];
+const MENU_PADRAO = [['prazos','Prazos'],['agenda','Agenda'],['captacao','Captação'],['casos','Casos'],['processos','Processos'],['clientes','Clientes'],['mensageria','Mensagens'],['metricas','Métricas'],['financeiro','Financeiro'],['minutas','Minutas'],['aprender','Aprender'],['dicionario','Dicionário'],['tutoriais','Tutoriais'],['config','Configurações']];
 let MENUCFG = MENU_PADRAO.map(([k,r]) => ({ k, r, v:true }));
 let ROTULOS = {};
-const PALAVRAS = {"Telas e seções": ["Prazos", "Agenda", "Captação", "Casos", "Processos", "Clientes", "Mensagens", "Métricas", "Financeiro", "Minutas", "Aprender", "Dicionário", "Configurações", "Calendário", "Pela frente", "Vencidos e ainda abertos", "Linha do tempo", "Todos os processos", "Precedentes", "Teses", "Fila de aprovação", "Minutas recentes", "Análise prévia", "Modo juiz", "Marcar prazo, audiência ou tarefa", "Levar tudo para o Google Agenda", "Equipe e acessos", "Dados do escritório", "Áreas de atuação", "Origens de captação", "Categorias financeiras", "Dicionário de movimentações", "Ensinar uma peça ao banco", "Mensagem para o cliente", "Novo contato", "Novo lançamento", "Resultado da leitura"], "Colunas das tabelas": ["Feito", "Vence", "Quando", "Situação", "Providência", "Cliente / vara", "Cliente / caso", "Processo", "Trecho lido e memória", "Conf.", "Ação", "Tipo", "O quê", "Descrição", "Origem", "Valor", "Vencimento", "Tribunal", "Relator", "Tema", "Órgão", "Área", "Nome", "Pessoa", "Perfil", "Ativo", "E-mail", "Telefone", "Telefone / WhatsApp", "Última movimentação", "Último informativo", "Encerrado em", "Motivo", "Resultado", "Vezes", "Cód."], "Números do topo": ["em aberto", "vencem em até 5 dias", "já vencidos", "aguardando confirmação", "compromissos à frente", "nos próximos 7 dias", "audiências", "já passaram e seguem abertos", "casos abertos", "casos ativos", "clientes", "processos", "sem telefone", "sem contato há mais de 30 dias", "parados há mais de 90 dias", "prescrevem em até 180 dias", "com prazo em até 5 dias", "com novidade desde o último informativo", "teses no banco", "esperando sua decisão", "precedentes a conferir", "teses novas", "refinamentos", "tempo de leitura", "a pagar", "a receber", "saldo do mês", "recebido neste mês", "projeção para o ano"]};
+const PALAVRAS = {"Telas e seções": ["Prazos", "Agenda", "Captação", "Casos", "Processos", "Clientes", "Mensagens", "Métricas", "Financeiro", "Minutas", "Aprender", "Dicionário", "Tutoriais", "Configurações", "Calendário", "Pela frente", "Vencidos e ainda abertos", "Linha do tempo", "Todos os processos", "Precedentes", "Teses", "Fila de aprovação", "Minutas recentes", "Análise prévia", "Modo juiz", "Marcar prazo, audiência ou tarefa", "Levar tudo para o Google Agenda", "Equipe e acessos", "Dados do escritório", "Áreas de atuação", "Origens de captação", "Categorias financeiras", "Dicionário de movimentações", "Ensinar uma peça ao banco", "Mensagem para o cliente", "Novo contato", "Novo lançamento", "Resultado da leitura"], "Colunas das tabelas": ["Feito", "Vence", "Quando", "Situação", "Providência", "Cliente / vara", "Cliente / caso", "Processo", "Trecho lido e memória", "Conf.", "Ação", "Tipo", "O quê", "Descrição", "Origem", "Valor", "Vencimento", "Tribunal", "Relator", "Tema", "Órgão", "Área", "Nome", "Pessoa", "Perfil", "Ativo", "E-mail", "Telefone", "Telefone / WhatsApp", "Última movimentação", "Último informativo", "Encerrado em", "Motivo", "Resultado", "Vezes", "Cód."], "Números do topo": ["em aberto", "vencem em até 5 dias", "já vencidos", "aguardando confirmação", "compromissos à frente", "nos próximos 7 dias", "audiências", "já passaram e seguem abertos", "casos abertos", "casos ativos", "clientes", "processos", "sem telefone", "sem contato há mais de 30 dias", "parados há mais de 90 dias", "prescrevem em até 180 dias", "com prazo em até 5 dias", "com novidade desde o último informativo", "teses no banco", "esperando sua decisão", "precedentes a conferir", "teses novas", "refinamentos", "tempo de leitura", "a pagar", "a receber", "saldo do mês", "recebido neste mês", "projeção para o ano"]};
 function aplicarRotulos(raiz){
   const pares = Object.entries(ROTULOS).filter(([k,v]) => v && v !== k);
   if (!pares.length || !raiz) return;
@@ -2575,6 +2575,87 @@ window.salvarEscritorio = async (ev) => {
     .eq('id', e1.id);
   document.getElementById('esc-st').textContent = error ? 'erro: '+error.message : 'salvo ✓';
 };
+/* --------------------------------------------------------------- tutoriais */
+const TUTORIAIS = [
+  { k:'assinar',    t:'Como assinar um documento (ZapSign)',
+    d:'Selfie + foto do documento pessoal. Vídeo de 47 segundos.',
+    a:'assinar o documento que te enviei' },
+  { k:'audiencia',  t:'Como entrar na sala de audiência (Zoom)',
+    d:'Mostra onde liga o microfone e a câmera. Vídeo de 40 segundos.',
+    a:'entrar na sala da audiência' },
+  { k:'documentos', t:'Como mandar documentos pelo WhatsApp',
+    d:'Foto legível, clipe, enviar. Vídeo de 35 segundos.',
+    a:'me mandar seus documentos' },
+  { k:'dia',        t:'O que fazer no dia da audiência',
+    d:'Horário, roupa, o que levar, como responder. Vídeo de 32 segundos.',
+    a:'se preparar para o dia da audiência' },
+];
+let TUTCLI = [], TUTSEL = '';
+const tutLink = k => location.origin + '/ajuda#' + k;
+const primeiroNome = n => {
+  const p = String(n||'').trim().split(/\s+/)[0] || '';
+  return p ? p[0].toUpperCase() + p.slice(1).toLowerCase() : '';
+};
+function tutTexto(i){
+  const c = TUTCLI.find(x => x.id === TUTSEL);
+  const ola = c ? 'Olá, ' + primeiroNome(c.nome) + '! ' : 'Olá! ';
+  return ola + 'Para ' + TUTORIAIS[i].a + ', é só seguir este passo a passo — tem um vídeo curto explicando: '
+    + tutLink(TUTORIAIS[i].k) + '\n\nQualquer dúvida, é só me chamar por aqui.';
+}
+window.mudarTutCli = v => { TUTSEL = v; telaTutoriais(); };
+window.copiarTut = async i => {
+  const el = document.getElementById('av'+i);
+  try { await navigator.clipboard.writeText(tutTexto(i)); el.textContent = 'copiado'; }
+  catch(e){ el.textContent = 'copie à mão abaixo'; }
+  setTimeout(()=>{ el.textContent=''; }, 2500);
+};
+window.copiarSoLink = async i => {
+  const el = document.getElementById('av'+i);
+  try { await navigator.clipboard.writeText(tutLink(TUTORIAIS[i].k)); el.textContent = 'link copiado'; }
+  catch(e){ el.textContent = 'não deu para copiar'; }
+  setTimeout(()=>{ el.textContent=''; }, 2500);
+};
+window.zapTut = i => {
+  const c = TUTCLI.find(x => x.id === TUTSEL);
+  const fone = c && (c.whatsapp || c.telefone);
+  const l = fone ? linkWa(fone, tutTexto(i))
+                 : 'https://wa.me/?text=' + encodeURIComponent(tutTexto(i));
+  window.open(l, '_blank');
+};
+async function telaTutoriais(){
+  const { data } = await sb.from('cliente')
+    .select('id,nome,telefone,whatsapp').order('nome');
+  TUTCLI = data || [];
+  const sel = TUTCLI.find(x => x.id === TUTSEL);
+  const semFone = sel && !(sel.whatsapp || sel.telefone);
+  app.innerHTML = menu('tutoriais') + `
+  <main><h1>Tutoriais para clientes</h1>
+  <p class="meta">Passo a passo em linguagem simples, com vídeo, na página pública do escritório.
+    Escolha o cliente e mande direto no WhatsApp — a mensagem já vai pronta, com o nome dele.</p>
+  <div class="card"><h2>Para quem é a mensagem</h2>
+    <select onchange="mudarTutCli(this.value)" style="min-width:280px">
+      <option value="">— sem cliente escolhido (mensagem genérica) —</option>
+      ${TUTCLI.map(c=>`<option value="${c.id}" ${TUTSEL===c.id?'selected':''}>${esc(c.nome)}${(c.whatsapp||c.telefone)?'':' (sem telefone)'}</option>`).join('')}
+    </select>
+    ${semFone ? '<p class="nota">Esse cliente não tem telefone cadastrado. O botão do WhatsApp vai abrir com o texto pronto para você escolher o contato.</p>' : ''}
+  </div>
+  ${TUTORIAIS.map((t,i)=>`
+  <div class="card"><h2>${esc(t.t)}</h2>
+    <p class="nota">${esc(t.d)}</p>
+    <p class="sub" style="word-break:break-all">${esc(tutLink(t.k))}</p>
+    <p>
+      <button class="btn ok" onclick="zapTut(${i})">Mandar no WhatsApp</button>
+      <button class="btn" onclick="copiarTut(${i})">Copiar mensagem</button>
+      <button class="btn" onclick="copiarSoLink(${i})">Copiar só o link</button>
+      <a class="btn" href="${tutLink(t.k)}" target="_blank">Ver a página</a>
+      <span class="sub" id="av${i}"></span>
+    </p>
+    <textarea rows="4" readonly onclick="this.select()">${esc(tutTexto(i))}</textarea>
+  </div>`).join('')}
+  </main>` + rodape();
+  aplicarRotulos(app);
+}
+
 async function telaConfig(){
   const [us, es, ar, og, ct] = await Promise.all([
     sb.from('usuario').select('*').order('criado_em'),
@@ -2751,6 +2832,7 @@ async function rota(){
   if(h.startsWith('#/minutas'))    return telaMinutas();
   if(h.startsWith('#/aprender'))   return telaAprender();
   if(h.startsWith('#/dicionario')) return telaDicionario();
+  if(h.startsWith('#/tutoriais'))  return telaTutoriais();
   if(h.startsWith('#/config'))     return telaConfig();
   return telaPrazos();
 }
