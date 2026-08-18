@@ -1021,6 +1021,8 @@ window.baixarIcs = () => {
   a.href = URL.createObjectURL(b); a.download = 'agenda-escritorio.ics'; a.click();
 };
 const URG = { baixa:['Pouco urgente','cin'], normal:['Normal','ser'], alta:['Muito urgente','warn'], critica:['Não pode esperar','crit'] };
+let TEMCONV = null;
+const semColunaConvidado = e => !!e && /convidado_email/.test(e.message || '');
 let AGCLI = [], AGCASO = [];
 window.tipoEvento = () => {
   const t = document.getElementById('ev_tipo')?.value;
@@ -1118,9 +1120,9 @@ function formEvento(){
     <label style="display:flex;flex-direction:column;gap:3px;min-width:200px">
       <span class="sub" style="margin:0">Onde</span>
       <input name="local" type="text" placeholder="Vara, sala, endereço"></label>
-    <label style="display:flex;flex-direction:column;gap:3px;min-width:250px">
+    ${TEMCONV === false ? '' : `<label style="display:flex;flex-direction:column;gap:3px;min-width:250px">
       <span class="sub" style="margin:0">E-mail do parceiro (recebe o convite)</span>
-      <input name="convidado" type="email" placeholder="advogado@parceiro.com.br"></label>
+      <input name="convidado" type="email" placeholder="advogado@parceiro.com.br"></label>`}
     <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:260px">
       <span class="sub" style="margin:0">Observações</span>
       <input name="obs" type="text" placeholder="o que precisa ser feito"></label>
@@ -1129,15 +1131,25 @@ function formEvento(){
   </form></div>`;
 }
 async function telaAgenda(){
-  const [pz, ev, cs, cl, ca] = await Promise.all([
-    sb.from('prazo').select('id,descricao,data_fatal,dias,situacao,urgencia,convidado_email,intimacao:intimacao_id(numero_formatado,orgao),caso:caso_id(titulo)')
-      .in('situacao',['sugerido','confirmado']),
-    sb.from('evento').select('id,tipo,titulo,inicio,local,descricao,urgencia,situacao,convidado_email,cliente:cliente_id(nome),caso:caso_id(titulo)')
-      .not('situacao','in','("concluida","cancelada")'),
+  const colPz = c => 'id,descricao,data_fatal,dias,situacao,urgencia' + c +
+    ',intimacao:intimacao_id(numero_formatado,orgao),caso:caso_id(titulo)';
+  const colEv = c => 'id,tipo,titulo,inicio,local,descricao,urgencia,situacao' + c +
+    ',cliente:cliente_id(nome),caso:caso_id(titulo)';
+  const extra = TEMCONV === false ? '' : ',convidado_email';
+  let [pz, ev, cs, cl, ca] = await Promise.all([
+    sb.from('prazo').select(colPz(extra)).in('situacao',['sugerido','confirmado']),
+    sb.from('evento').select(colEv(extra)).not('situacao','in','("concluida","cancelada")'),
     sb.from('caso').select('id,titulo,prescricao_em,prescricao_obs').not('prescricao_em','is',null),
     sb.from('cliente').select('id,nome').order('nome'),
     sb.from('caso').select('id,titulo').order('titulo'),
   ]);
+  if (semColunaConvidado(pz.error) || semColunaConvidado(ev.error)) {
+    TEMCONV = false;
+    [pz, ev] = await Promise.all([
+      sb.from('prazo').select(colPz('')).in('situacao',['sugerido','confirmado']),
+      sb.from('evento').select(colEv('')).not('situacao','in','("concluida","cancelada")'),
+    ]);
+  } else if (TEMCONV === null && !pz.error) TEMCONV = true;
   if (pz.error) return erro(pz.error.message);
   AGCLI = cl.data || []; AGCASO = ca.data || [];
   AGE = [];
