@@ -2765,7 +2765,9 @@ function textoDelegacao(d){
   const c = d.caso ? d.caso.titulo : '';
   const pr = d.processo ? (d.processo.numero_formatado || d.processo.numero_cnj) : '';
   const l = ['Olá' + (p ? ', ' + primeiroNome(p.nome) : '') + '! Tudo bem?', ''];
-  l.push('Preciso passar para você ' + (TIPODEL[d.tipo] || 'um serviço').toLowerCase() + ':');
+  const COMO = { audiencia:'uma audiência', diligencia:'uma diligência', peca:'a redação de uma peça',
+    caso:'um caso inteiro', parceria:'uma parceria num caso' };
+  l.push('Preciso passar para você ' + (COMO[d.tipo] || 'um serviço') + ':');
   l.push('');
   l.push('• O quê: ' + d.titulo);
   if (pr) l.push('• Processo: ' + pr);
