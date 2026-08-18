@@ -2719,7 +2719,7 @@ window.tirarAssinatura = async id => {
 function textoAssinatura(a){
   const nome = primeiroNome(CASO.cliente?.nome || '');
   const ola = nome ? 'Olá, ' + nome + '! ' : 'Olá! ';
-  return ola + 'Preciso da sua assinatura ' + (a.titulo ? 'n' + (/^[ao]/i.test(a.titulo)?'':'o ') + a.titulo.toLowerCase() : 'no documento')
+  return ola + 'Preciso da sua assinatura' + (a.titulo ? ' no documento “' + a.titulo + '”' : ' em um documento')
     + '. É rápido, dá para fazer pelo celular:\n\n' + (a.link ? a.link + '\n\n' : '')
     + 'Você vai precisar tirar uma selfie e uma foto de um documento com foto (RG ou CNH). '
     + 'Tem um passo a passo com vídeo explicando: ' + location.origin + '/ajuda#assinar'
@@ -2731,6 +2731,15 @@ window.cobrarAssinatura = id => {
   window.open(fone ? linkWa(fone, textoAssinatura(a))
                    : 'https://wa.me/?text=' + encodeURIComponent(textoAssinatura(a)), '_blank');
 };
+const esperaDe = d => {
+  const n = diasDesde(d);
+  if (n == null) return '';
+  return n <= 0 ? 'enviado hoje' : 'esperando há ' + humano(n);
+};
+const rotuloTipo = a => {
+  const t = TIPODOC[a.tipo] || '';
+  return t && t.toLowerCase() !== (a.titulo || '').toLowerCase() ? t : (a.plataforma || '');
+};
 function pintarAssinaturas(){
   const alvo = document.getElementById('aslista'); if (!alvo) return;
   if (!CASOASSIN.length) return alvo.innerHTML =
@@ -2741,9 +2750,9 @@ function pintarAssinaturas(){
     <table><thead><tr><th>Documento</th><th>Enviado</th><th>Link</th>
       <th style="width:150px">Assinado em</th><th style="width:210px"></th></tr></thead><tbody>
     ${CASOASSIN.map(a=>`<tr${a.assinado_em?' style="opacity:.6"':''}>
-      <td>${esc(a.titulo)}<span class="sub">${esc(TIPODOC[a.tipo]||a.plataforma||'')}</span></td>
+      <td>${esc(a.titulo)}<span class="sub">${esc(rotuloTipo(a))}</span></td>
       <td class="dt">${a.enviado_em?br(a.enviado_em):'—'}
-        <span class="sub">${a.enviado_em && !a.assinado_em ? 'há ' + humano(diasDesde(a.enviado_em)) : ''}</span></td>
+        <span class="sub">${a.enviado_em && !a.assinado_em ? esperaDe(a.enviado_em) : ''}</span></td>
       <td>${a.link ? `<a class="lnk" href="${esc(a.link)}" target="_blank" rel="noreferrer">abrir na ZapSign</a>` : '<span class="sub" style="display:inline">sem link</span>'}</td>
       <td><input type="date" value="${a.assinado_em||''}" style="font-size:12px;width:100%"
             onchange="marcarAssinado('${a.id}', this.value)"></td>
