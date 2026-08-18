@@ -1044,23 +1044,23 @@ window.salvarEvento = async (ev) => {
   let error;
   const semColuna = e => e && /convidado_email/.test(e.message || '');
   if (tipo === 'prazo'){
-    ({ error } = await sb.from('prazo').insert({ escritorio_id: ESC_ID, caso_id: v('caso'),
+    ({ error } = await sb.from('prazo').insert({ escritorio_id: await escId(), caso_id: v('caso'),
       descricao: v('titulo'), providencia: v('obs'), data_fatal: data,
       origem: 'manual', situacao: 'confirmado', urgencia: v('urgencia'), fatal: true,
       convidado_email: v('convidado'),
       confirmado_em: new Date().toISOString() }));
   } else {
-    ({ error } = await sb.from('evento').insert({ escritorio_id: ESC_ID, tipo,
+    ({ error } = await sb.from('evento').insert({ escritorio_id: await escId(), tipo,
       titulo: v('titulo'), descricao: v('obs'), inicio: data + 'T' + hora + ':00+00:00',
       local: v('local'), caso_id: v('caso'), cliente_id: v('cliente'), urgencia: v('urgencia'),
       convidado_email: v('convidado') }));
   }
   if (semColuna(error)){
-    const base = { escritorio_id: ESC_ID, tipo, titulo: v('titulo'), descricao: v('obs'),
+    const base = { escritorio_id: await escId(), tipo, titulo: v('titulo'), descricao: v('obs'),
       inicio: data + 'T' + hora + ':00+00:00', local: v('local'), caso_id: v('caso'),
       cliente_id: v('cliente'), urgencia: v('urgencia') };
     ({ error } = tipo === 'prazo'
-      ? await sb.from('prazo').insert({ escritorio_id: ESC_ID, caso_id: v('caso'),
+      ? await sb.from('prazo').insert({ escritorio_id: await escId(), caso_id: v('caso'),
           descricao: v('titulo'), providencia: v('obs'), data_fatal: data,
           origem:'manual', situacao:'confirmado', urgencia: v('urgencia'), fatal:true,
           confirmado_em: new Date().toISOString() })
@@ -2475,6 +2475,7 @@ async function telaFinanceiro(){
 
 /* -------------------------------------------------------------- mensageria */
 let MSG = [], MSGF = 'novidade', ESCRITORIO = null;
+async function escId(){ if (!ESC_ID) { const { data } = await sb.from('escritorio').select('id').limit(1).single(); ESC_ID = data?.id ?? null; } return ESC_ID; }
 async function escritorioId(){
   if (!ESCRITORIO) { const { data } = await sb.from('escritorio').select('id').limit(1).single(); ESCRITORIO = data.id; }
   return ESCRITORIO;
@@ -2695,7 +2696,7 @@ window.addAssinatura = async ev => {
   const f = ev.target, st = document.getElementById('as-st');
   st.textContent = 'gravando…'; st.style.color = 'var(--i3)';
   const { data, error } = await sb.from('assinatura').insert({
-    escritorio_id: ESC_ID, caso_id: CASO.id,
+    escritorio_id: await escId(), caso_id: CASO.id,
     titulo: f.titulo.value.trim() || 'Documento',
     tipo: f.tipo.value,
     link: f.link.value.trim() || null,
@@ -2934,8 +2935,9 @@ let CASODOCS = [], CASOMODELOS = [];
 window.aplicarLista = async mid => {
   const m = CASOMODELOS.find(x => x.id === mid); if (!m) return;
   const tem = new Set(CASODOCS.map(d => (d.descricao||'').trim().toLowerCase()));
+  const eid = await escId();
   const novos = (m.itens||[]).filter(it => (it.t||'').trim() && !tem.has(it.t.trim().toLowerCase()))
-    .map((it, n) => ({ escritorio_id: ESC_ID, caso_id: CASO.id, descricao: it.t,
+    .map((it, n) => ({ escritorio_id: eid, caso_id: CASO.id, descricao: it.t,
                        obs: it.obs || null, ordem: CASODOCS.length + n }));
   const st = document.getElementById('dc-st');
   if (!novos.length) { if (st) st.textContent = 'todos esses documentos já estão na lista'; return; }
@@ -2962,7 +2964,7 @@ window.addDocCaso = async ev => {
   const desc = f.descricao.value.trim(); if (!desc) return;
   st.textContent = 'gravando…';
   const { data, error } = await sb.from('caso_documento').insert({
-    escritorio_id: ESC_ID, caso_id: CASO.id, descricao: desc,
+    escritorio_id: await escId(), caso_id: CASO.id, descricao: desc,
     obs: f.obs.value.trim() || null, ordem: CASODOCS.length }).select().single();
   if (error) { st.textContent = 'erro: ' + error.message; return; }
   CASODOCS.push(data); f.reset(); st.textContent = ''; pintarDocsCaso();
@@ -3042,7 +3044,7 @@ window.docSalvar = async i => {
   if (s) s.textContent = 'salvando…';
   const { error } = l.id
     ? await sb.from('checklist_modelo').update({ nome:l.nome, itens, atualizado_em:new Date().toISOString() }).eq('id', l.id)
-    : await sb.from('checklist_modelo').insert({ escritorio_id: ESC_ID, nome: l.nome, ordem: DOCL.length, itens });
+    : await sb.from('checklist_modelo').insert({ escritorio_id: await escId(), nome: l.nome, ordem: DOCL.length, itens });
   if (error) { if (s) s.textContent = 'erro: ' + error.message; return; }
   l.sujo = false; if (s) s.textContent = 'salvo';
   if (!l.id) return telaDocumentos();
