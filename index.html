@@ -201,10 +201,10 @@ function telaLogin(msg){
 }
 
 let ESC_NOME = 'Breno S. Amorim Advocacia', ESC_LOGO = null, ESC_ID = null, ESC_TOKEN = null;
-const MENU_PADRAO = [['prazos','Prazos'],['agenda','Agenda'],['captacao','Captação'],['casos','Casos'],['processos','Processos'],['clientes','Clientes'],['mensageria','Mensagens'],['metricas','Métricas'],['financeiro','Financeiro'],['minutas','Minutas'],['aprender','Aprender'],['dicionario','Dicionário'],['documentos','Documentos'],['tutoriais','Tutoriais'],['config','Configurações']];
+const MENU_PADRAO = [['prazos','Prazos'],['agenda','Agenda'],['captacao','Captação'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['clientes','Clientes'],['mensageria','Mensagens'],['metricas','Métricas'],['financeiro','Financeiro'],['minutas','Minutas'],['aprender','Aprender'],['dicionario','Dicionário'],['documentos','Documentos'],['tutoriais','Tutoriais'],['config','Configurações']];
 let MENUCFG = MENU_PADRAO.map(([k,r]) => ({ k, r, v:true }));
 let ROTULOS = {};
-const PALAVRAS = {"Telas e seções": ["Prazos", "Agenda", "Captação", "Casos", "Processos", "Clientes", "Mensagens", "Métricas", "Financeiro", "Minutas", "Aprender", "Dicionário", "Documentos", "Tutoriais", "Configurações", "Calendário", "Pela frente", "Vencidos e ainda abertos", "Linha do tempo", "Todos os processos", "Precedentes", "Teses", "Fila de aprovação", "Minutas recentes", "Análise prévia", "Modo juiz", "Marcar prazo, audiência ou tarefa", "Levar tudo para o Google Agenda", "Equipe e acessos", "Dados do escritório", "Áreas de atuação", "Origens de captação", "Categorias financeiras", "Dicionário de movimentações", "Documentos a pedir", "Documentos do cliente", "Tutoriais para clientes", "Ensinar uma peça ao banco", "Mensagem para o cliente", "Novo contato", "Novo lançamento", "Resultado da leitura"], "Colunas das tabelas": ["Feito", "Chegou", "Documento", "Onde consigo", "Recebido em", "Vence", "Quando", "Situação", "Providência", "Cliente / vara", "Cliente / caso", "Processo", "Trecho lido e memória", "Conf.", "Ação", "Tipo", "O quê", "Descrição", "Origem", "Valor", "Vencimento", "Tribunal", "Relator", "Tema", "Órgão", "Área", "Nome", "Pessoa", "Perfil", "Ativo", "E-mail", "Telefone", "Telefone / WhatsApp", "Última movimentação", "Último informativo", "Encerrado em", "Motivo", "Resultado", "Vezes", "Cód."], "Números do topo": ["em aberto", "vencem em até 5 dias", "já vencidos", "aguardando confirmação", "compromissos à frente", "nos próximos 7 dias", "audiências", "já passaram e seguem abertos", "casos abertos", "casos ativos", "clientes", "processos", "sem telefone", "sem contato há mais de 30 dias", "parados há mais de 90 dias", "prescrevem em até 180 dias", "com prazo em até 5 dias", "com novidade desde o último informativo", "teses no banco", "esperando sua decisão", "precedentes a conferir", "teses novas", "refinamentos", "tempo de leitura", "a pagar", "a receber", "saldo do mês", "recebido neste mês", "projeção para o ano"]};
+const PALAVRAS = {"Telas e seções": ["Prazos", "Agenda", "Captação", "Casos", "Processos", "Andamento", "Clientes", "Mensagens", "Métricas", "Financeiro", "Minutas", "Aprender", "Dicionário", "Documentos", "Tutoriais", "Configurações", "Calendário", "Pela frente", "Vencidos e ainda abertos", "Linha do tempo", "Todos os processos", "Andamento dos processos", "Os mais parados primeiro", "Precedentes", "Teses", "Fila de aprovação", "Minutas recentes", "Análise prévia", "Modo juiz", "Marcar prazo, audiência ou tarefa", "Levar tudo para o Google Agenda", "Equipe e acessos", "Dados do escritório", "Áreas de atuação", "Origens de captação", "Categorias financeiras", "Dicionário de movimentações", "Documentos a pedir", "Documentos do cliente", "Tutoriais para clientes", "Ensinar uma peça ao banco", "Mensagem para o cliente", "Novo contato", "Novo lançamento", "Resultado da leitura"], "Colunas das tabelas": ["Feito", "Em trâmite", "Parado há", "Fase", "Situação e providência", "Aguardando até", "Chegou", "Documento", "Onde consigo", "Recebido em", "Vence", "Quando", "Situação", "Providência", "Cliente / vara", "Cliente / caso", "Processo", "Trecho lido e memória", "Conf.", "Ação", "Tipo", "O quê", "Descrição", "Origem", "Valor", "Vencimento", "Tribunal", "Relator", "Tema", "Órgão", "Área", "Nome", "Pessoa", "Perfil", "Ativo", "E-mail", "Telefone", "Telefone / WhatsApp", "Última movimentação", "Último informativo", "Encerrado em", "Motivo", "Resultado", "Vezes", "Cód."], "Números do topo": ["em aberto", "vencem em até 5 dias", "já vencidos", "aguardando confirmação", "compromissos à frente", "nos próximos 7 dias", "audiências", "já passaram e seguem abertos", "casos abertos", "casos ativos", "clientes", "processos", "pedindo providência", "merecendo conferência", "execuções com o prazo correndo", "tempo médio em trâmite", "em trâmite", "parado há", "sem telefone", "sem contato há mais de 30 dias", "parados há mais de 90 dias", "prescrevem em até 180 dias", "com prazo em até 5 dias", "com novidade desde o último informativo", "teses no banco", "esperando sua decisão", "precedentes a conferir", "teses novas", "refinamentos", "tempo de leitura", "a pagar", "a receber", "saldo do mês", "recebido neste mês", "projeção para o ano"]};
 function aplicarRotulos(raiz){
   const pares = Object.entries(ROTULOS).filter(([k,v]) => v && v !== k);
   if (!pares.length || !raiz) return;
@@ -403,6 +403,8 @@ function linhaProc(p){
       : '<span class="sub" style="display:inline">vincule a um caso primeiro</span>'}</td>
     <td class="proc">${esc(p.numero_formatado || p.numero_cnj)}<span class="sub">${esc(p.tribunal_sigla||'')} · ${esc(p.grau||'')}</span></td>
     <td>${esc(p.orgao||'—')}<span class="sub">${esc(p.classe||'')}</span></td>
+    <td class="dt">${humano(emTramite(p))}
+      <span class="sub">${p.data_ajuizamento?'desde '+br(p.data_ajuizamento):'sem data de ajuizamento'}</span></td>
     <td class="dt">${p.ultima_movimentacao?br(p.ultima_movimentacao):'—'}
       <span class="sub">${d===null?'sem andamento':(d===0?'hoje':'há '+d+' dias')}</span></td>
     <td><span class="pill ${k}">${p.movimentacoes} mov.</span></td></tr>`;
@@ -427,11 +429,14 @@ async function telaProcessos(){
   const { data, error } = pp;
   if(error) return erro(error.message);
   AREAS = ar.data || [];
-  PROCS = data||[];
+  const px = await sb.from('processo').select('id,data_ajuizamento,fase,aguardando_ate,marco_intercorrente').limit(1000);
+  const extraP = Object.fromEntries((px.data||[]).map(x=>[x.id,x]));
+  PROCS = (data||[]).map(x => ({ ...x, ...(extraP[x.id]||{}) }));
   const parados = PROCS.filter(p=>p.ultima_movimentacao && (Date.now()-Date.parse(p.ultima_movimentacao))/864e5 > 90).length;
   const semSync = PROCS.filter(p=>!p.ultima_sync).length;
   app.innerHTML = menu('processos') + `
-  <main><h1>Processos</h1><p class="meta">Andamento buscado no DataJud do CNJ, de madrugada. Clique para abrir a linha do tempo.</p>
+  <main><h1>Processos</h1><p class="meta">Andamento buscado no DataJud do CNJ, de madrugada. Clique para abrir a linha do tempo.
+    Para ver o que está parado demais e cobrar, abra <a class="lnk" href="#/andamento">Andamento</a>.</p>
   <div class="kpis">
     <div class="kpi"><div class="n">${PROCS.length}</div><div class="l">processos</div></div>
     <div class="kpi"><div class="n">${PROCS.reduce((a,p)=>a+Number(p.movimentacoes||0),0)}</div><div class="l">movimentações</div></div>
@@ -441,7 +446,7 @@ async function telaProcessos(){
   <div class="card"><h2>Todos os processos</h2>
     <div class="filtros"><input id="bp" type="search" placeholder="cliente, número, vara, tribunal…" oninput="filtrarProc()">
       <span class="sub" style="margin:0">mostrando <b id="qtd">${PROCS.length}</b></span></div>
-    <table><thead><tr><th>Cliente / caso</th><th style="width:180px">Área</th><th>Processo</th><th>Órgão</th><th>Última movimentação</th><th></th></tr></thead>
+    <table><thead><tr><th>Cliente / caso</th><th style="width:180px">Área</th><th>Processo</th><th>Órgão</th><th style="width:110px">Em trâmite</th><th>Última movimentação</th><th></th></tr></thead>
     <tbody id="cp">${PROCS.map(linhaProc).join('')}</tbody></table></div></main>`;
 }
 
@@ -1548,7 +1553,7 @@ async function telaCasos(){
 }
 
 /* ------------------------------------------------------------------ caso */
-let CASO = null, CASOPROC = [], CASOLINHA = [], CASOFILTRO = new Set();
+let CASO = null, CASOPROC = [], CASOLINHA = [], CASOFILTRO = new Set(), CASOMOV = {};
 const soDig = t => String(t||'').replace(/\D/g,'');
 function cnjFormata(n){
   const d = soDig(n);
@@ -1695,10 +1700,19 @@ async function telaCaso(id){
   L.sort((a,b) => String(b.data).localeCompare(String(a.data)));
   CASOLINHA = L; CASOFILTRO = new Set();
 
+  CASOMOV = {};
+  for (const m of (mv.data||[])) {
+    const d = String(m.data).slice(0,10);
+    if (!CASOMOV[m.processo_id] || d > CASOMOV[m.processo_id]) CASOMOV[m.processo_id] = d;
+  }
   const pzAbertos = (pz.data||[]).filter(p => ['sugerido','confirmado'].includes(p.situacao));
   const proximo = pzAbertos.map(p=>p.data_fatal).sort()[0];
   const c = CASO;
   const tipos = [...new Set(L.map(x=>x.tipo))];
+  const idade = CASOPROC.map(p=>emTramite(p)).filter(x=>x!=null).sort((a,b)=>b-a)[0]
+    ?? diasDesde(c.criado_em);
+  const paradoMais = CASOPROC.map(p=>diasDesde(CASOMOV[p.id] || p.data_ajuizamento))
+    .filter(x=>x!=null).sort((a,b)=>b-a)[0];
 
   app.innerHTML = menu('casos') + `
   <main>
@@ -1713,19 +1727,24 @@ async function telaCaso(id){
     <div class="kpi ${proximo && dias(proximo)<=5 ? 'al':''}"><div class="n">${pzAbertos.length}</div><div class="l">prazos em aberto</div></div>
     <div class="kpi"><div class="n">${(ev.data||[]).filter(x=>x.tipo==='audiencia').length}</div><div class="l">audiências</div></div>
     <div class="kpi"><div class="n">${L.length}</div><div class="l">registros no caso</div></div>
+    <div class="kpi"><div class="n" style="font-size:19px">${humano(idade)}</div><div class="l">em trâmite</div></div>
+    <div class="kpi ${paradoMais>=90?'al':''}"><div class="n" style="font-size:19px">${paradoMais!=null?humano(paradoMais):'—'}</div><div class="l">parado há</div></div>
   </div>
 
   <div class="card"><h2>Processos</h2>
     <p class="nota">Cadastre o número assim que protocolar — não precisa esperar o diário publicar.
       A partir daí o robô do DataJud passa a acompanhar os andamentos sozinho.</p>
-    ${CASOPROC.length ? `<table><thead><tr><th>Número</th><th>Tribunal / órgão</th><th>Classe</th><th>Ajuizado</th><th></th></tr></thead>
-      <tbody>${CASOPROC.map(p=>`<tr>
+    ${CASOPROC.length ? `<table><thead><tr><th>Número</th><th>Tribunal / órgão</th><th>Classe</th><th>Ajuizado</th><th>Em trâmite</th><th>Situação</th><th></th></tr></thead>
+      <tbody>${CASOPROC.map(p=>{ const sf = semaforo({ ...p, ultima_movimentacao: CASOMOV[p.id] || null }); return `<tr>
         <td class="proc"><a class="lnk" href="#/processo/${p.id}">${esc(p.numero_formatado || cnjFormata(p.numero_cnj))}</a></td>
         <td>${esc(p.tribunal_sigla||'—')}${p.orgao?'<span class="sub">'+esc(p.orgao)+'</span>':''}</td>
         <td>${esc(p.classe||'—')}${p.grau?'<span class="sub">'+esc(p.grau)+'</span>':''}</td>
         <td class="dt">${p.data_ajuizamento?br(p.data_ajuizamento):'—'}</td>
+        <td class="dt">${humano(emTramite(p))}<span class="sub">${esc(FASES[p.fase||'conhecimento'])}</span></td>
+        <td><span class="pill ${sf.cor}">${esc(sf.titulo)}</span><span class="sub" style="display:block;margin-top:3px">${esc(sf.acao)}</span></td>
         <td><button class="btn" onclick="tirarProcesso('${p.id}')">Desvincular</button></td>
-      </tr>`).join('')}</tbody></table>` : '<div class="vazio">Nenhum processo cadastrado ainda.</div>'}
+      </tr>`; }).join('')}</tbody></table>
+      <p class="nota">Para mudar a fase ou silenciar o alerta de um processo, use o menu Andamento.</p>` : '<div class="vazio">Nenhum processo cadastrado ainda.</div>'}
     <form onsubmit="addProcesso(event)" style="display:flex;gap:9px;flex-wrap:wrap;padding:14px 18px 18px;align-items:flex-end">
       <label style="display:flex;flex-direction:column;gap:3px;min-width:250px">
         <span class="sub" style="margin:0">Número do processo (CNJ)</span>
@@ -1884,10 +1903,14 @@ window.relatorioCasoPdf = () => {
     <div class="sub">${esc(c.cliente?.nome || 'sem cliente vinculado')}${c.area?' · '+esc(c.area):''}${c.polo?' · '+esc(c.polo):''}
       ${c.responsavel?.nome ? ' · responsável: '+esc(c.responsavel.nome) : ''}</div></div>
   <h2>Processos</h2>
-  ${tabelaHtml([['numero','Número'],['orgao','Tribunal e órgão'],['classe','Classe'],['ajuizado','Ajuizado',1]],
+  ${tabelaHtml([['numero','Número'],['orgao','Tribunal e órgão'],['classe','Classe'],['ajuizado','Ajuizado',1],
+      ['fase','Fase'],['tramite','Em trâmite',1],['parado','Parado há',1]],
     CASOPROC.map(p=>({ numero:p.numero_formatado || cnjFormata(p.numero_cnj),
       orgao:[p.tribunal_sigla,p.orgao].filter(Boolean).join(' — '), classe:p.classe,
-      ajuizado:p.data_ajuizamento?br(p.data_ajuizamento):'—' })))}
+      ajuizado:p.data_ajuizamento?br(p.data_ajuizamento):'—',
+      fase:FASES[p.fase||'conhecimento'],
+      tramite:humano(emTramite(p)),
+      parado:humano(diasDesde(CASOMOV[p.id] || p.data_ajuizamento)) })))}
   <h2>Histórico do caso</h2>
   ${tabelaHtml([['data','Quando',1],['tipo','O que'],['o_que','Descrição'],['detalhe','Observações']], linhas)}`;
   imprimir('Relatório — ' + c.titulo, corpo);
@@ -1900,7 +1923,12 @@ window.relatorioCasoXlsx = async () => {
       resultado:c.resultado||'' }]],
     ['Processos', CASOPROC.map(p=>({ numero:p.numero_formatado||cnjFormata(p.numero_cnj),
       tribunal:p.tribunal_sigla||'', orgao:p.orgao||'', classe:p.classe||'', grau:p.grau||'',
-      ajuizado:p.data_ajuizamento?br(p.data_ajuizamento):'' }))],
+      ajuizado:p.data_ajuizamento?br(p.data_ajuizamento):'',
+      fase:FASES[p.fase||'conhecimento'],
+      dias_em_tramite:emTramite(p) ?? '',
+      em_tramite:humano(emTramite(p)),
+      dias_parado:diasDesde(CASOMOV[p.id] || p.data_ajuizamento) ?? '',
+      parado_ha:humano(diasDesde(CASOMOV[p.id] || p.data_ajuizamento)) }))],
     ['Atividades', CASOLINHA.map(i=>({ data:br(i.data), hora:i.hora||'',
       tipo:(TIPOLINHA[i.tipo]||[i.tipo])[0], descricao:i.titulo, detalhe:i.detalhe||'',
       situacao:i.situacao||'' }))],
@@ -2598,6 +2626,167 @@ window.salvarEscritorio = async (ev) => {
     .eq('id', e1.id);
   document.getElementById('esc-st').textContent = error ? 'erro: '+error.message : 'salvo ✓';
 };
+/* --------------------------------------------- tempo de trâmite e paralisação */
+const DIA_MS = 864e5;
+const FASES = { conhecimento:'Conhecimento', recurso:'Recurso', execucao:'Execução', suspenso:'Suspenso' };
+const diasDesde = d => {
+  if (!d) return null;
+  const s = String(d);
+  const t = Date.parse(s.length <= 10 ? s + 'T12:00:00' : s);
+  return isNaN(t) ? null : Math.floor((Date.now() - t) / DIA_MS);
+};
+function humano(n){
+  if (n == null) return '—';
+  if (n < 0) return 'em ' + Math.abs(n) + ' dias';
+  if (n < 60) return n + (n === 1 ? ' dia' : ' dias');
+  const a = Math.floor(n / 365), m = Math.floor((n % 365) / 30);
+  if (!a) return m + (m === 1 ? ' mês' : ' meses');
+  return a + (a === 1 ? ' ano' : ' anos') + (m ? ' e ' + m + (m === 1 ? ' mês' : ' meses') : '');
+}
+/* data do último sinal de vida do processo */
+const ultimoSinal = p => p.ultima_movimentacao || p.ultima_intimacao || p.data_ajuizamento || null;
+/* Devolve { cor, peso, titulo, acao, silenciado } para um processo. */
+function semaforo(p){
+  const hoje = new Date().toISOString().slice(0,10);
+  if (p.aguardando_ate && p.aguardando_ate >= hoje)
+    return { cor:'cin', peso:0, silenciado:true, titulo:'Aguardando ' + br(p.aguardando_ate),
+             acao: p.aguardando_obs || 'alerta silenciado até essa data' };
+  if (p.fase === 'suspenso')
+    return { cor:'cin', peso:0, silenciado:true, titulo:'Suspenso', acao:'sem cobrança enquanto estiver suspenso' };
+
+  if (p.fase === 'execucao') {
+    if (!p.marco_intercorrente)
+      return { cor:'cin', peso:1, titulo:'Execução sem marco',
+               acao:'marque a data da intimação do art. 11-A para o relógio começar' };
+    const d = diasDesde(p.marco_intercorrente), m = Math.floor(d / 30.44);
+    const limite = new Date(Date.parse(p.marco_intercorrente + 'T12:00:00') + 1096 * DIA_MS)
+      .toISOString().slice(0,10);
+    if (m >= 30) return { cor:'crit', peso:5, titulo:'Prescrição intercorrente perto — ' + m + ' meses',
+      acao:'o biênio se completa em ' + br(limite) + '. Peticione diligência útil agora' };
+    if (m >= 24) return { cor:'ser', peso:4, titulo:'Biênio correndo — ' + m + ' meses',
+      acao:'prescreve em ' + br(limite) + '. Indique meios efetivos de persecução patrimonial' };
+    if (m >= 12) return { cor:'warn', peso:3, titulo:'Suspensão vencida — ' + m + ' meses',
+      acao:'acabou o ano de suspensão; a partir daqui o prazo do art. 11-A corre' };
+    return { cor:'good', peso:0, titulo:'Suspensão em curso — ' + m + ' meses',
+      acao:'no primeiro ano a prescrição não corre (art. 921, §1º, do CPC)' };
+  }
+
+  const d = diasDesde(ultimoSinal(p));
+  if (d == null) return { cor:'cin', peso:1, titulo:'Sem andamento registrado',
+    acao:'confira se o número está certo e se o robô já consultou' };
+  if (d >= 180) return { cor:'crit', peso:5, titulo:'Parado há ' + humano(d),
+    acao:'já cabe reclamação à Corregedoria do tribunal' };
+  if (d >= 90)  return { cor:'ser', peso:4, titulo:'Parado há ' + humano(d),
+    acao:'peticione pedindo impulso ou cobre a secretaria da vara' };
+  if (d >= 60)  return { cor:'warn', peso:3, titulo:'Parado há ' + humano(d),
+    acao:'confira o que está pendente de cumprimento' };
+  return { cor:'good', peso:0, titulo:'Parado há ' + humano(d), acao:'dentro do normal' };
+}
+const emTramite = p => diasDesde(p.data_ajuizamento);
+
+let AND = [];
+window.mudarFase = async (id, v, el) => {
+  const st = el.parentElement.querySelector('.sub');
+  if (st) st.textContent = 'salvando…';
+  const { error } = await sb.from('processo').update({ fase: v }).eq('id', id);
+  if (error) { if (st) st.textContent = 'erro'; return; }
+  const p = AND.find(x => x.id === id); if (p) p.fase = v;
+  if (st) st.textContent = '';
+  pintarAndamento();
+};
+window.mudarEspera = async (id, v, el) => {
+  const st = el.parentElement.querySelector('.sub');
+  if (st) st.textContent = 'salvando…';
+  const { error } = await sb.from('processo').update({ aguardando_ate: v || null }).eq('id', id);
+  if (error) { if (st) st.textContent = 'erro'; return; }
+  const p = AND.find(x => x.id === id); if (p) p.aguardando_ate = v || null;
+  if (st) st.textContent = '';
+  pintarAndamento();
+};
+window.mudarMarco = async (id, v, el) => {
+  const st = el.parentElement.querySelector('.sub');
+  if (st) st.textContent = 'salvando…';
+  const { error } = await sb.from('processo').update({ marco_intercorrente: v || null }).eq('id', id);
+  if (error) { if (st) st.textContent = 'erro'; return; }
+  const p = AND.find(x => x.id === id); if (p) p.marco_intercorrente = v || null;
+  if (st) st.textContent = '';
+  pintarAndamento();
+};
+let ANDFILTRO = 'atencao';
+window.filtrarAndamento = v => { ANDFILTRO = v; pintarAndamento(); };
+function pintarAndamento(){
+  const alvo = document.getElementById('andlista'); if (!alvo) return;
+  const linhas = AND.map(p => ({ p, s: semaforo(p) }))
+    .sort((a,b) => b.s.peso - a.s.peso ||
+      (diasDesde(ultimoSinal(b.p)) || 0) - (diasDesde(ultimoSinal(a.p)) || 0));
+  const vis = ANDFILTRO === 'tudo' ? linhas : linhas.filter(x => x.s.peso >= 3);
+  for (const b of document.querySelectorAll('#andf .btn')) b.classList.toggle('ok', b.dataset.f === ANDFILTRO);
+  if (!vis.length) return alvo.innerHTML =
+    '<div class="vazio">Nada pedindo providência agora. Bom sinal.</div>';
+  alvo.innerHTML = `<table><thead><tr>
+      <th>Cliente / caso</th><th>Processo</th><th style="width:135px">Fase</th>
+      <th style="width:110px">Em trâmite</th><th>Situação e providência</th>
+      <th style="width:150px">Aguardando até</th></tr></thead><tbody>
+    ${vis.map(({p,s}) => `<tr>
+      <td><a class="lnk" href="#/processo/${p.id}"><b>${esc(p.cliente_nome || p.caso_titulo || 'Sem cliente')}</b></a>
+        <span class="sub">${esc(p.orgao || p.tribunal_sigla || '')}</span></td>
+      <td class="proc">${esc(p.numero_formatado || cnjFormata(p.numero_cnj))}</td>
+      <td><select onchange="mudarFase('${p.id}', this.value, this)" style="font-size:12px;width:100%">
+          ${Object.entries(FASES).map(([k,r]) =>
+            `<option value="${k}" ${(p.fase||'conhecimento')===k?'selected':''}>${r}</option>`).join('')}
+        </select><span class="sub"></span></td>
+      <td class="dt">${humano(emTramite(p))}
+        <span class="sub">${p.data_ajuizamento ? 'desde '+br(p.data_ajuizamento) : 'sem data de ajuizamento'}</span></td>
+      <td><span class="pill ${s.cor}">${esc(s.titulo)}</span>
+        <span class="sub" style="display:block;margin-top:3px">${esc(s.acao)}</span>
+        ${p.fase === 'execucao' ? `<span class="sub" style="display:block;margin-top:3px">
+          intimação do art. 11-A:
+          <input type="date" value="${p.marco_intercorrente||''}" style="font-size:11.5px"
+                 onchange="mudarMarco('${p.id}', this.value, this)"><span class="sub"></span></span>` : ''}</td>
+      <td><input type="date" value="${p.aguardando_ate||''}" style="font-size:12px;width:100%"
+            onchange="mudarEspera('${p.id}', this.value, this)"><span class="sub"></span></td>
+    </tr>`).join('')}</tbody></table>`;
+  aplicarRotulos(alvo);
+}
+async function telaAndamento(){
+  const [pp, px] = await Promise.all([
+    sb.from('processo_painel').select('*').limit(1000),
+    sb.from('processo').select('id,data_ajuizamento,fase,aguardando_ate,aguardando_obs,marco_intercorrente').limit(1000),
+  ]);
+  if (pp.error) return erro(pp.error.message);
+  const extra = Object.fromEntries((px.data || []).map(x => [x.id, x]));
+  AND = (pp.data || []).map(p => ({ ...p, ...(extra[p.id] || {}) }));
+  const s = AND.map(semaforo);
+  const criticos = s.filter(x => x.peso >= 4).length;
+  const atencao  = s.filter(x => x.peso === 3).length;
+  const risco    = AND.filter(p => p.fase === 'execucao' && semaforo(p).peso >= 3).length;
+  const calados  = s.filter(x => x.silenciado).length;
+  const idades = AND.map(emTramite).filter(x => x != null);
+  const medio = idades.length ? Math.round(idades.reduce((a,b)=>a+b,0) / idades.length) : null;
+  app.innerHTML = menu('andamento') + `
+  <main><h1>Andamento dos processos</h1>
+  <p class="meta">Dois relógios: há quanto tempo cada processo tramita e há quanto tempo está parado.
+    Na fase de conhecimento a demora é do juízo — 60 dias pedem conferência, 90 pedem impulso, 180 abrem espaço
+    para reclamação à Corregedoria. Na execução o relógio é outro: conta o prazo do art. 11-A da CLT.</p>
+  <div class="kpis">
+    <div class="kpi ${criticos?'al':''}"><div class="n">${criticos}</div><div class="l">pedindo providência</div></div>
+    <div class="kpi"><div class="n">${atencao}</div><div class="l">merecendo conferência</div></div>
+    <div class="kpi ${risco?'al':''}"><div class="n">${risco}</div><div class="l">execuções com o prazo correndo</div></div>
+    <div class="kpi"><div class="n">${medio!=null?humano(medio):'—'}</div><div class="l">tempo médio em trâmite</div></div>
+  </div>
+  <div class="card"><h2>Os mais parados primeiro</h2>
+    <p class="nota">Marque a fase de cada processo — a régua da execução é bem mais severa que a do conhecimento.
+      Se o processo está só aguardando audiência já marcada, preencha “aguardando até” e ele para de aparecer aqui.
+      ${calados ? '<b>' + calados + '</b> processo(s) silenciado(s) no momento.' : ''}</p>
+    <div id="andf" style="padding:0 18px 12px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" data-f="atencao" onclick="filtrarAndamento('atencao')">só o que pede ação</button>
+      <button class="btn" data-f="tudo" onclick="filtrarAndamento('tudo')">todos os processos</button>
+    </div>
+    <div id="andlista"></div></div>
+  </main>` + rodape();
+  pintarAndamento();
+}
+
 /* ------------------------------------------- documentos pedidos em um caso */
 let CASODOCS = [], CASOMODELOS = [];
 window.aplicarLista = async mid => {
@@ -3070,6 +3259,7 @@ async function rota(){
   if(h.startsWith('#/agenda'))     return telaAgenda();
   if(h.startsWith('#/captacao'))   return telaCaptacao();
   if(h.startsWith('#/casos'))      return telaCasos();
+  if(h.startsWith('#/andamento'))  return telaAndamento();
   if(h.startsWith('#/processos'))  return telaProcessos();
   if(h.startsWith('#/clientes'))   return telaClientes();
   if(h.startsWith('#/mensageria')) return telaMensageria();
