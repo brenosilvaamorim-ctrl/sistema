@@ -400,7 +400,10 @@ function linhaProc(p){
           <option value="">— sem área —</option>
           ${AREAS.map(a=>`<option value="${a.id}" ${(p.area||'')===a.nome?'selected':''}>${esc(a.nome)}</option>`).join('')}
         </select><span class="sub" id="ar_${p.id}"></span>`
-      : '<span class="sub" style="display:inline">vincule a um caso primeiro</span>'}</td>
+      : `<select onchange="vincularCaso('${p.id}', this.value, this)" style="min-width:170px;font-size:12px">
+          <option value="">— escolher o caso —</option>
+          ${CASOSLISTA.map(k=>`<option value="${k.id}">${esc(k.titulo)}</option>`).join('')}
+        </select><span class="sub"></span>`}</td>
     <td class="proc">${esc(p.numero_formatado || p.numero_cnj)}<span class="sub">${esc(p.tribunal_sigla||'')} · ${esc(p.grau||'')}</span></td>
     <td>${esc(p.orgao||'—')}<span class="sub">${esc(p.classe||'')}</span></td>
     <td class="dt">${humano(emTramite(p))}
@@ -429,7 +432,11 @@ async function telaProcessos(){
   const { data, error } = pp;
   if(error) return erro(error.message);
   AREAS = ar.data || [];
-  const px = await sb.from('processo').select('id,data_ajuizamento,fase,aguardando_ate,marco_intercorrente').limit(1000);
+  const [px, kk] = await Promise.all([
+    sb.from('processo').select('id,data_ajuizamento,fase,aguardando_ate,marco_intercorrente').limit(1000),
+    sb.from('caso').select('id,titulo').is('encerrado_em', null).order('titulo').limit(1000),
+  ]);
+  CASOSLISTA = kk.data || [];
   const extraP = Object.fromEntries((px.data||[]).map(x=>[x.id,x]));
   PROCS = (data||[]).map(x => ({ ...x, ...(extraP[x.id]||{}) }));
   const parados = PROCS.filter(p=>p.ultima_movimentacao && (Date.now()-Date.parse(p.ultima_movimentacao))/864e5 > 90).length;
@@ -443,6 +450,17 @@ async function telaProcessos(){
     <div class="kpi ${parados?'al':''}"><div class="n">${parados}</div><div class="l">parados há mais de 90 dias</div></div>
     <div class="kpi"><div class="n">${semSync}</div><div class="l">ainda não consultados</div></div>
   </div>
+  ${PROCS.filter(p=>!p.caso_id).length ? `<div class="card"><h2>Processos sem caso</h2>
+    <p class="nota"><b>${PROCS.filter(p=>!p.caso_id).length} processo(s)</b> não estão ligados a caso nenhum —
+      não aparecem na ficha do cliente, não entram nos relatórios e não geram informativo.
+      Na tabela abaixo dá para escolher o caso de cada um. Se preferir resolver de uma vez, o botão cria
+      um caso por processo, com o número e a classe no título; o nome só entra quando a intimação
+      permite identificar sem dúvida. Depois é só renomear caso a caso.</p>
+    <div style="padding:0 18px 18px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button class="btn ok" onclick="criarCasosSoltos()">Criar um caso para cada processo solto</button>
+      <span class="sub" id="cs-st" style="margin:0"></span>
+    </div></div>` : ''}
+
   <div class="card"><h2>Todos os processos</h2>
     <div class="filtros"><input id="bp" type="search" placeholder="cliente, número, vara, tribunal…" oninput="filtrarProc()">
       <span class="sub" style="margin:0">mostrando <b id="qtd">${PROCS.length}</b></span></div>
@@ -1235,6 +1253,7 @@ async function telaAgenda(){
 window.ficha = async (id) => {
   const existente = document.getElementById('fx'+id);
   if (existente) { existente.remove(); return; }
+  const cliCaso = CLI.find(x => x.id === id)?.caso_id || null;
   const { data: c, error } = await sb.from('cliente')
     .select('nome,tipo,cpf_cnpj,rg,ctps,pis,nascimento,estado_civil,profissao,email,endereco,cidade,uf,cep')
     .eq('id', id).single();
@@ -1267,6 +1286,8 @@ window.ficha = async (id) => {
         <span class="sub" style="margin:0">Honorários (só no contrato)</span>
         <input type="text" id="hon_${id}" placeholder="30% (trinta por cento) sobre o proveito econômico"></label>
     </div>
+    ${cliCaso ? pickerHtml(cliCaso) : `<p class="nota" style="padding:0 0 10px">
+      Este cliente ainda não tem caso. Crie o caso primeiro para poder amarrar processos a ele.</p>`}
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <button class="btn ok" onclick="salvarFicha('${id}')">Salvar qualificação</button>
       <button class="btn" onclick="gerarDoc('${id}','procuracao')">Gerar procuração (Word)</button>
@@ -1274,6 +1295,7 @@ window.ficha = async (id) => {
       <span class="sub" id="fs${id}" style="margin:0"></span>
     </div></td>`;
   document.getElementById('lin_c'+id)?.after(tr) || document.querySelector(`#cc tr[data-id="${id}"]`)?.after(tr);
+  if (cliCaso) carregarSoltos().then(() => filtrarSoltos(cliCaso)).catch(()=>{});
 };
 window.salvarFicha = async (id) => {
   const v = k => document.getElementById('q_'+k+'_'+id).value.trim() || null;
@@ -1753,6 +1775,7 @@ async function telaCaso(id){
         <td><button class="btn" onclick="tirarProcesso('${p.id}')">Desvincular</button></td>
       </tr>`; }).join('')}</tbody></table>
       <p class="nota">Para mudar a fase ou silenciar o alerta de um processo, use o menu Andamento.</p>` : '<div class="vazio">Nenhum processo cadastrado ainda.</div>'}
+    ${pickerHtml(c.id)}
     <form onsubmit="addProcesso(event)" style="display:flex;gap:9px;flex-wrap:wrap;padding:14px 18px 18px;align-items:flex-end">
       <label style="display:flex;flex-direction:column;gap:3px;min-width:250px">
         <span class="sub" style="margin:0">Número do processo (CNJ)</span>
@@ -1875,6 +1898,7 @@ async function telaCaso(id){
     </div>
     <div id="linha" style="padding:0 18px 18px"></div></div>
   </main>` + rodape();
+  carregarSoltos().then(() => filtrarSoltos(c.id)).catch(()=>{});
   pintarAssinaturas();
   pintarDocsCaso();
   pintarLinha();
@@ -2670,6 +2694,123 @@ window.salvarEscritorio = async (ev) => {
     .eq('id', e1.id);
   document.getElementById('esc-st').textContent = error ? 'erro: '+error.message : 'salvo ✓';
 };
+/* ------------------------------------- vincular processos soltos a casos */
+let SOLTOS = [], CASOSLISTA = [];
+const areaDoTribunal = t => {
+  const s = String(t || '').toUpperCase();
+  if (s.startsWith('TRT') || s === 'TST') return 'Trabalhista';
+  if (s.startsWith('TRF') || s.startsWith('JF') || s === 'STJ') return 'Federal';
+  if (s.startsWith('TJ')) return 'Cível';
+  return null;
+};
+async function carregarSoltos(){
+  const { data } = await sb.from('processo')
+    .select('id,numero_formatado,numero_cnj,classe,orgao,tribunal_sigla')
+    .is('caso_id', null).order('numero_cnj').limit(500);
+  SOLTOS = data || [];
+  return SOLTOS;
+}
+const rotuloProc = p => (p.numero_formatado || cnjFormata(p.numero_cnj))
+  + ' · ' + (p.classe || 'sem classe') + ' · ' + (p.orgao || p.tribunal_sigla || '');
+function pickerHtml(casoId){
+  return `<div style="padding:0 18px 16px">
+    <p class="nota" style="padding:0">Vincular processo que já está cadastrado e ainda não pertence a caso nenhum.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <input id="bs-${casoId}" type="search" placeholder="número, vara ou classe"
+             oninput="filtrarSoltos('${casoId}')" style="min-width:220px">
+      <select id="ss-${casoId}" style="min-width:330px"></select>
+      <button class="btn ok" onclick="vincularProc('${casoId}')">Vincular ao caso</button>
+      <span class="sub" id="vs-${casoId}" style="margin:0"></span>
+    </div></div>`;
+}
+window.filtrarSoltos = casoId => {
+  const s = document.getElementById('ss-' + casoId); if (!s) return;
+  const t = (document.getElementById('bs-' + casoId)?.value || '').toLowerCase().trim();
+  const l = SOLTOS.filter(p => !t ||
+    String(p.numero_formatado || p.numero_cnj || '').toLowerCase().includes(t) ||
+    String(p.orgao || '').toLowerCase().includes(t) ||
+    String(p.classe || '').toLowerCase().includes(t) ||
+    String(p.tribunal_sigla || '').toLowerCase().includes(t));
+  s.innerHTML = l.length
+    ? l.slice(0, 300).map(p => `<option value="${p.id}">${esc(rotuloProc(p))}</option>`).join('')
+    : '<option value="">— nenhum processo solto com esse termo —</option>';
+};
+window.vincularProc = async casoId => {
+  const s = document.getElementById('ss-' + casoId), st = document.getElementById('vs-' + casoId);
+  const pid = s?.value; if (!pid) return;
+  if (st) st.textContent = 'vinculando…';
+  const { error } = await sb.from('processo').update({ caso_id: casoId }).eq('id', pid);
+  if (error) { if (st) st.textContent = 'erro: ' + error.message; return; }
+  SOLTOS = SOLTOS.filter(p => p.id !== pid);
+  if (typeof CASO !== 'undefined' && CASO && CASO.id === casoId) return telaCaso(casoId);
+  if (st) st.textContent = 'vinculado ✓';
+  filtrarSoltos(casoId);
+};
+/* usado na aba Processos: escolher o caso de um processo solto */
+window.vincularCaso = async (procId, casoId, el) => {
+  const st = el.parentElement.querySelector('.sub');
+  if (!casoId) return;
+  if (st) st.textContent = 'vinculando…';
+  const { error } = await sb.from('processo').update({ caso_id: casoId }).eq('id', procId);
+  if (st) st.textContent = error ? 'erro: ' + error.message : 'vinculado ✓';
+  if (!error) setTimeout(() => telaProcessos(), 700);
+};
+window.criarCasosSoltos = async () => {
+  const st = document.getElementById('cs-st');
+  const eid = await escId();
+  st.textContent = 'lendo os processos…'; st.style.color = 'var(--i3)';
+  const { data: procs, error } = await sb.from('processo')
+    .select('id,numero_formatado,numero_cnj,classe,tribunal_sigla,orgao,data_ajuizamento')
+    .is('caso_id', null).limit(500);
+  if (error) { st.textContent = 'erro: ' + error.message; st.style.color = 'var(--crit)'; return; }
+  if (!procs.length) { st.textContent = 'nenhum processo solto — está tudo vinculado.'; return; }
+  if (!confirm('Criar ' + procs.length + ' casos, um para cada processo sem caso?\n\n' +
+    'O título vai ser o número e a classe, com o nome quando a intimação permitir identificar sem dúvida. ' +
+    'Você renomeia depois, caso a caso.')) { st.textContent = ''; return; }
+
+  const ids = procs.map(p => p.id);
+  let intim = [];
+  for (let i = 0; i < ids.length; i += 40) {
+    const { data } = await sb.from('intimacao').select('processo_id,destinatarios')
+      .in('processo_id', ids.slice(i, i + 40)).limit(500);
+    intim = intim.concat(data || []);
+  }
+  const ENT = /(LTDA|S\/A|EIRELI|MUNICIPIO|ESTADO DE|SECRETARIA|FUNDACAO|INSTITUTO|COOPERATIV|PROCURADORIA|\bPGE\b|BANCO|HOSPITAL|PREFEITURA|UNIAO|\bINSS\b|CAIXA|MINISTERIO|EMPRESA|COMERCIO|INDUSTRIA|SERVICOS|ASSOCIACAO|SINDICATO|CONSELHO|AGENCIA|DEPARTAMENTO)/i;
+  const MEU = /BRENO\s+DA\s+SILVA\s+AMORIM|BRENO\s+S\.?\s*AMORIM/i;
+  const porProc = {};
+  for (const it of intim) {
+    porProc[it.processo_id] ||= new Set();
+    for (const d of (it.destinatarios || [])) if (d?.nome) porProc[it.processo_id].add(d.nome);
+  }
+  const freq = {};
+  for (const c of Object.values(porProc)) for (const n of c) freq[n] = (freq[n] || 0) + 1;
+  const nomeDe = pid => {
+    const c = porProc[pid]; if (!c) return null;
+    const cand = [...c].filter(n => !ENT.test(n) && !MEU.test(n) && freq[n] === 1);
+    return cand.length === 1 ? cand[0] : null;
+  };
+
+  let feitos = 0, falhas = 0, comNome = 0;
+  for (const p of procs) {
+    const nome = nomeDe(p.id); if (nome) comNome++;
+    const titulo = [nome, p.numero_formatado || cnjFormata(p.numero_cnj), p.classe].filter(Boolean).join(' — ');
+    const linha = { escritorio_id: eid, titulo, area: areaDoTribunal(p.tribunal_sigla),
+      observacoes: 'Caso criado automaticamente a partir do processo importado. Confira o cliente e ajuste o título.'
+        + (nome ? ' O nome veio de uma intimação do DJEN e ainda precisa ser confirmado.' : '') };
+    if (p.data_ajuizamento) linha.criado_em = p.data_ajuizamento + 'T12:00:00Z';
+    const { data: novo, error: e1 } = await sb.from('caso').insert(linha).select('id').single();
+    if (e1) { falhas++; continue; }
+    const { error: e2 } = await sb.from('processo').update({ caso_id: novo.id }).eq('id', p.id);
+    if (e2) { falhas++; continue; }
+    feitos++;
+    if (feitos % 5 === 0) st.textContent = 'criando… ' + feitos + ' de ' + procs.length;
+  }
+  st.textContent = feitos + ' caso(s) criados' + (comNome ? ', ' + comNome + ' com nome vindo de intimação' : '')
+    + (falhas ? ' · ' + falhas + ' falha(s)' : '') + '. Atualizando a tela…';
+  st.style.color = falhas ? 'var(--warn)' : 'var(--good)';
+  setTimeout(() => telaProcessos(), 1800);
+};
+
 /* ------------------------------------------------ assinatura de documentos */
 let CASOASSIN = [];
 const TIPODOC = { procuracao:'Procuração', 'proc-contrato':'Procuração e contrato de honorários', outro:'Outro documento' };
