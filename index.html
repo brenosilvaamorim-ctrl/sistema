@@ -2987,8 +2987,40 @@ async function telaConfig(){
     <div style="padding:0 18px 18px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <button class="btn ok" onclick="baixarBackup()">Baixar cópia completa</button>
       <span class="sub" id="bk-st" style="margin:0"></span></div></div>
+
+  <div class="card" style="margin-top:18px"><h2>Cópias automáticas</h2>
+    <p class="nota">Todo dia, às 4h30 da manhã, o sistema grava sozinho uma cópia completa.
+      Ela fica guardada no servidor e só quem está logado aqui consegue baixar.
+      <b>Continue baixando uma cópia sua de vez em quando</b> — a automática mora no mesmo
+      fornecedor do sistema, então não substitui a cópia que você guarda no seu computador.</p>
+    <div id="bklista" style="padding:0 18px 18px"><div class="vazio">carregando…</div></div></div>
   </main>` + rodape();
+  listarBackups();
 }
+async function listarBackups(){
+  const alvo = document.getElementById('bklista'); if (!alvo) return;
+  const { data, error } = await sb.storage.from('backup').list('', { limit: 120, sortBy: { column:'name', order:'desc' } });
+  if (error) return alvo.innerHTML = '<div class="vazio">Não consegui listar: ' + esc(error.message) + '</div>';
+  const fs = (data||[]).filter(f => f.name.endsWith('.json'));
+  if (!fs.length) return alvo.innerHTML = '<div class="vazio">Nenhuma cópia automática ainda. A primeira sai na próxima madrugada.</div>';
+  const mb = b => (Number(b||0)/1048576).toFixed(1).replace('.', ',') + ' MB';
+  alvo.innerHTML = `<p class="sub" style="margin:0 0 8px">${fs.length} cópia${fs.length>1?'s':''} guardada${fs.length>1?'s':''}.</p>
+    <table><thead><tr><th>Dia</th><th>Tamanho</th><th></th></tr></thead><tbody>
+    ${fs.map(f=>`<tr><td class="dt">${br(f.name.replace('.json',''))}</td>
+      <td class="proc">${mb(f.metadata?.size)}</td>
+      <td><button class="btn" onclick="baixarCopia('${f.name}')">Baixar</button>
+          <span class="sub" id="bx${f.name.replace(/\W/g,'')}"></span></td></tr>`).join('')}
+    </tbody></table>`;
+  aplicarRotulos(alvo);
+}
+window.baixarCopia = async nome => {
+  const st = document.getElementById('bx' + nome.replace(/\W/g,''));
+  if (st) st.textContent = 'preparando…';
+  const { data, error } = await sb.storage.from('backup').createSignedUrl(nome, 120, { download: 'backup-' + nome });
+  if (error) { if (st) st.textContent = 'erro: ' + error.message; return; }
+  if (st) st.textContent = '';
+  window.open(data.signedUrl, '_blank');
+};
 const TABELAS_BACKUP = ['escritorio','usuario','cliente','caso','processo','parte','prazo',
   'movimentacao','intimacao','evento','lancamento','honorario','interacao','lead','documento',
   'tese','tese_candidata','precedente','minuta','informativo_rascunho','preferencia',
