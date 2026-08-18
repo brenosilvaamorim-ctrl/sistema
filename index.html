@@ -1850,6 +1850,17 @@ window.relatorioCasoXlsx = async () => {
   ], 'relatorio-' + (c.titulo||'caso').replace(/[^\w\s-]/g,'').slice(0,40).trim().replace(/\s+/g,'-') + '.xlsx');
 };
 
+let ANOLISTA = [], ANOROT = '';
+window.listaAnoPdf = () => {
+  imprimir('Processos protocolados em ' + ANOROT, `
+  <div class="cab"><h1>Processos protocolados em ${ANOROT}</h1>
+    <div class="sub">${ANOLISTA.length} processo(s) · ${esc(ESC_NOME)}</div></div>
+  ${tabelaHtml([['ajuizado','Ajuizado',1],['numero','Número'],['cliente','Cliente'],
+    ['orgao','Vara / órgão'],['classe','Classe'],['area','Área']], ANOLISTA)}`);
+};
+window.listaAnoXlsx = () => baixarPlanilha([['Protocolados ' + ANOROT, ANOLISTA]],
+  'processos-protocolados-' + ANOROT + '.xlsx');
+
 function periodo(){
   const de = document.getElementById('rel-de')?.value || '2000-01-01';
   const ate = document.getElementById('rel-ate')?.value || hoje();
@@ -2111,7 +2122,7 @@ function contar(lista, chave, rotulos){
 async function telaMetricas(){
   const ano = new Date().getUTCFullYear();
   const [pr, ar, cs, tot] = await Promise.all([
-    sb.from('processo').select('id,caso_id,data_ajuizamento,tribunal_sigla').not('data_ajuizamento','is',null),
+    sb.from('processo').select('id,caso_id,data_ajuizamento,tribunal_sigla,numero_formatado,numero_cnj,orgao,classe,grau,caso:caso_id(titulo, cliente:cliente_id(nome))').not('data_ajuizamento','is',null),
     sb.from('area_atuacao').select('id,nome'),
     sb.from('caso').select('id,area_id'),
     sb.from('processo').select('id', { count:'exact', head:true }),
@@ -2129,6 +2140,16 @@ async function telaMetricas(){
   const mesAtual = new Date().getUTCMonth() + 1;
   const media = mesAtual ? (doAno.length / mesAtual) : 0;
   const projecao = Math.round(media * 12);
+  const listaAno = [...doAno].sort((a,b) =>
+    String(b.data_ajuizamento).localeCompare(String(a.data_ajuizamento)));
+  ANOLISTA = listaAno.map(p => ({
+    ajuizado: br(p.data_ajuizamento),
+    numero: p.numero_formatado || p.numero_cnj || '',
+    cliente: p.caso?.cliente?.nome || p.caso?.titulo || '',
+    orgao: p.orgao || '', tribunal: p.tribunal_sigla || '', grau: p.grau || '',
+    classe: p.classe || '', area: areaDoCaso.get(p.caso_id) || 'não informada',
+  }));
+  ANOROT = ano;
 
   app.innerHTML = menu('metricas') + `
   <main><h1>Processos ajuizados em ${ano}</h1>
@@ -2164,6 +2185,29 @@ async function telaMetricas(){
     Só entram processos com data de distribuição vinda do CNJ — hoje
     <b>${(pr.data||[]).length} de ${tot.count ?? '—'}</b> processos já têm essa data.
     Conforme a varredura noturna avança, o número do ano se completa sozinho.</div>
+
+  <div class="card" style="margin-top:18px"><h2>Processos protocolados em ${ano}</h2>
+    <p class="nota">Um a um, do mais recente para o mais antigo. Clique no número para abrir o processo
+      ou no cliente para abrir o caso.</p>
+    ${listaAno.length ? `<table><thead><tr><th class="dt">Ajuizado</th><th>Número</th><th>Cliente</th>
+      <th>Vara / órgão</th><th>Classe</th><th>Área</th></tr></thead>
+      <tbody>${listaAno.map(p=>`<tr>
+        <td class="dt">${br(p.data_ajuizamento)}</td>
+        <td class="proc"><a class="lnk" href="#/processo/${p.id}">${esc(p.numero_formatado || p.numero_cnj || '—')}</a></td>
+        <td>${p.caso_id
+          ? `<a class="lnk" href="#/caso/${p.caso_id}">${esc(p.caso?.cliente?.nome || p.caso?.titulo || 'ver caso')}</a>`
+          : '<span class="sub" style="display:inline">sem caso vinculado</span>'}</td>
+        <td>${esc(p.orgao || '—')}${p.tribunal_sigla?`<span class="sub">${esc(p.tribunal_sigla)}${p.grau?' · '+esc(p.grau):''}</span>`:''}</td>
+        <td>${esc(p.classe || '—')}</td>
+        <td>${esc(areaDoCaso.get(p.caso_id) || 'não informada')}</td>
+      </tr>`).join('')}</tbody>
+      <tfoot><tr><td colspan="6" class="sub" style="padding-top:8px">
+        ${listaAno.length} processo(s) protocolado(s) em ${ano}.</td></tr></tfoot></table>`
+    : '<div class="vazio">Nenhum processo com data de distribuição em ' + ano + ' ainda.</div>'}
+    <div style="padding:12px 18px 18px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button class="btn ok" onclick="listaAnoPdf()">Lista em PDF</button>
+      <button class="btn" onclick="listaAnoXlsx()">Lista em Excel</button>
+    </div></div>
   </main>` + rodape();
 }
 
