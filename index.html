@@ -2639,7 +2639,8 @@ function humano(n){
   if (n == null) return '—';
   if (n < 0) return 'em ' + Math.abs(n) + ' dias';
   if (n < 60) return n + (n === 1 ? ' dia' : ' dias');
-  const a = Math.floor(n / 365), m = Math.floor((n % 365) / 30);
+  const meses = Math.round(n / 30.44);
+  const a = Math.floor(meses / 12), m = meses % 12;
   if (!a) return m + (m === 1 ? ' mês' : ' meses');
   return a + (a === 1 ? ' ano' : ' anos') + (m ? ' e ' + m + (m === 1 ? ' mês' : ' meses') : '');
 }
@@ -2671,7 +2672,18 @@ function semaforo(p){
       acao:'no primeiro ano a prescrição não corre (art. 921, §1º, do CPC)' };
   }
 
-  const d = diasDesde(ultimoSinal(p));
+  const base = p.ultima_movimentacao || p.ultima_intimacao;
+  if (!base) {
+    if (!p.ultima_sync) return { cor:'cin', peso:1, titulo:'Ainda não consultado',
+      acao:'o robô do DataJud ainda não trouxe nada deste número — confira se está correto' };
+    const d0 = diasDesde(p.data_ajuizamento);
+    if (d0 == null) return { cor:'cin', peso:1, titulo:'Sem data de ajuizamento',
+      acao:'preencha a data para o contador funcionar' };
+    return { cor: d0 >= 180 ? 'ser' : 'cin', peso: d0 >= 180 ? 4 : 1,
+      titulo:'Nenhuma movimentação em ' + humano(d0),
+      acao:'o DataJud não devolveu andamento nenhum; confira direto no PJe' };
+  }
+  const d = diasDesde(base);
   if (d == null) return { cor:'cin', peso:1, titulo:'Sem andamento registrado',
     acao:'confira se o número está certo e se o robô já consultou' };
   if (d >= 180) return { cor:'crit', peso:5, titulo:'Parado há ' + humano(d),
