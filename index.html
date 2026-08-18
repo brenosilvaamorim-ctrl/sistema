@@ -204,7 +204,7 @@ let ESC_NOME = 'Breno S. Amorim Advocacia', ESC_LOGO = null, ESC_ID = null, ESC_
 const MENU_PADRAO = [['prazos','Prazos'],['agenda','Agenda'],['captacao','Captação'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['clientes','Clientes'],['mensageria','Mensagens'],['metricas','Métricas'],['financeiro','Financeiro'],['minutas','Minutas'],['aprender','Aprender'],['dicionario','Dicionário'],['documentos','Documentos'],['tutoriais','Tutoriais'],['config','Configurações']];
 let MENUCFG = MENU_PADRAO.map(([k,r]) => ({ k, r, v:true }));
 let ROTULOS = {};
-const PALAVRAS = {"Telas e seções": ["Prazos", "Agenda", "Captação", "Casos", "Processos", "Andamento", "Clientes", "Mensagens", "Métricas", "Financeiro", "Minutas", "Aprender", "Dicionário", "Documentos", "Tutoriais", "Configurações", "Calendário", "Pela frente", "Vencidos e ainda abertos", "Linha do tempo", "Todos os processos", "Andamento dos processos", "Os mais parados primeiro", "Precedentes", "Teses", "Fila de aprovação", "Minutas recentes", "Análise prévia", "Modo juiz", "Marcar prazo, audiência ou tarefa", "Levar tudo para o Google Agenda", "Equipe e acessos", "Dados do escritório", "Áreas de atuação", "Origens de captação", "Categorias financeiras", "Dicionário de movimentações", "Documentos a pedir", "Documentos do cliente", "Tutoriais para clientes", "Ensinar uma peça ao banco", "Mensagem para o cliente", "Novo contato", "Novo lançamento", "Resultado da leitura"], "Colunas das tabelas": ["Feito", "Em trâmite", "Parado há", "Fase", "Situação e providência", "Aguardando até", "Chegou", "Documento", "Onde consigo", "Recebido em", "Vence", "Quando", "Situação", "Providência", "Cliente / vara", "Cliente / caso", "Processo", "Trecho lido e memória", "Conf.", "Ação", "Tipo", "O quê", "Descrição", "Origem", "Valor", "Vencimento", "Tribunal", "Relator", "Tema", "Órgão", "Área", "Nome", "Pessoa", "Perfil", "Ativo", "E-mail", "Telefone", "Telefone / WhatsApp", "Última movimentação", "Último informativo", "Encerrado em", "Motivo", "Resultado", "Vezes", "Cód."], "Números do topo": ["em aberto", "vencem em até 5 dias", "já vencidos", "aguardando confirmação", "compromissos à frente", "nos próximos 7 dias", "audiências", "já passaram e seguem abertos", "casos abertos", "casos ativos", "clientes", "processos", "pedindo providência", "merecendo conferência", "execuções com o prazo correndo", "tempo médio em trâmite", "em trâmite", "parado há", "sem telefone", "sem contato há mais de 30 dias", "parados há mais de 90 dias", "prescrevem em até 180 dias", "com prazo em até 5 dias", "com novidade desde o último informativo", "teses no banco", "esperando sua decisão", "precedentes a conferir", "teses novas", "refinamentos", "tempo de leitura", "a pagar", "a receber", "saldo do mês", "recebido neste mês", "projeção para o ano"]};
+const PALAVRAS = {"Telas e seções": ["Prazos", "Agenda", "Captação", "Casos", "Processos", "Andamento", "Clientes", "Mensagens", "Métricas", "Financeiro", "Minutas", "Aprender", "Dicionário", "Documentos", "Tutoriais", "Configurações", "Calendário", "Pela frente", "Vencidos e ainda abertos", "Linha do tempo", "Todos os processos", "Andamento dos processos", "Os mais parados primeiro", "Precedentes", "Teses", "Fila de aprovação", "Minutas recentes", "Análise prévia", "Modo juiz", "Marcar prazo, audiência ou tarefa", "Levar tudo para o Google Agenda", "Equipe e acessos", "Dados do escritório", "Áreas de atuação", "Origens de captação", "Categorias financeiras", "Dicionário de movimentações", "Documentos a pedir", "Documentos do cliente", "Assinatura de documentos", "Tutoriais para clientes", "Ensinar uma peça ao banco", "Mensagem para o cliente", "Novo contato", "Novo lançamento", "Resultado da leitura"], "Colunas das tabelas": ["Feito", "Em trâmite", "Parado há", "Fase", "Situação e providência", "Aguardando até", "Chegou", "Documento", "Onde consigo", "Recebido em", "Vence", "Quando", "Situação", "Providência", "Cliente / vara", "Cliente / caso", "Processo", "Trecho lido e memória", "Conf.", "Ação", "Tipo", "O quê", "Descrição", "Origem", "Valor", "Vencimento", "Tribunal", "Relator", "Tema", "Órgão", "Área", "Nome", "Pessoa", "Perfil", "Ativo", "E-mail", "Telefone", "Telefone / WhatsApp", "Última movimentação", "Último informativo", "Encerrado em", "Motivo", "Resultado", "Vezes", "Cód."], "Números do topo": ["em aberto", "vencem em até 5 dias", "já vencidos", "aguardando confirmação", "compromissos à frente", "nos próximos 7 dias", "audiências", "já passaram e seguem abertos", "casos abertos", "casos ativos", "clientes", "processos", "pedindo providência", "merecendo conferência", "execuções com o prazo correndo", "tempo médio em trâmite", "em trâmite", "parado há", "sem telefone", "sem contato há mais de 30 dias", "parados há mais de 90 dias", "prescrevem em até 180 dias", "com prazo em até 5 dias", "com novidade desde o último informativo", "teses no banco", "esperando sua decisão", "precedentes a conferir", "teses novas", "refinamentos", "tempo de leitura", "a pagar", "a receber", "saldo do mês", "recebido neste mês", "projeção para o ano"]};
 function aplicarRotulos(raiz){
   const pares = Object.entries(ROTULOS).filter(([k,v]) => v && v !== k);
   if (!pares.length || !raiz) return;
@@ -1572,6 +1572,7 @@ const TIPOLINHA = {
   contato:    ['Contato', 'good'],
   peca:       ['Peça', 'good'],
   documento:  ['Documento', 'cin'],
+  assinatura: ['Assinatura', 'good'],
 };
 window.verCaso = (id) => { location.hash = '#/caso/' + id; };
 
@@ -1656,7 +1657,7 @@ function pintarLinha(){
   }).join('') : '<div class="vazio">Nada registrado com esse filtro.</div>';
 }
 async function telaCaso(id){
-  const [cs, pr, pz, ev, it, hn, dc, mn, cd, cm] = await Promise.all([
+  const [cs, pr, pz, ev, it, hn, dc, mn, cd, cm, asg] = await Promise.all([
     sb.from('caso').select('*, cliente:cliente_id(id,nome,telefone,whatsapp,cpf_cnpj,cidade,uf), responsavel:responsavel_id(nome)').eq('id', id).single(),
     sb.from('processo').select('*').eq('caso_id', id).order('criado_em'),
     sb.from('prazo').select('*').eq('caso_id', id).order('data_fatal'),
@@ -1667,10 +1668,11 @@ async function telaCaso(id){
     sb.from('minuta').select('id,tipo,criado_em,status').eq('caso_id', id),
     sb.from('caso_documento').select('*').eq('caso_id', id).order('ordem'),
     sb.from('checklist_modelo').select('id,nome,itens').eq('ativo', true).order('ordem'),
+    sb.from('assinatura').select('*').eq('caso_id', id).order('criado_em'),
   ]);
   if (cs.error) return erro(cs.error.message);
   CASO = cs.data; CASOPROC = pr.data || [];
-  CASODOCS = cd.data || []; CASOMODELOS = cm.data || [];
+  CASODOCS = cd.data || []; CASOMODELOS = cm.data || []; CASOASSIN = asg.data || [];
   const procIds = CASOPROC.map(p => p.id);
   const mv = procIds.length
     ? await sb.from('movimentacao').select('*').in('processo_id', procIds).order('data', {ascending:false}).limit(300)
@@ -1695,6 +1697,12 @@ async function telaCaso(id){
     titulo:n.tipo_comunicacao || 'Intimação', detalhe:n.orgao || '' });
   for (const d of (dc.data||[])) L.push({ tipo:'documento', data:String(d.criado_em).slice(0,10),
     titulo:d.nome || 'documento', detalhe:d.tipo || '' });
+  for (const a of (asg.data||[])) {
+    if (a.enviado_em) L.push({ tipo:'assinatura', data:a.enviado_em,
+      titulo:'Enviado para assinatura: ' + a.titulo, detalhe:a.plataforma || '' });
+    if (a.assinado_em) L.push({ tipo:'assinatura', data:a.assinado_em,
+      titulo:'Assinado pelo cliente: ' + a.titulo, detalhe:a.plataforma || '' });
+  }
   for (const m of (mn.data||[])) L.push({ tipo:'peca', data:String(m.criado_em).slice(0,10),
     titulo:'Minuta de ' + (m.tipo||'peça'), detalhe:'situação: ' + (m.status||'') });
   L.sort((a,b) => String(b.data).localeCompare(String(a.data)));
@@ -1798,6 +1806,40 @@ async function telaCaso(id){
       <span class="sub" id="at-st" style="margin:0"></span>
     </form></div>
 
+  <div class="card"><h2>Assinatura de documentos</h2>
+    <p class="nota">Gere a procuração já preenchida com a qualificação do cliente, suba na ZapSign e cole aqui o link.
+      O sistema guarda o registro, mostra há quanto tempo está esperando e manda a cobrança pelo WhatsApp
+      com o passo a passo da selfie e da foto do documento.</p>
+    <div style="padding:0 18px 14px;display:flex;gap:9px;flex-wrap:wrap;align-items:flex-end">
+      <label style="display:flex;flex-direction:column;gap:3px;flex:2;min-width:240px">
+        <span class="sub" style="margin:0">Objeto da procuração</span>
+        <input id="as-obj" placeholder="Ex.: reclamação trabalhista contra a empresa X"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:180px">
+        <span class="sub" style="margin:0">Honorários</span>
+        <input id="as-hon" placeholder="Ex.: 30% sobre o proveito econômico"></label>
+      <button class="btn ok" onclick="gerarDocCaso('procuracao')">Gerar procuração</button>
+      <button class="btn" onclick="gerarDocCaso('proc-contrato')">Gerar procuração + contrato</button>
+      <span class="sub" id="as-st" style="margin:0"></span>
+    </div>
+    <div id="aslista"></div>
+    <form onsubmit="addAssinatura(event)" style="display:flex;gap:9px;flex-wrap:wrap;padding:12px 18px 18px;align-items:flex-end">
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:200px">
+        <span class="sub" style="margin:0">Documento enviado</span>
+        <input name="titulo" required placeholder="Procuração"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:150px">
+        <span class="sub" style="margin:0">Tipo</span>
+        <select name="tipo"><option value="procuracao">Procuração</option>
+          <option value="proc-contrato">Procuração e contrato</option>
+          <option value="outro">Outro documento</option></select></label>
+      <label style="display:flex;flex-direction:column;gap:3px;flex:2;min-width:250px">
+        <span class="sub" style="margin:0">Link do documento na ZapSign</span>
+        <input name="link" placeholder="cole aqui o link de assinatura"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:145px">
+        <span class="sub" style="margin:0">Enviado em</span>
+        <input name="enviado_em" type="date" value="${hoje()}"></label>
+      <button class="btn" type="submit">Registrar envio</button>
+    </form></div>
+
   <div class="card"><h2>Documentos do cliente</h2>
     <p class="nota">Aplique a lista da área e vá marcando o que já chegou. O botão do WhatsApp cobra só o que falta.</p>
     <div style="padding:0 18px 12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -1833,6 +1875,7 @@ async function telaCaso(id){
     </div>
     <div id="linha" style="padding:0 18px 18px"></div></div>
   </main>` + rodape();
+  pintarAssinaturas();
   pintarDocsCaso();
   pintarLinha();
 }
@@ -2626,6 +2669,90 @@ window.salvarEscritorio = async (ev) => {
     .eq('id', e1.id);
   document.getElementById('esc-st').textContent = error ? 'erro: '+error.message : 'salvo ✓';
 };
+/* ------------------------------------------------ assinatura de documentos */
+let CASOASSIN = [];
+const TIPODOC = { procuracao:'Procuração', 'proc-contrato':'Procuração e contrato de honorários', outro:'Outro documento' };
+window.gerarDocCaso = async tipo => {
+  const st = document.getElementById('as-st');
+  st.textContent = 'gerando…'; st.style.color = 'var(--i3)';
+  const { data:{ session } } = await sb.auth.getSession();
+  const p = new URLSearchParams({ tipo, caso_id: CASO.id,
+    objeto: (document.getElementById('as-obj')?.value || '').trim(),
+    honorarios: (document.getElementById('as-hon')?.value || '').trim() });
+  const r = await fetch(SB_URL + '/functions/v1/gerar-documento?' + p, {
+    headers: { apikey: SB_KEY, Authorization: 'Bearer ' + session.access_token } });
+  if (!r.ok) { st.textContent = 'erro: ' + (await r.text()).slice(0,140); st.style.color = 'var(--crit)'; return; }
+  const b = await r.blob();
+  const nome = (tipo === 'procuracao' ? 'Procuracao' : 'Procuracao-e-contrato') + ' - ' +
+    (CASO.cliente?.nome || CASO.titulo || 'cliente') + '.docx';
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(b); a.download = nome; a.click();
+  st.textContent = 'baixado — confira, suba na ZapSign e registre o link abaixo';
+  st.style.color = 'var(--good)';
+};
+window.addAssinatura = async ev => {
+  ev.preventDefault();
+  const f = ev.target, st = document.getElementById('as-st');
+  st.textContent = 'gravando…'; st.style.color = 'var(--i3)';
+  const { data, error } = await sb.from('assinatura').insert({
+    escritorio_id: ESC_ID, caso_id: CASO.id,
+    titulo: f.titulo.value.trim() || 'Documento',
+    tipo: f.tipo.value,
+    link: f.link.value.trim() || null,
+    enviado_em: f.enviado_em.value || hoje(),
+  }).select().single();
+  if (error) { st.textContent = 'erro: ' + error.message; st.style.color = 'var(--crit)'; return; }
+  CASOASSIN.push(data); f.reset(); st.textContent = ''; pintarAssinaturas();
+};
+window.marcarAssinado = async (id, v) => {
+  const { error } = await sb.from('assinatura').update({ assinado_em: v || null }).eq('id', id);
+  if (error) return alert('Não foi possível: ' + error.message);
+  const a = CASOASSIN.find(x => x.id === id); if (a) a.assinado_em = v || null;
+  pintarAssinaturas();
+};
+window.tirarAssinatura = async id => {
+  const { error } = await sb.from('assinatura').delete().eq('id', id);
+  if (error) return alert('Não foi possível: ' + error.message);
+  CASOASSIN = CASOASSIN.filter(x => x.id !== id); pintarAssinaturas();
+};
+function textoAssinatura(a){
+  const nome = primeiroNome(CASO.cliente?.nome || '');
+  const ola = nome ? 'Olá, ' + nome + '! ' : 'Olá! ';
+  return ola + 'Preciso da sua assinatura ' + (a.titulo ? 'n' + (/^[ao]/i.test(a.titulo)?'':'o ') + a.titulo.toLowerCase() : 'no documento')
+    + '. É rápido, dá para fazer pelo celular:\n\n' + (a.link ? a.link + '\n\n' : '')
+    + 'Você vai precisar tirar uma selfie e uma foto de um documento com foto (RG ou CNH). '
+    + 'Tem um passo a passo com vídeo explicando: ' + location.origin + '/ajuda#assinar'
+    + '\n\nQualquer dúvida, é só me chamar por aqui.';
+}
+window.cobrarAssinatura = id => {
+  const a = CASOASSIN.find(x => x.id === id); if (!a) return;
+  const fone = CASO.cliente?.whatsapp || CASO.cliente?.telefone;
+  window.open(fone ? linkWa(fone, textoAssinatura(a))
+                   : 'https://wa.me/?text=' + encodeURIComponent(textoAssinatura(a)), '_blank');
+};
+function pintarAssinaturas(){
+  const alvo = document.getElementById('aslista'); if (!alvo) return;
+  if (!CASOASSIN.length) return alvo.innerHTML =
+    '<div class="vazio">Nenhum documento em assinatura. Gere acima e registre aqui depois de subir na ZapSign.</div>';
+  const pend = CASOASSIN.filter(a => !a.assinado_em).length;
+  alvo.innerHTML = `<p class="nota" style="padding:0 18px">${pend
+    ? '<b>' + pend + '</b> aguardando assinatura.' : '<b>Tudo assinado.</b>'}</p>
+    <table><thead><tr><th>Documento</th><th>Enviado</th><th>Link</th>
+      <th style="width:150px">Assinado em</th><th style="width:210px"></th></tr></thead><tbody>
+    ${CASOASSIN.map(a=>`<tr${a.assinado_em?' style="opacity:.6"':''}>
+      <td>${esc(a.titulo)}<span class="sub">${esc(TIPODOC[a.tipo]||a.plataforma||'')}</span></td>
+      <td class="dt">${a.enviado_em?br(a.enviado_em):'—'}
+        <span class="sub">${a.enviado_em && !a.assinado_em ? 'há ' + humano(diasDesde(a.enviado_em)) : ''}</span></td>
+      <td>${a.link ? `<a class="lnk" href="${esc(a.link)}" target="_blank" rel="noreferrer">abrir na ZapSign</a>` : '<span class="sub" style="display:inline">sem link</span>'}</td>
+      <td><input type="date" value="${a.assinado_em||''}" style="font-size:12px;width:100%"
+            onchange="marcarAssinado('${a.id}', this.value)"></td>
+      <td style="white-space:nowrap">
+        ${a.assinado_em ? '' : `<button class="btn ok" onclick="cobrarAssinatura('${a.id}')">Cobrar no WhatsApp</button>`}
+        <button class="btn" onclick="tirarAssinatura('${a.id}')">×</button></td>
+    </tr>`).join('')}</tbody></table>`;
+  aplicarRotulos(alvo);
+}
+
 /* --------------------------------------------- tempo de trâmite e paralisação */
 const DIA_MS = 864e5;
 const FASES = { conhecimento:'Conhecimento', recurso:'Recurso', execucao:'Execução', suspenso:'Suspenso' };
@@ -2662,6 +2789,9 @@ function semaforo(p){
     const d = diasDesde(p.marco_intercorrente), m = Math.floor(d / 30.44);
     const limite = new Date(Date.parse(p.marco_intercorrente + 'T12:00:00') + 1096 * DIA_MS)
       .toISOString().slice(0,10);
+    const venceu = limite < new Date().toISOString().slice(0,10);
+    if (venceu) return { cor:'crit', peso:6, titulo:'Prazo do art. 11-A já vencido — ' + m + ' meses',
+      acao:'os três anos se completaram em ' + br(limite) + '. Confira se houve intimação regular e ato interruptivo' };
     if (m >= 30) return { cor:'crit', peso:5, titulo:'Prescrição intercorrente perto — ' + m + ' meses',
       acao:'o biênio se completa em ' + br(limite) + '. Peticione diligência útil agora' };
     if (m >= 24) return { cor:'ser', peso:4, titulo:'Biênio correndo — ' + m + ' meses',
