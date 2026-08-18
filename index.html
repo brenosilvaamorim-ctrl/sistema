@@ -4,7 +4,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{color-scheme:light;--s0:#f4f3f0;--s1:#fcfcfb;--ln:#e3e1dc;--ink:#0b0b0b;--i2:#52514e;--i3:#78766f;
---good:#0ca30c;--warn:#fab219;--ser:#ec835a;--crit:#d03b3b;--serie:#2a78d6}
+--good:#0ca30c;--warn:#fab219;--ser:#ec835a;--crit:#d03b3b;--serie:#2a78d6;--hoje:#2a78d6}
 @media(prefers-color-scheme:dark){:root{color-scheme:dark;--s0:#111110;--s1:#1a1a19;--ln:#33332f;--ink:#fff;--i2:#c3c2b7;--i3:#8f8e85;--serie:#3987e5}}
 *{box-sizing:border-box}body{margin:0;background:var(--s0);color:var(--ink);font:15px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
 a{color:inherit}
@@ -96,7 +96,9 @@ textarea{width:100%;resize:vertical;line-height:1.45}
 .dia .num{font-size:12.5px;color:var(--i2);font-variant-numeric:tabular-nums;
   width:22px;height:22px;display:flex;align-items:center;justify-content:center;
   border-radius:99px;margin:0 auto 4px}
-.dia.hoje .num{background:var(--ink);color:var(--s1);font-weight:600}
+.dia.hoje{background:var(--s0)}
+.dia.hoje .num{background:var(--hoje);color:#fff;font-weight:700;
+  box-shadow:0 0 0 3px color-mix(in srgb, var(--hoje) 22%, transparent)}
 .pontos{display:flex;gap:3px;justify-content:center;flex-wrap:wrap;min-height:7px}
 .pt{width:6px;height:6px;border-radius:99px;background:var(--i3)}
 .pt.prazo{background:var(--ser)}.pt.audiencia{background:var(--crit)}
@@ -205,7 +207,7 @@ let ESC_NOME = 'Breno S. Amorim Advocacia', ESC_LOGO = null, ESC_ID = null, ESC_
 const MENU_PADRAO = [['prazos','Prazos'],['agenda','Agenda'],['captacao','Captação'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['clientes','Clientes'],['mensageria','Mensagens'],['metricas','Métricas'],['financeiro','Financeiro'],['parceiros','Parceiros'],['minutas','Minutas'],['aprender','Aprender'],['dicionario','Dicionário'],['documentos','Documentos'],['tutoriais','Tutoriais'],['config','Configurações']];
 let MENUCFG = MENU_PADRAO.map(([k,r]) => ({ k, r, v:true }));
 let ROTULOS = {};
-const PALAVRAS = {"Telas e seções": ["Prazos", "Agenda", "Captação", "Casos", "Processos", "Andamento", "Clientes", "Mensagens", "Métricas", "Financeiro", "Parceiros", "Delegar um servi\u00e7o", "Acompanhamento", "Quem s\u00e3o os parceiros", "Delegado a parceiro", "Minutas", "Aprender", "Dicionário", "Documentos", "Tutoriais", "Configurações", "Calendário", "Pela frente", "Vencidos e ainda abertos", "Linha do tempo", "Todos os processos", "Andamento dos processos", "Os mais parados primeiro", "Precedentes", "Teses", "Fila de aprovação", "Minutas recentes", "Análise prévia", "Modo juiz", "Marcar prazo, audiência ou tarefa", "Levar tudo para o Google Agenda", "Equipe e acessos", "Dados do escritório", "Áreas de atuação", "Origens de captação", "Categorias financeiras", "Dicionário de movimentações", "Documentos a pedir", "Documentos do cliente", "Assinatura de documentos", "Tutoriais para clientes", "Ensinar uma peça ao banco", "Mensagem para o cliente", "Novo contato", "Novo lançamento", "Resultado da leitura"], "Colunas das tabelas": ["Feito", "Em trâmite", "Parado há", "Fase", "Situação e providência", "Aguardando até", "Chegou", "Documento", "Onde consigo", "Recebido em", "Vence", "Quando", "Situação", "Providência", "Cliente / vara", "Cliente / caso", "Processo", "Trecho lido e memória", "Conf.", "Ação", "Tipo", "O quê", "Descrição", "Origem", "Valor", "Vencimento", "Tribunal", "Relator", "Tema", "Órgão", "Área", "Nome", "Pessoa", "Perfil", "Ativo", "E-mail", "Telefone", "Telefone / WhatsApp", "Última movimentação", "Último informativo", "Encerrado em", "Motivo", "Resultado", "Vezes", "Cód."], "Números do topo": ["em aberto", "vencem em até 5 dias", "já vencidos", "aguardando confirmação", "compromissos à frente", "nos próximos 7 dias", "audiências", "já passaram e seguem abertos", "casos abertos", "casos ativos", "clientes", "processos", "pedindo providência", "merecendo conferência", "execuções com o prazo correndo", "tempo médio em trâmite", "em trâmite", "parado há", "sem telefone", "sem contato há mais de 30 dias", "parados há mais de 90 dias", "prescrevem em até 180 dias", "com prazo em até 5 dias", "com novidade desde o último informativo", "teses no banco", "esperando sua decisão", "precedentes a conferir", "teses novas", "refinamentos", "tempo de leitura", "a pagar", "a receber", "saldo do mês", "recebido neste mês", "projeção para o ano"]};
+const PALAVRAS = {"Telas e seções": ["Prazos", "Agenda", "Captação", "Casos", "Processos", "Andamento", "Clientes", "Mensagens", "Métricas", "Financeiro", "Parceiros", "Delegar um servi\u00e7o", "Acompanhamento", "Quem s\u00e3o os parceiros", "Delegado a parceiro", "Minutas", "Aprender", "Dicionário", "Documentos", "Tutoriais", "Configurações", "Calendário", "Pela frente", "Vencidos e ainda abertos", "Linha do tempo", "Todos os processos", "Andamento dos processos", "Os mais parados primeiro", "Precedentes", "Teses", "Fila de aprovação", "Minutas recentes", "Análise prévia", "Modo juiz", "Marcar prazo, audiência ou tarefa", "Levar tudo para o Google Agenda", "Equipe e acessos", "Dados do escritório", "Áreas de atuação", "Origens de captação", "Categorias financeiras", "Dicionário de movimentações", "Cor do dia de hoje", "Cópias automáticas", "Documentos a pedir", "Documentos do cliente", "Assinatura de documentos", "Tutoriais para clientes", "Ensinar uma peça ao banco", "Mensagem para o cliente", "Novo contato", "Novo lançamento", "Resultado da leitura"], "Colunas das tabelas": ["Feito", "Em trâmite", "Parado há", "Fase", "Situação e providência", "Aguardando até", "Chegou", "Documento", "Onde consigo", "Recebido em", "Vence", "Quando", "Situação", "Providência", "Cliente / vara", "Cliente / caso", "Processo", "Trecho lido e memória", "Conf.", "Ação", "Tipo", "O quê", "Descrição", "Origem", "Valor", "Vencimento", "Tribunal", "Relator", "Tema", "Órgão", "Área", "Nome", "Pessoa", "Perfil", "Ativo", "E-mail", "Telefone", "Telefone / WhatsApp", "Última movimentação", "Último informativo", "Encerrado em", "Motivo", "Resultado", "Vezes", "Cód."], "Números do topo": ["em aberto", "vencem em até 5 dias", "já vencidos", "aguardando confirmação", "compromissos à frente", "nos próximos 7 dias", "audiências", "já passaram e seguem abertos", "casos abertos", "casos ativos", "clientes", "processos", "pedindo providência", "merecendo conferência", "execuções com o prazo correndo", "tempo médio em trâmite", "em trâmite", "parado há", "sem telefone", "sem contato há mais de 30 dias", "parados há mais de 90 dias", "prescrevem em até 180 dias", "com prazo em até 5 dias", "com novidade desde o último informativo", "teses no banco", "esperando sua decisão", "precedentes a conferir", "teses novas", "refinamentos", "tempo de leitura", "a pagar", "a receber", "saldo do mês", "recebido neste mês", "projeção para o ano"]};
 function aplicarRotulos(raiz){
   const pares = Object.entries(ROTULOS).filter(([k,v]) => v && v !== k);
   if (!pares.length || !raiz) return;
@@ -2718,6 +2720,31 @@ window.salvarEscritorio = async (ev) => {
     .eq('id', e1.id);
   document.getElementById('esc-st').textContent = error ? 'erro: '+error.message : 'salvo ✓';
 };
+/* ------------------------------------------- cor do dia de hoje no calendário */
+const CORES_HOJE = [
+  ['#2a78d6', 'Azul'], ['#0ca30c', 'Verde'], ['#d03b3b', 'Vermelho'],
+  ['#e08b00', 'Âmbar'], ['#7b3fbf', 'Roxo'], ['#111110', 'Preto'],
+];
+let CORHOJE = '#2a78d6';
+const aplicarCorHoje = c => document.documentElement.style.setProperty('--hoje', c || '#2a78d6');
+async function carregarCorHoje(){
+  if (!ESC_ID) return;
+  const { data } = await sb.from('preferencia').select('valor')
+    .eq('escritorio_id', ESC_ID).eq('chave', 'cor_hoje').maybeSingle();
+  if (data?.valor?.cor) { CORHOJE = data.valor.cor; aplicarCorHoje(CORHOJE); }
+}
+window.escolherCorHoje = async cor => {
+  CORHOJE = cor; aplicarCorHoje(cor);
+  const st = document.getElementById('ch-st');
+  if (st) st.textContent = 'salvando…';
+  const { error } = await sb.from('preferencia').upsert(
+    { escritorio_id: await escId(), chave:'cor_hoje', valor:{ cor }, atualizado_em:new Date().toISOString() },
+    { onConflict:'escritorio_id,chave' });
+  if (st) st.textContent = error ? 'erro: ' + error.message : 'cor salva ✓';
+  for (const b of document.querySelectorAll('#chpal button')) b.classList.toggle('ok', b.dataset.c === cor);
+  setTimeout(()=>{ const e = document.getElementById('ch-st'); if (e && !error) e.textContent=''; }, 2500);
+};
+
 /* --------------------------------------------- parceiros e delegação */
 const TIPODEL = {
   audiencia:  'Audiência',
@@ -3803,6 +3830,16 @@ async function telaConfig(){
       <button class="btn" onclick="limparRotulos()">Voltar tudo ao padrão</button>
       <span class="sub" id="rot-st" style="margin:0"></span></div></div>
 
+  <div class="card" style="margin-top:18px"><h2>Cor do dia de hoje</h2>
+    <p class="nota">A cor que marca o dia atual no calendário da Agenda. O dia selecionado continua com a borda azul.</p>
+    <div id="chpal" style="padding:0 18px 18px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      ${CORES_HOJE.map(([c,r])=>`<button class="btn ${CORHOJE===c?'ok':''}" data-c="${c}" onclick="escolherCorHoje('${c}')">
+        <span style="display:inline-block;width:11px;height:11px;border-radius:99px;background:${c};vertical-align:-1px;margin-right:5px"></span>${r}</button>`).join('')}
+      <input type="color" value="${CORHOJE}" onchange="escolherCorHoje(this.value)" title="outra cor"
+             style="width:42px;height:30px;padding:2px;border:1px solid var(--ln);border-radius:8px;background:none">
+      <span class="sub" id="ch-st" style="margin:0"></span>
+    </div></div>
+
   <div class="card" style="margin-top:18px"><h2>Cópia de segurança</h2>
     <p class="nota">Baixa todos os dados do sistema num arquivo só — clientes, casos, processos, prazos,
       movimentações, intimações, eventos, lançamentos, honorários, minutas e o banco de teses.
@@ -3885,6 +3922,7 @@ async function rota(){
     if (e?.logo_url) ESC_LOGO = e.logo_url;
     ESC_ID = e?.id ?? null; ESC_TOKEN = e?.agenda_token ?? null;
     await carregarMenu().catch(()=>{});
+    await carregarCorHoje().catch(()=>{});
     await carregarRotulos().catch(()=>{});
     vigiarRotulos();
   }
