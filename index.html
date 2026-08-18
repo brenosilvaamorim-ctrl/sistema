@@ -201,10 +201,10 @@ function telaLogin(msg){
 }
 
 let ESC_NOME = 'Breno S. Amorim Advocacia', ESC_LOGO = null, ESC_ID = null, ESC_TOKEN = null;
-const MENU_PADRAO = [['prazos','Prazos'],['agenda','Agenda'],['captacao','Captação'],['casos','Casos'],['processos','Processos'],['clientes','Clientes'],['mensageria','Mensagens'],['metricas','Métricas'],['financeiro','Financeiro'],['minutas','Minutas'],['aprender','Aprender'],['dicionario','Dicionário'],['tutoriais','Tutoriais'],['config','Configurações']];
+const MENU_PADRAO = [['prazos','Prazos'],['agenda','Agenda'],['captacao','Captação'],['casos','Casos'],['processos','Processos'],['clientes','Clientes'],['mensageria','Mensagens'],['metricas','Métricas'],['financeiro','Financeiro'],['minutas','Minutas'],['aprender','Aprender'],['dicionario','Dicionário'],['documentos','Documentos'],['tutoriais','Tutoriais'],['config','Configurações']];
 let MENUCFG = MENU_PADRAO.map(([k,r]) => ({ k, r, v:true }));
 let ROTULOS = {};
-const PALAVRAS = {"Telas e seções": ["Prazos", "Agenda", "Captação", "Casos", "Processos", "Clientes", "Mensagens", "Métricas", "Financeiro", "Minutas", "Aprender", "Dicionário", "Tutoriais", "Configurações", "Calendário", "Pela frente", "Vencidos e ainda abertos", "Linha do tempo", "Todos os processos", "Precedentes", "Teses", "Fila de aprovação", "Minutas recentes", "Análise prévia", "Modo juiz", "Marcar prazo, audiência ou tarefa", "Levar tudo para o Google Agenda", "Equipe e acessos", "Dados do escritório", "Áreas de atuação", "Origens de captação", "Categorias financeiras", "Dicionário de movimentações", "Ensinar uma peça ao banco", "Mensagem para o cliente", "Novo contato", "Novo lançamento", "Resultado da leitura"], "Colunas das tabelas": ["Feito", "Vence", "Quando", "Situação", "Providência", "Cliente / vara", "Cliente / caso", "Processo", "Trecho lido e memória", "Conf.", "Ação", "Tipo", "O quê", "Descrição", "Origem", "Valor", "Vencimento", "Tribunal", "Relator", "Tema", "Órgão", "Área", "Nome", "Pessoa", "Perfil", "Ativo", "E-mail", "Telefone", "Telefone / WhatsApp", "Última movimentação", "Último informativo", "Encerrado em", "Motivo", "Resultado", "Vezes", "Cód."], "Números do topo": ["em aberto", "vencem em até 5 dias", "já vencidos", "aguardando confirmação", "compromissos à frente", "nos próximos 7 dias", "audiências", "já passaram e seguem abertos", "casos abertos", "casos ativos", "clientes", "processos", "sem telefone", "sem contato há mais de 30 dias", "parados há mais de 90 dias", "prescrevem em até 180 dias", "com prazo em até 5 dias", "com novidade desde o último informativo", "teses no banco", "esperando sua decisão", "precedentes a conferir", "teses novas", "refinamentos", "tempo de leitura", "a pagar", "a receber", "saldo do mês", "recebido neste mês", "projeção para o ano"]};
+const PALAVRAS = {"Telas e seções": ["Prazos", "Agenda", "Captação", "Casos", "Processos", "Clientes", "Mensagens", "Métricas", "Financeiro", "Minutas", "Aprender", "Dicionário", "Documentos", "Tutoriais", "Configurações", "Calendário", "Pela frente", "Vencidos e ainda abertos", "Linha do tempo", "Todos os processos", "Precedentes", "Teses", "Fila de aprovação", "Minutas recentes", "Análise prévia", "Modo juiz", "Marcar prazo, audiência ou tarefa", "Levar tudo para o Google Agenda", "Equipe e acessos", "Dados do escritório", "Áreas de atuação", "Origens de captação", "Categorias financeiras", "Dicionário de movimentações", "Documentos a pedir", "Documentos do cliente", "Tutoriais para clientes", "Ensinar uma peça ao banco", "Mensagem para o cliente", "Novo contato", "Novo lançamento", "Resultado da leitura"], "Colunas das tabelas": ["Feito", "Chegou", "Documento", "Onde consigo", "Recebido em", "Vence", "Quando", "Situação", "Providência", "Cliente / vara", "Cliente / caso", "Processo", "Trecho lido e memória", "Conf.", "Ação", "Tipo", "O quê", "Descrição", "Origem", "Valor", "Vencimento", "Tribunal", "Relator", "Tema", "Órgão", "Área", "Nome", "Pessoa", "Perfil", "Ativo", "E-mail", "Telefone", "Telefone / WhatsApp", "Última movimentação", "Último informativo", "Encerrado em", "Motivo", "Resultado", "Vezes", "Cód."], "Números do topo": ["em aberto", "vencem em até 5 dias", "já vencidos", "aguardando confirmação", "compromissos à frente", "nos próximos 7 dias", "audiências", "já passaram e seguem abertos", "casos abertos", "casos ativos", "clientes", "processos", "sem telefone", "sem contato há mais de 30 dias", "parados há mais de 90 dias", "prescrevem em até 180 dias", "com prazo em até 5 dias", "com novidade desde o último informativo", "teses no banco", "esperando sua decisão", "precedentes a conferir", "teses novas", "refinamentos", "tempo de leitura", "a pagar", "a receber", "saldo do mês", "recebido neste mês", "projeção para o ano"]};
 function aplicarRotulos(raiz){
   const pares = Object.entries(ROTULOS).filter(([k,v]) => v && v !== k);
   if (!pares.length || !raiz) return;
@@ -1651,8 +1651,8 @@ function pintarLinha(){
   }).join('') : '<div class="vazio">Nada registrado com esse filtro.</div>';
 }
 async function telaCaso(id){
-  const [cs, pr, pz, ev, it, hn, dc, mn] = await Promise.all([
-    sb.from('caso').select('*, cliente:cliente_id(id,nome,telefone,cpf_cnpj,cidade,uf), responsavel:responsavel_id(nome)').eq('id', id).single(),
+  const [cs, pr, pz, ev, it, hn, dc, mn, cd, cm] = await Promise.all([
+    sb.from('caso').select('*, cliente:cliente_id(id,nome,telefone,whatsapp,cpf_cnpj,cidade,uf), responsavel:responsavel_id(nome)').eq('id', id).single(),
     sb.from('processo').select('*').eq('caso_id', id).order('criado_em'),
     sb.from('prazo').select('*').eq('caso_id', id).order('data_fatal'),
     sb.from('evento').select('*').eq('caso_id', id).order('inicio'),
@@ -1660,9 +1660,12 @@ async function telaCaso(id){
     sb.from('honorario').select('*').eq('caso_id', id),
     sb.from('documento').select('*').eq('caso_id', id),
     sb.from('minuta').select('id,tipo,criado_em,status').eq('caso_id', id),
+    sb.from('caso_documento').select('*').eq('caso_id', id).order('ordem'),
+    sb.from('checklist_modelo').select('id,nome,itens').eq('ativo', true).order('ordem'),
   ]);
   if (cs.error) return erro(cs.error.message);
   CASO = cs.data; CASOPROC = pr.data || [];
+  CASODOCS = cd.data || []; CASOMODELOS = cm.data || [];
   const procIds = CASOPROC.map(p => p.id);
   const mv = procIds.length
     ? await sb.from('movimentacao').select('*').in('processo_id', procIds).order('data', {ascending:false}).limit(300)
@@ -1776,6 +1779,25 @@ async function telaCaso(id){
       <span class="sub" id="at-st" style="margin:0"></span>
     </form></div>
 
+  <div class="card"><h2>Documentos do cliente</h2>
+    <p class="nota">Aplique a lista da área e vá marcando o que já chegou. O botão do WhatsApp cobra só o que falta.</p>
+    <div style="padding:0 18px 12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <span class="sub" style="margin:0">Aplicar lista:</span>
+      ${CASOMODELOS.map(m=>`<button class="btn" onclick="aplicarLista('${m.id}')">${esc(m.nome)}</button>`).join('')
+        || '<span class="sub" style="margin:0">nenhuma lista cadastrada — veja o menu Documentos</span>'}
+      <span class="sub" id="dc-st" style="margin:0"></span>
+    </div>
+    <div id="docscaso"></div>
+    <form onsubmit="addDocCaso(event)" style="display:flex;gap:9px;flex-wrap:wrap;padding:12px 18px 18px;align-items:flex-end">
+      <label style="display:flex;flex-direction:column;gap:3px;flex:2;min-width:240px">
+        <span class="sub" style="margin:0">Pedir outro documento</span>
+        <input name="descricao" required placeholder="Ex.: recibo de aluguel de 2024"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:200px">
+        <span class="sub" style="margin:0">Onde consigo / observação</span>
+        <input name="obs" placeholder="opcional"></label>
+      <button class="btn" type="submit">Acrescentar</button>
+    </form></div>
+
   <div class="card"><h2>Relatórios deste caso</h2>
     <p class="nota">O PDF sai pronto para enviar ao cliente. A planilha abre no Excel.</p>
     <div style="padding:0 18px 18px;display:flex;gap:8px;flex-wrap:wrap">
@@ -1792,6 +1814,7 @@ async function telaCaso(id){
     </div>
     <div id="linha" style="padding:0 18px 18px"></div></div>
   </main>` + rodape();
+  pintarDocsCaso();
   pintarLinha();
 }
 
@@ -2575,6 +2598,198 @@ window.salvarEscritorio = async (ev) => {
     .eq('id', e1.id);
   document.getElementById('esc-st').textContent = error ? 'erro: '+error.message : 'salvo ✓';
 };
+/* ------------------------------------------- documentos pedidos em um caso */
+let CASODOCS = [], CASOMODELOS = [];
+window.aplicarLista = async mid => {
+  const m = CASOMODELOS.find(x => x.id === mid); if (!m) return;
+  const tem = new Set(CASODOCS.map(d => (d.descricao||'').trim().toLowerCase()));
+  const novos = (m.itens||[]).filter(it => (it.t||'').trim() && !tem.has(it.t.trim().toLowerCase()))
+    .map((it, n) => ({ escritorio_id: ESC_ID, caso_id: CASO.id, descricao: it.t,
+                       obs: it.obs || null, ordem: CASODOCS.length + n }));
+  const st = document.getElementById('dc-st');
+  if (!novos.length) { if (st) st.textContent = 'todos esses documentos já estão na lista'; return; }
+  if (st) st.textContent = 'aplicando…';
+  const { error } = await sb.from('caso_documento').insert(novos);
+  if (error) { if (st) st.textContent = 'erro: ' + error.message; return; }
+  telaCaso(CASO.id);
+};
+window.marcarDoc = async (id, el) => {
+  const d = CASODOCS.find(x => x.id === id); if (!d) return;
+  const val = el.checked ? hoje() : null;
+  const { error } = await sb.from('caso_documento').update({ recebido_em: val }).eq('id', id);
+  if (error) { alert('Não foi possível: ' + error.message); el.checked = !el.checked; return; }
+  d.recebido_em = val; pintarDocsCaso();
+};
+window.tirarDocCaso = async id => {
+  const { error } = await sb.from('caso_documento').delete().eq('id', id);
+  if (error) return alert('Não foi possível: ' + error.message);
+  CASODOCS = CASODOCS.filter(x => x.id !== id); pintarDocsCaso();
+};
+window.addDocCaso = async ev => {
+  ev.preventDefault();
+  const f = ev.target, st = document.getElementById('dc-st');
+  const desc = f.descricao.value.trim(); if (!desc) return;
+  st.textContent = 'gravando…';
+  const { data, error } = await sb.from('caso_documento').insert({
+    escritorio_id: ESC_ID, caso_id: CASO.id, descricao: desc,
+    obs: f.obs.value.trim() || null, ordem: CASODOCS.length }).select().single();
+  if (error) { st.textContent = 'erro: ' + error.message; return; }
+  CASODOCS.push(data); f.reset(); st.textContent = ''; pintarDocsCaso();
+};
+function textoCobranca(){
+  const falta = CASODOCS.filter(d => !d.recebido_em);
+  const nome = primeiroNome(CASO.cliente?.nome || '');
+  const ola = nome ? 'Olá, ' + nome + '! ' : 'Olá! ';
+  if (!falta.length) return ola + 'Recebi todos os documentos, obrigado! Qualquer novidade eu te aviso.';
+  const itens = falta.map((d,n) => (n+1) + '. ' + d.descricao + (d.obs ? ' (' + d.obs + ')' : '')).join('\n');
+  return ola + 'Ainda estou esperando ' + (falta.length === 1 ? 'este documento' : 'estes documentos') + ':\n\n'
+    + itens + '\n\nPode mandar por aqui mesmo, uma foto por documento, com boa luz.'
+    + '\nSe precisar, o passo a passo com vídeo está aqui: ' + location.origin + '/ajuda#documentos';
+}
+window.cobrarDocs = () => {
+  const fone = CASO.cliente?.whatsapp || CASO.cliente?.telefone;
+  window.open(fone ? linkWa(fone, textoCobranca())
+                   : 'https://wa.me/?text=' + encodeURIComponent(textoCobranca()), '_blank');
+};
+window.copiarCobranca = async () => {
+  const st = document.getElementById('dc-st');
+  try { await navigator.clipboard.writeText(textoCobranca()); st.textContent = 'copiado'; }
+  catch(e){ st.textContent = 'não deu para copiar'; }
+  setTimeout(()=>{ if (st) st.textContent=''; }, 2500);
+};
+function pintarDocsCaso(){
+  const alvo = document.getElementById('docscaso'); if (!alvo) return;
+  const falta = CASODOCS.filter(d => !d.recebido_em).length;
+  alvo.innerHTML = CASODOCS.length ? `
+    <p class="nota" style="padding:0 18px">${falta ? '<b>Faltam ' + falta + '</b> de ' + CASODOCS.length
+      : '<b>Tudo recebido</b> — ' + CASODOCS.length + ' documentos.'}</p>
+    <table><thead><tr><th style="width:60px">Chegou</th><th>Documento</th><th>Onde consigo</th><th style="width:110px">Recebido em</th><th style="width:70px"></th></tr></thead>
+    <tbody>${CASODOCS.map(d=>`<tr${d.recebido_em?' style="opacity:.55"':''}>
+      <td><input type="checkbox" ${d.recebido_em?'checked':''} onchange="marcarDoc('${d.id}', this)"></td>
+      <td${d.recebido_em?' style="text-decoration:line-through"':''}>${esc(d.descricao)}</td>
+      <td class="sub" style="padding-top:12px">${esc(d.obs||'')}</td>
+      <td class="dt">${d.recebido_em?br(d.recebido_em):'—'}</td>
+      <td><button class="btn" onclick="tirarDocCaso('${d.id}')">×</button></td>
+    </tr>`).join('')}</tbody></table>
+    <div style="padding:0 18px 4px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn ok" onclick="cobrarDocs()">${falta?'Cobrar o que falta no WhatsApp':'Mandar recibo no WhatsApp'}</button>
+      <button class="btn" onclick="copiarCobranca()">Copiar a mensagem</button>
+    </div>`
+    : '<div class="vazio">Nenhum documento pedido ainda. Aplique uma das listas acima.</div>';
+  aplicarRotulos(alvo);
+}
+
+/* --------------------------------------------------------------- documentos */
+let DOCL = [], DOCCLI = [], DOCSEL = '';
+const docLinkTut = () => location.origin + '/ajuda#documentos';
+function docTexto(i){
+  const l = DOCL[i]; if (!l) return '';
+  const c = DOCCLI.find(x => x.id === DOCSEL);
+  const ola = c ? 'Olá, ' + primeiroNome(c.nome) + '! ' : 'Olá! ';
+  const itens = (l.itens||[]).map((it,n) =>
+    (n+1) + '. ' + it.t + (it.obs ? ' (' + it.obs + ')' : '')).join('\n');
+  return ola + 'Para eu cuidar do seu caso, preciso que você me mande estes documentos:\n\n'
+    + itens + '\n\nPode mandar por aqui mesmo, tirando foto de cada um — uma foto por documento, '
+    + 'com boa luz e dando para ler tudo.\nSe não souber como mandar, tem um passo a passo com vídeo aqui: '
+    + docLinkTut() + '\n\nSe faltar algum, é só me avisar que a gente resolve.';
+}
+window.docCli = v => { DOCSEL = v; pintarDocs(); };
+window.docCampo = (i, j, campo, v) => {
+  if (campo === 'nome') DOCL[i].nome = v; else DOCL[i].itens[j][campo] = v;
+  DOCL[i].sujo = true;
+  const s = document.getElementById('ds'+i); if (s) s.textContent = 'não salvo';
+};
+window.docAddItem = i => { DOCL[i].itens.push({t:'',obs:''}); DOCL[i].sujo = true; pintarDocs(); };
+window.docTirarItem = (i,j) => { DOCL[i].itens.splice(j,1); DOCL[i].sujo = true; pintarDocs(); };
+window.docMover = (i,j,d) => {
+  const a = DOCL[i].itens, k = j+d; if (k < 0 || k >= a.length) return;
+  [a[j], a[k]] = [a[k], a[j]]; DOCL[i].sujo = true; pintarDocs();
+};
+window.docSalvar = async i => {
+  const l = DOCL[i], s = document.getElementById('ds'+i);
+  const itens = (l.itens||[]).filter(x => (x.t||'').trim());
+  if (s) s.textContent = 'salvando…';
+  const { error } = l.id
+    ? await sb.from('checklist_modelo').update({ nome:l.nome, itens, atualizado_em:new Date().toISOString() }).eq('id', l.id)
+    : await sb.from('checklist_modelo').insert({ escritorio_id: ESC_ID, nome: l.nome, ordem: DOCL.length, itens });
+  if (error) { if (s) s.textContent = 'erro: ' + error.message; return; }
+  l.sujo = false; if (s) s.textContent = 'salvo';
+  if (!l.id) return telaDocumentos();
+  setTimeout(()=>{ const e = document.getElementById('ds'+i); if (e && !DOCL[i].sujo) e.textContent=''; }, 2500);
+};
+window.docNovaLista = () => { DOCL.push({ nome:'Nova lista', itens:[{t:'',obs:''}], sujo:true }); pintarDocs(); };
+window.docArquivar = async i => {
+  const l = DOCL[i];
+  if (!confirm('Tirar a lista “' + l.nome + '” da tela? Ela deixa de aparecer, mas nada é apagado do banco.')) return;
+  if (l.id) await sb.from('checklist_modelo').update({ ativo:false }).eq('id', l.id);
+  telaDocumentos();
+};
+window.docCopiar = async i => {
+  const el = document.getElementById('ds'+i);
+  try { await navigator.clipboard.writeText(docTexto(i)); el.textContent = 'copiado'; }
+  catch(e){ el.textContent = 'copie da caixa abaixo'; }
+  setTimeout(()=>{ if (el && !DOCL[i].sujo) el.textContent=''; }, 2500);
+};
+window.docZap = i => {
+  const c = DOCCLI.find(x => x.id === DOCSEL);
+  const fone = c && (c.whatsapp || c.telefone);
+  window.open(fone ? linkWa(fone, docTexto(i))
+                   : 'https://wa.me/?text=' + encodeURIComponent(docTexto(i)), '_blank');
+};
+function pintarDocs(){
+  const alvo = document.getElementById('docl'); if (!alvo) return;
+  alvo.innerHTML = DOCL.map((l,i)=>`
+  <div class="card"><h2><input type="text" value="${esc(l.nome)}" oninput="docCampo(${i},0,'nome',this.value)"
+      style="font:inherit;border:none;border-bottom:1px dashed var(--ln);min-width:340px;background:none"></h2>
+    <p class="nota">Clique em qualquer texto para mudar. O que você escrever em “onde consigo” vai entre parênteses na mensagem do cliente.</p>
+    <table><thead><tr><th style="width:32px"></th><th>Documento</th><th>Onde consigo / observação</th><th style="width:80px"></th></tr></thead>
+    <tbody>${(l.itens||[]).map((it,j)=>`<tr>
+      <td class="proc">${j+1}</td>
+      <td><input type="text" value="${esc(it.t)}" oninput="docCampo(${i},${j},'t',this.value)" style="width:100%"></td>
+      <td><input type="text" value="${esc(it.obs||'')}" oninput="docCampo(${i},${j},'obs',this.value)" style="width:100%"></td>
+      <td style="white-space:nowrap">
+        <button class="btn" onclick="docMover(${i},${j},-1)" title="subir">↑</button>
+        <button class="btn" onclick="docMover(${i},${j},1)" title="descer">↓</button>
+        <button class="btn" onclick="docTirarItem(${i},${j})" title="tirar">×</button></td>
+    </tr>`).join('')}</tbody></table>
+    <p>
+      <button class="btn" onclick="docAddItem(${i})">+ acrescentar documento</button>
+      <button class="btn ${l.sujo?'ok':''}" onclick="docSalvar(${i})">Salvar a lista</button>
+      <button class="btn ok" onclick="docZap(${i})">Mandar no WhatsApp</button>
+      <button class="btn" onclick="docCopiar(${i})">Copiar mensagem</button>
+      <button class="btn" onclick="docArquivar(${i})">Tirar da tela</button>
+      <span class="sub" id="ds${i}">${l.sujo?'não salvo':''}</span>
+    </p>
+    <details><summary class="sub">ver a mensagem que vai para o cliente</summary>
+      <textarea rows="8" readonly onclick="this.select()">${esc(docTexto(i))}</textarea></details>
+  </div>`).join('');
+  aplicarRotulos(alvo);
+}
+async function telaDocumentos(){
+  const [ml, cl] = await Promise.all([
+    sb.from('checklist_modelo').select('id,nome,ordem,itens').eq('ativo', true).order('ordem'),
+    sb.from('cliente').select('id,nome,telefone,whatsapp').order('nome'),
+  ]);
+  if (ml.error) return erro(ml.error.message);
+  DOCL = (ml.data||[]).map(l => ({ ...l, itens: Array.isArray(l.itens) ? l.itens : [] }));
+  DOCCLI = cl.data || [];
+  app.innerHTML = menu('documentos') + `
+  <main><h1>Documentos a pedir</h1>
+  <p class="meta">A lista de cada área, pronta para mandar. Escolha o cliente, confira a lista e mande no WhatsApp.
+    Tudo aqui é editável — o que você mudar fica salvo para as próximas vezes.</p>
+  <div class="card"><h2>Para quem é a mensagem</h2>
+    <select onchange="docCli(this.value)" style="min-width:280px">
+      <option value="">— sem cliente escolhido (mensagem genérica) —</option>
+      ${DOCCLI.map(c=>`<option value="${c.id}" ${DOCSEL===c.id?'selected':''}>${esc(c.nome)}${(c.whatsapp||c.telefone)?'':' (sem telefone)'}</option>`).join('')}
+    </select>
+    <button class="btn" onclick="docNovaLista()" style="margin-left:10px">+ nova lista</button>
+    <p class="nota">Para acompanhar o que já chegou de cada cliente, abra o caso dele em Casos —
+      lá dá para aplicar a lista e ir marcando o que foi recebido.</p>
+  </div>
+  <div id="docl"></div></main>` + rodape();
+  pintarDocs();
+}
+
 /* --------------------------------------------------------------- tutoriais */
 const TUTORIAIS = [
   { k:'assinar',    t:'Como assinar um documento (ZapSign)',
@@ -2832,6 +3047,7 @@ async function rota(){
   if(h.startsWith('#/minutas'))    return telaMinutas();
   if(h.startsWith('#/aprender'))   return telaAprender();
   if(h.startsWith('#/dicionario')) return telaDicionario();
+  if(h.startsWith('#/documentos')) return telaDocumentos();
   if(h.startsWith('#/tutoriais'))  return telaTutoriais();
   if(h.startsWith('#/config'))     return telaConfig();
   return telaPrazos();
