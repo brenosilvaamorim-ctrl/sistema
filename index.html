@@ -385,8 +385,8 @@ window.filtrarProc = () => {
   const f = PROCS.filter(p => !t ||
     (p.cliente_nome||'').toLowerCase().includes(t) || (p.caso_titulo||'').toLowerCase().includes(t) ||
     (p.orgao||'').toLowerCase().includes(t) || (p.tribunal_sigla||'').toLowerCase().includes(t) ||
-    (p.numero_cnj||'').includes(so(t)) );
-  document.getElementById('cp').innerHTML = f.map(linhaProc).join('') || '<tr><td colspan="5" class="vazio">Nada encontrado.</td></tr>';
+    (p.numero_cnj||'').includes(so(t)) || (p.area||'').toLowerCase().includes(t) );
+  document.getElementById('cp').innerHTML = f.map(linhaProc).join('') || '<tr><td colspan="6" class="vazio">Nada encontrado.</td></tr>';
   document.getElementById('qtd').textContent = f.length;
 };
 function linhaProc(p){
@@ -394,17 +394,39 @@ function linhaProc(p){
   const k = d===null ? 'cin' : (d>90 ? 'ser' : (d>30 ? 'warn' : 'good'));
   return `<tr>
     <td><a class="lnk" href="#/processo/${p.id}"><b>${esc(p.cliente_nome || p.caso_titulo || 'Sem cliente')}</b></a>
-      <span class="sub">${[p.caso_titulo!==p.cliente_nome?esc(p.caso_titulo||''):'', esc(p.area||'')].filter(Boolean).join(' · ')||'sem caso vinculado'}</span></td>
+      <span class="sub">${(p.caso_titulo && p.caso_titulo !== p.cliente_nome) ? esc(p.caso_titulo) : (p.caso_id ? '' : 'sem caso vinculado')}</span></td>
+    <td>${p.caso_id
+      ? `<select onchange="mudarArea('${p.caso_id}', this.value, this)" style="min-width:160px;font-size:12px">
+          <option value="">— sem área —</option>
+          ${AREAS.map(a=>`<option value="${a.id}" ${(p.area||'')===a.nome?'selected':''}>${esc(a.nome)}</option>`).join('')}
+        </select><span class="sub" id="ar_${p.id}"></span>`
+      : '<span class="sub" style="display:inline">vincule a um caso primeiro</span>'}</td>
     <td class="proc">${esc(p.numero_formatado || p.numero_cnj)}<span class="sub">${esc(p.tribunal_sigla||'')} · ${esc(p.grau||'')}</span></td>
     <td>${esc(p.orgao||'—')}<span class="sub">${esc(p.classe||'')}</span></td>
     <td class="dt">${p.ultima_movimentacao?br(p.ultima_movimentacao):'—'}
       <span class="sub">${d===null?'sem andamento':(d===0?'hoje':'há '+d+' dias')}</span></td>
     <td><span class="pill ${k}">${p.movimentacoes} mov.</span></td></tr>`;
 }
+window.mudarArea = async (casoId, areaId, el) => {
+  const st = el.parentElement.querySelector('.sub');
+  const nome = AREAS.find(a => a.id === areaId)?.nome ?? null;
+  if (st) { st.textContent = ' salvando…'; st.style.color = 'var(--i3)'; }
+  const { error } = await sb.from('caso')
+    .update({ area_id: areaId || null, area: nome, atualizado_em: new Date().toISOString() })
+    .eq('id', casoId);
+  if (st) { st.textContent = error ? ' erro' : ' ✓'; st.style.color = error ? 'var(--crit)' : 'var(--good)'; }
+  if (!error) { PROCS.filter(x => x.caso_id === casoId).forEach(x => x.area = nome); }
+  if (st && !error) setTimeout(() => { st.textContent = ''; }, 2500);
+};
 async function telaProcessos(){
-  const { data, error } = await sb.from('processo_painel').select('*')
-    .order('ultima_movimentacao', { ascending:false, nullsFirst:false }).limit(1000);
+  const [pp, ar] = await Promise.all([
+    sb.from('processo_painel').select('*')
+      .order('ultima_movimentacao', { ascending:false, nullsFirst:false }).limit(1000),
+    sb.from('area_atuacao').select('id,nome').order('ordem'),
+  ]);
+  const { data, error } = pp;
   if(error) return erro(error.message);
+  AREAS = ar.data || [];
   PROCS = data||[];
   const parados = PROCS.filter(p=>p.ultima_movimentacao && (Date.now()-Date.parse(p.ultima_movimentacao))/864e5 > 90).length;
   const semSync = PROCS.filter(p=>!p.ultima_sync).length;
@@ -419,7 +441,7 @@ async function telaProcessos(){
   <div class="card"><h2>Todos os processos</h2>
     <div class="filtros"><input id="bp" type="search" placeholder="cliente, número, vara, tribunal…" oninput="filtrarProc()">
       <span class="sub" style="margin:0">mostrando <b id="qtd">${PROCS.length}</b></span></div>
-    <table><thead><tr><th>Cliente / caso</th><th>Processo</th><th>Órgão</th><th>Última movimentação</th><th></th></tr></thead>
+    <table><thead><tr><th>Cliente / caso</th><th style="width:180px">Área</th><th>Processo</th><th>Órgão</th><th>Última movimentação</th><th></th></tr></thead>
     <tbody id="cp">${PROCS.map(linhaProc).join('')}</tbody></table></div></main>`;
 }
 
@@ -1850,7 +1872,37 @@ window.relatorioCasoXlsx = async () => {
   ], 'relatorio-' + (c.titulo||'caso').replace(/[^\w\s-]/g,'').slice(0,40).trim().replace(/\s+/g,'-') + '.xlsx');
 };
 
-let ANOLISTA = [], ANOROT = '';
+let ANOLISTA = [], ANOROT = '', PROCANO = [], ANOSDISP = [], ANOSEL = '';
+window.mudarAnoProc = (a) => { ANOSEL = a; pintarProtocolados(); };
+function pintarProtocolados(){
+  const alvo = document.getElementById('protoc');
+  if (!alvo) return;
+  document.querySelectorAll('[data-ano]').forEach(b => b.classList.toggle('on', b.dataset.ano === ANOSEL));
+  const L = PROCANO.filter(p => String(p.data_ajuizamento).slice(0,4) === ANOSEL)
+    .sort((a,b) => String(b.data_ajuizamento).localeCompare(String(a.data_ajuizamento)));
+  ANOROT = ANOSEL;
+  ANOLISTA = L.map(p => ({
+    ajuizado: br(p.data_ajuizamento),
+    numero: p.numero_formatado || p.numero_cnj || '',
+    cliente: p.caso?.cliente?.nome || p.caso?.titulo || '',
+    orgao: p.orgao || '', tribunal: p.tribunal_sigla || '', grau: p.grau || '',
+    classe: p.classe || '', area: p._area,
+  }));
+  alvo.innerHTML = L.length ? `<table><thead><tr><th class="dt">Ajuizado</th><th>Número</th><th>Cliente</th>
+    <th>Vara / órgão</th><th>Classe</th><th>Área</th></tr></thead>
+    <tbody>${L.map(p=>`<tr>
+      <td class="dt">${br(p.data_ajuizamento)}</td>
+      <td class="proc"><a class="lnk" href="#/processo/${p.id}">${esc(p.numero_formatado || p.numero_cnj || '—')}</a></td>
+      <td>${p.caso_id
+        ? `<a class="lnk" href="#/caso/${p.caso_id}">${esc(p.caso?.cliente?.nome || p.caso?.titulo || 'ver caso')}</a>`
+        : '<span class="sub" style="display:inline">sem caso vinculado</span>'}</td>
+      <td>${esc(p.orgao || '—')}${p.tribunal_sigla?`<span class="sub">${esc(p.tribunal_sigla)}${p.grau?' · '+esc(p.grau):''}</span>`:''}</td>
+      <td>${esc(p.classe || '—')}</td>
+      <td>${esc(p._area)}</td></tr>`).join('')}</tbody>
+    <tfoot><tr><td colspan="6" class="sub" style="padding-top:8px">
+      ${L.length} processo(s) protocolado(s) em ${ANOSEL}.</td></tr></tfoot></table>`
+    : `<div class="vazio">Nenhum processo com data de distribuição em ${ANOSEL}.</div>`;
+}
 window.listaAnoPdf = () => {
   imprimir('Processos protocolados em ' + ANOROT, `
   <div class="cab"><h1>Processos protocolados em ${ANOROT}</h1>
@@ -2140,6 +2192,11 @@ async function telaMetricas(){
   const mesAtual = new Date().getUTCMonth() + 1;
   const media = mesAtual ? (doAno.length / mesAtual) : 0;
   const projecao = Math.round(media * 12);
+  PROCANO = (pr.data||[]).map(p => ({ ...p, _area: areaDoCaso.get(p.caso_id) || 'não informada' }));
+  ANOSDISP = [...new Set(PROCANO.map(p => String(p.data_ajuizamento).slice(0,4)))]
+    .filter(Boolean).sort().reverse();
+  if (!ANOSDISP.includes(String(ano))) ANOSDISP.unshift(String(ano));
+  ANOSEL = String(ano);
   const listaAno = [...doAno].sort((a,b) =>
     String(b.data_ajuizamento).localeCompare(String(a.data_ajuizamento)));
   ANOLISTA = listaAno.map(p => ({
@@ -2186,29 +2243,21 @@ async function telaMetricas(){
     <b>${(pr.data||[]).length} de ${tot.count ?? '—'}</b> processos já têm essa data.
     Conforme a varredura noturna avança, o número do ano se completa sozinho.</div>
 
-  <div class="card" style="margin-top:18px"><h2>Processos protocolados em ${ano}</h2>
+  <div class="card" style="margin-top:18px"><h2>Processos protocolados</h2>
     <p class="nota">Um a um, do mais recente para o mais antigo. Clique no número para abrir o processo
       ou no cliente para abrir o caso.</p>
-    ${listaAno.length ? `<table><thead><tr><th class="dt">Ajuizado</th><th>Número</th><th>Cliente</th>
-      <th>Vara / órgão</th><th>Classe</th><th>Área</th></tr></thead>
-      <tbody>${listaAno.map(p=>`<tr>
-        <td class="dt">${br(p.data_ajuizamento)}</td>
-        <td class="proc"><a class="lnk" href="#/processo/${p.id}">${esc(p.numero_formatado || p.numero_cnj || '—')}</a></td>
-        <td>${p.caso_id
-          ? `<a class="lnk" href="#/caso/${p.caso_id}">${esc(p.caso?.cliente?.nome || p.caso?.titulo || 'ver caso')}</a>`
-          : '<span class="sub" style="display:inline">sem caso vinculado</span>'}</td>
-        <td>${esc(p.orgao || '—')}${p.tribunal_sigla?`<span class="sub">${esc(p.tribunal_sigla)}${p.grau?' · '+esc(p.grau):''}</span>`:''}</td>
-        <td>${esc(p.classe || '—')}</td>
-        <td>${esc(areaDoCaso.get(p.caso_id) || 'não informada')}</td>
-      </tr>`).join('')}</tbody>
-      <tfoot><tr><td colspan="6" class="sub" style="padding-top:8px">
-        ${listaAno.length} processo(s) protocolado(s) em ${ano}.</td></tr></tfoot></table>`
-    : '<div class="vazio">Nenhum processo com data de distribuição em ' + ano + ' ainda.</div>'}
+    <div style="padding:0 18px 12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <span class="sub" style="margin:0">Ano</span>
+      ${ANOSDISP.map(a=>`<button class="fchip ${a===ANOSEL?'on':''}" data-ano="${a}"
+        onclick="mudarAnoProc('${a}')">${a}</button>`).join('')}
+    </div>
+    <div id="protoc"></div>
     <div style="padding:12px 18px 18px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <button class="btn ok" onclick="listaAnoPdf()">Lista em PDF</button>
       <button class="btn" onclick="listaAnoXlsx()">Lista em Excel</button>
     </div></div>
   </main>` + rodape();
+  pintarProtocolados();
 }
 
 /* -------------------------------------------------------------- financeiro */
