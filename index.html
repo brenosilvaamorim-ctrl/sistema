@@ -932,13 +932,38 @@ window.decidirCand = async (id, status) => {
   telaAprender();
 };
 window.confirmarPrec = async (id, v) => {
-  await sb.from('precedente').update({ confirmado: v }).eq('id', id);
+  await sb.from('precedente').update({ confirmado: v,
+    verificado_em: v ? new Date().toISOString() : null }).eq('id', id);
   telaAprender();
 };
+window.abrirPrec = (id) => {
+  const el = document.getElementById('pc'+id); if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+};
+window.salvarPrec = async (id) => {
+  const st = document.getElementById('pcst-'+id);
+  const up = {
+    ementa: document.getElementById('pcem-'+id)?.value.trim() || null,
+    link: document.getElementById('pcln-'+id)?.value.trim() || null,
+    situacao: document.getElementById('pcsi-'+id)?.value || null,
+  };
+  st.style.color='var(--i3)'; st.textContent = 'gravando…';
+  const { error } = await sb.from('precedente').update(up).eq('id', id);
+  if (error) { st.style.color='var(--crit)'; st.textContent = 'erro: ' + error.message; return; }
+  st.style.color='var(--good)'; st.textContent = 'guardado ✓';
+};
+const SITPREC = { vigente:'em vigor', superado:'superado', duvida:'em dúvida' };
+function buscaPrec(p){
+  const termo = [p.tribunal, p.tipo_recurso, p.numero].filter(Boolean).join(' ');
+  return {
+    google: 'https://www.google.com/search?q=' + encodeURIComponent(termo + ' ementa'),
+    jus: 'https://www.jusbrasil.com.br/busca?q=' + encodeURIComponent(termo),
+  };
+}
 async function telaAprender(){
   const [cd, pr, ts] = await Promise.all([
     sb.from('tese_candidata').select('*').eq('status','pendente').order('criado_em'),
-    sb.from('precedente').select('*').order('confirmado').order('criado_em', {ascending:false}).limit(60),
+    sb.from('precedente').select('*').order('confirmado').order('criado_em', {ascending:false}).limit(200),
     sb.from('tese').select('codigo', {count:'exact', head:true}).not('codigo','like','\\_%'),
   ]);
   const C = cd.data||[], P = pr.data||[];
@@ -974,16 +999,53 @@ async function telaAprender(){
     </div>`).join('') : '<p class="vazio">Nada pendente. Cole uma peça acima para o banco aprender com ela.</p>'}
   </div>
   <div class="card"><h2>Precedentes</h2>
-    <p class="meta">Cada julgado citado nas suas peças. Confirme os que você já conferiu, para o
-      sistema poder usá-los sem ressalva.</p>
-    <table><thead><tr><th>Tribunal</th><th>Processo</th><th>Relator</th><th>Tema</th><th></th></tr></thead><tbody>
-    ${P.length ? P.map(p=>`<tr><td>${esc(p.tribunal||'')}<span class="sub">${esc(p.orgao||'')}</span></td>
-      <td>${esc(p.tipo_recurso||'')} ${esc(p.numero||'')}<span class="sub">${p.julgamento?br(p.julgamento):''}</span></td>
-      <td class="sub">${esc(p.relator||'')}</td><td class="sub">${esc(p.tema||'')}</td>
-      <td>${p.confirmado ? '<span class="pill ser">conferido</span>'
-        : `<button class="btn" onclick="confirmarPrec('${p.id}',true)">marcar conferido</button>`}</td></tr>`).join('')
-      : '<tr><td colspan="5" class="vazio">Nenhum precedente ainda.</td></tr>'}
-    </tbody></table></div>
+    <p class="meta">Cada julgado citado nas suas peças. Abra para ver a ementa, guardar o link do inteiro teor
+      e marcar se a tese continua em vigor. Enquanto um precedente não estiver conferido, o sistema o trata
+      com ressalva — e nunca o cita como se tivesse conferido por você.</p>
+    ${P.length ? P.map(p=>{
+      const b = buscaPrec(p);
+      return `<div style="padding:12px 18px;border-top:1px solid var(--ln)">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <b>${esc(p.tribunal||'')}${p.tipo_recurso?' · '+esc(p.tipo_recurso):''} ${esc(p.numero||'')}</b>
+        ${p.julgamento?`<span class="sub" style="margin:0">${br(p.julgamento)}</span>`:''}
+        ${p.autoridade?`<span class="pill cin">nível ${esc(p.autoridade)}</span>`:''}
+        ${p.situacao==='superado'?'<span class="pill crit">superado</span>'
+          : p.situacao==='duvida'?'<span class="pill warn">em dúvida</span>'
+          : p.situacao==='vigente'?'<span class="pill good">em vigor</span>':''}
+        ${p.confirmado?'<span class="pill ser">conferido</span>':'<span class="pill warn">a conferir</span>'}
+        ${p.ementa?'<span class="pill cin">com ementa</span>':'<span class="pill cin">sem ementa</span>'}
+      </div>
+      <div class="sub" style="margin-top:3px">${esc(p.tema||'sem tema anotado')}</div>
+      ${p.relator?`<div class="sub">Relator: ${esc(p.relator)}${p.orgao?' · '+esc(p.orgao):''}</div>`:''}
+      ${p.origem?`<div class="sub">Citado em: ${esc(p.origem)}</div>`:''}
+      <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button class="btn" onclick="abrirPrec('${p.id}')">Abrir e conferir</button>
+        <a class="btn" style="text-decoration:none" href="${b.google}" target="_blank" rel="noreferrer">Procurar no Google</a>
+        <a class="btn" style="text-decoration:none" href="${b.jus}" target="_blank" rel="noreferrer">Procurar no Jusbrasil</a>
+        ${p.link?`<a class="btn ok" style="text-decoration:none" href="${esc(p.link)}" target="_blank" rel="noreferrer">Inteiro teor</a>`:''}
+        ${p.confirmado
+          ? `<button class="btn" onclick="confirmarPrec('${p.id}',false)">desmarcar</button>`
+          : `<button class="btn ok" onclick="confirmarPrec('${p.id}',true)">marcar conferido</button>`}
+      </div>
+      <div id="pc${p.id}" style="display:none;margin-top:10px">
+        <label class="sub" style="margin:0">Ementa ou trecho que interessa</label>
+        <textarea id="pcem-${p.id}" rows="6" placeholder="Cole aqui a ementa ou o trecho do acórdão que você usa na peça.">${esc(p.ementa||'')}</textarea>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:8px">
+          <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:280px">
+            <span class="sub" style="margin:0">Link do inteiro teor</span>
+            <input id="pcln-${p.id}" type="url" value="${esc(p.link||'')}" placeholder="cole o endereço da decisão no site do tribunal"></label>
+          <label style="display:flex;flex-direction:column;gap:3px;min-width:160px">
+            <span class="sub" style="margin:0">A tese hoje</span>
+            <select id="pcsi-${p.id}">
+              <option value="">— não sei —</option>
+              ${Object.entries(SITPREC).map(([k,r])=>`<option value="${k}" ${p.situacao===k?'selected':''}>${r}</option>`).join('')}
+            </select></label>
+          <button class="btn ok" onclick="salvarPrec('${p.id}')">Guardar</button>
+          <span class="sub" id="pcst-${p.id}" style="margin:0"></span>
+        </div>
+      </div></div>`;
+    }).join('') : '<div class="vazio">Nenhum precedente ainda.</div>'}
+  </div>
   </main>` + rodape();
 }
 
