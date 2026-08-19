@@ -13,6 +13,19 @@ nav{display:flex;gap:2px;align-items:center;padding:0 20px;background:var(--s1);
 nav a{color:var(--i2);text-decoration:none;font-size:13.6px;cursor:pointer;padding:15px 11px;
   border-bottom:2px solid transparent;white-space:nowrap}
 nav a.on{color:var(--ink);border-bottom-color:var(--serie);font-weight:600}
+.grp{position:relative}
+.grp>.gbt{background:none;border:0;color:var(--i2);font:inherit;font-size:13.6px;cursor:pointer;
+  padding:15px 11px;border-bottom:2px solid transparent;white-space:nowrap}
+.grp>.gbt:hover{color:var(--ink)}
+.grp.tem>.gbt{color:var(--ink);border-bottom-color:var(--serie);font-weight:600}
+.grp>.gbt .seta{font-size:9px;opacity:.5;margin-left:3px}
+.grp .lista{display:none;position:absolute;top:100%;left:0;min-width:190px;z-index:60;
+  background:var(--s1);border:1px solid var(--ln);border-radius:11px;padding:6px;
+  box-shadow:0 10px 28px rgba(0,0,0,.13)}
+.grp:hover .lista,.grp.aberto .lista{display:block}
+.grp .lista a{display:block;padding:8px 11px;border-radius:8px;font-size:13.4px;border:0;color:var(--i2)}
+.grp .lista a:hover{background:var(--s0);color:var(--ink)}
+.grp .lista a.on{color:var(--serie);font-weight:600;background:var(--s0)}
 nav a:hover{color:var(--ink)}nav .dir{margin-left:auto;font-size:12.3px;color:var(--i3);padding:15px 0}
 .marca{display:flex;align-items:center;gap:9px;padding:11px 18px 11px 0;margin-right:10px;border-right:1px solid var(--ln)}
 .marca .sigla{width:31px;height:31px;border-radius:7px;background:var(--ink);color:var(--s1);display:grid;
@@ -207,7 +220,7 @@ let ESC_NOME = 'Breno S. Amorim Advocacia', ESC_LOGO = null, ESC_ID = null, ESC_
 const MENU_PADRAO = [['prazos','Prazos'],['triagem','Triagem'],['agenda','Agenda'],['captacao','Captação'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['clientes','Clientes'],['mensageria','Mensagens'],['metricas','Métricas'],['financeiro','Financeiro'],['parceiros','Parceiros'],['minutas','Minutas'],['aprender','Aprender'],['dicionario','Dicionário'],['documentos','Documentos'],['tutoriais','Tutoriais'],['config','Configurações']];
 let MENUCFG = MENU_PADRAO.map(([k,r]) => ({ k, r, v:true }));
 let ROTULOS = {};
-const PALAVRAS = {"Telas e seções": ["Prazos", "Triagem", "Triagem das publicações", "O que chegou", "Agenda", "Captação", "Casos", "Processos", "Andamento", "Clientes", "Mensagens", "Métricas", "Financeiro", "Parceiros", "Delegar um servi\u00e7o", "Acompanhamento", "Quem s\u00e3o os parceiros", "Delegado a parceiro", "Minutas", "Aprender", "Dicionário", "Documentos", "Tutoriais", "Configurações", "Calendário", "Pela frente", "Vencidos e ainda abertos", "Linha do tempo", "Todos os processos", "Andamento dos processos", "Os mais parados primeiro", "Precedentes", "Teses", "Fila de aprovação", "Minutas recentes", "Análise prévia", "Modo juiz", "Marcar prazo, audiência ou tarefa", "Levar tudo para o Google Agenda", "Equipe e acessos", "Dados do escritório", "Áreas de atuação", "Origens de captação", "Categorias financeiras", "Dicionário de movimentações", "Cor do dia de hoje", "Cópias automáticas", "Documentos a pedir", "Documentos do cliente", "Assinatura de documentos", "Tutoriais para clientes", "Ensinar uma peça ao banco", "Mensagem para o cliente", "Novo contato", "Novo lançamento", "Resultado da leitura"], "Colunas das tabelas": ["Feito", "Em trâmite", "Parado há", "Fase", "Situação e providência", "Aguardando até", "Chegou", "Documento", "Onde consigo", "Recebido em", "Vence", "Quando", "Situação", "Providência", "Cliente / vara", "Cliente / caso", "Processo", "Trecho lido e memória", "Conf.", "Ação", "Tipo", "O quê", "Descrição", "Origem", "Valor", "Vencimento", "Tribunal", "Relator", "Tema", "Órgão", "Área", "Nome", "Pessoa", "Perfil", "Ativo", "E-mail", "Telefone", "Telefone / WhatsApp", "Última movimentação", "Último informativo", "Encerrado em", "Motivo", "Resultado", "Vezes", "Cód."], "Números do topo": ["em aberto", "vencem em até 5 dias", "já vencidos", "aguardando confirmação", "compromissos à frente", "nos próximos 7 dias", "audiências", "já passaram e seguem abertos", "casos abertos", "casos ativos", "clientes", "processos", "pedindo providência", "merecendo conferência", "execuções com o prazo correndo", "tempo médio em trâmite", "em trâmite", "parado há", "sem telefone", "sem contato há mais de 30 dias", "parados há mais de 90 dias", "prescrevem em até 180 dias", "com prazo em até 5 dias", "com novidade desde o último informativo", "teses no banco", "esperando sua decisão", "precedentes a conferir", "teses novas", "refinamentos", "tempo de leitura", "a pagar", "a receber", "saldo do mês", "recebido neste mês", "projeção para o ano"]};
+const PALAVRAS = {"Telas e seções": ["Prazos", "Triagem", "Triagem das publicações", "O que chegou", "Agenda", "Captação", "Casos", "Processos", "Andamento", "Clientes", "Mensagens", "Métricas", "Financeiro", "Parceiros", "Delegar um servi\u00e7o", "Acompanhamento", "Quem s\u00e3o os parceiros", "Delegado a parceiro", "Minutas", "Aprender", "Dicionário", "Documentos", "Tutoriais", "Configurações", "Calendário", "Pela frente", "Vencidos e ainda abertos", "Linha do tempo", "Todos os processos", "Andamento dos processos", "Os mais parados primeiro", "Precedentes", "Teses", "Fila de aprovação", "Minutas recentes", "Análise prévia", "Modo juiz", "Marcar prazo, audiência ou tarefa", "Levar tudo para o Google Agenda", "Equipe e acessos", "Dados do escritório", "Áreas de atuação", "Origens de captação", "Categorias financeiras", "Dicionário de movimentações", "Cor do dia de hoje", "Cópias automáticas", "Casos sem cliente", "Cliente do caso", "Amarrar cliente", "Documentos a pedir", "Documentos do cliente", "Assinatura de documentos", "Tutoriais para clientes", "Ensinar uma peça ao banco", "Mensagem para o cliente", "Novo contato", "Novo lançamento", "Resultado da leitura"], "Colunas das tabelas": ["Feito", "Em trâmite", "Parado há", "Fase", "Situação e providência", "Aguardando até", "Chegou", "Documento", "Onde consigo", "Recebido em", "Vence", "Quando", "Situação", "Providência", "Cliente / vara", "Cliente / caso", "Processo", "Trecho lido e memória", "Conf.", "Ação", "Tipo", "O quê", "Descrição", "Origem", "Valor", "Vencimento", "Tribunal", "Relator", "Tema", "Órgão", "Área", "Nome", "Pessoa", "Perfil", "Ativo", "E-mail", "Telefone", "Telefone / WhatsApp", "Última movimentação", "Último informativo", "Encerrado em", "Motivo", "Resultado", "Vezes", "Cód."], "Números do topo": ["em aberto", "vencem em até 5 dias", "já vencidos", "aguardando confirmação", "compromissos à frente", "nos próximos 7 dias", "audiências", "já passaram e seguem abertos", "casos abertos", "casos ativos", "clientes", "processos", "pedindo providência", "merecendo conferência", "execuções com o prazo correndo", "tempo médio em trâmite", "em trâmite", "parado há", "sem telefone", "sem contato há mais de 30 dias", "parados há mais de 90 dias", "prescrevem em até 180 dias", "com prazo em até 5 dias", "com novidade desde o último informativo", "teses no banco", "esperando sua decisão", "precedentes a conferir", "teses novas", "refinamentos", "tempo de leitura", "a pagar", "a receber", "saldo do mês", "recebido neste mês", "projeção para o ano"]};
 function aplicarRotulos(raiz){
   const pares = Object.entries(ROTULOS).filter(([k,v]) => v && v !== k);
   if (!pares.length || !raiz) return;
@@ -294,15 +307,39 @@ window.restaurarMenu = async () => {
   MENUCFG = MENU_PADRAO.map(([k,r]) => ({ k, r, v:true }));
   await gravarMenu(); telaConfig();
 };
+const GRUPOS = [
+  ['Rotina',    ['prazos','triagem','agenda','mensageria']],
+  ['Processos', ['casos','processos','andamento','minutas']],
+  ['Pessoas',   ['clientes','captacao','parceiros']],
+  ['Gestão',    ['metricas','financeiro']],
+  ['Sistema',   ['aprender','dicionario','documentos','tutoriais','config']],
+];
+window.abrirGrupo = (ev, nome) => {
+  ev.preventDefault();
+  const alvo = ev.currentTarget.parentElement;
+  const jaAberto = alvo.classList.contains('aberto');
+  document.querySelectorAll('.grp').forEach(g => g.classList.remove('aberto'));
+  if (!jaAberto) alvo.classList.add('aberto');
+};
+document.addEventListener('click', e => {
+  if (!e.target.closest('.grp')) document.querySelectorAll('.grp').forEach(g => g.classList.remove('aberto'));
+});
 function menu(atual){
-  const it = MENUCFG.filter(m => m.v !== false).map(m => [m.k, m.r]);
+  const it = MENUCFG.filter(m => m.v !== false);
+  const usados = new Set(GRUPOS.flatMap(([,ks]) => ks));
+  const blocos = GRUPOS.map(([nome, ks]) => [nome, it.filter(m => ks.includes(m.k))])
+    .concat([['Outros', it.filter(m => !usados.has(m.k))]])
+    .filter(([, l]) => l.length);
   const marca = ESC_LOGO
     ? `<img src="${ESC_LOGO}" alt="">`
     : `<div class="sigla">${esc(ESC_NOME.split(/\s+/).filter(w=>w.length>2).slice(0,2).map(w=>w[0]).join('').toUpperCase()||'BA')}</div>`;
   return `<nav>
     <div class="marca">${marca}<div><span class="nome">${esc(ESC_NOME)}</span>
       <span class="sub2">sistema interno</span></div></div>
-    ${it.map(([k,r])=>`<a class="${atual===k?'on':''}" href="#/${k}">${r}</a>`).join('')}
+    ${blocos.map(([nome, l]) => `<div class="grp ${l.some(m=>m.k===atual)?'tem':''}" data-g="${esc(nome)}">
+      <button class="gbt" onclick="abrirGrupo(event, '${esc(nome)}')">${esc(nome)}<span class="seta">▾</span></button>
+      <div class="lista">${l.map(m=>`<a class="${atual===m.k?'on':''}" href="#/${m.k}">${esc(m.r)}</a>`).join('')}</div>
+    </div>`).join('')}
     <span class="dir">${esc(USER.email)} · <a onclick="sb.auth.signOut().then(()=>location.reload())">sair</a></span></nav>`;
 }
 function rodape(){
@@ -1699,6 +1736,7 @@ async function telaCaso(id){
       .eq('caso_id', id).order('criado_em'),
   ]);
   if (cs.error) return erro(cs.error.message);
+  await carregarClientes().catch(()=>{});
   CASO = cs.data; CASOPROC = pr.data || [];
   CASODOCS = cd.data || []; CASOMODELOS = cm.data || []; CASOASSIN = asg.data || [];
   const procIds = CASOPROC.map(p => p.id);
@@ -1842,6 +1880,16 @@ async function telaCaso(id){
       <span class="sub" id="at-st" style="margin:0"></span>
     </form></div>
 
+  <div class="card"><h2>Cliente do caso</h2>
+    <p class="nota">O nome do cliente é o que aparece no quadro de casos, nos informativos e nos relatórios.
+      Sem ele, o caso continua identificado pelo número do processo.</p>
+    <div style="padding:0 18px 18px;display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+      ${seletorCliente(c.id, c.cliente_id)}
+      ${c.cliente_id && c.titulo !== c.cliente?.nome
+        ? `<button class="btn" onclick="usarNomeDoCliente('${c.id}','${c.cliente_id}')">Usar o nome do cliente como título</button>` : ''}
+      <a class="btn" href="#/semcliente">Ver todos os casos sem cliente</a>
+    </div></div>
+
   <div class="card"><h2>Delegado a parceiro</h2>
     ${(dlg.data||[]).length ? `<table><thead><tr><th>Parceiro</th><th>O quê</th><th>Quando</th>
       <th>Situação</th><th>Honorário</th></tr></thead><tbody>
@@ -1925,6 +1973,7 @@ async function telaCaso(id){
     <div id="linha" style="padding:0 18px 18px"></div></div>
   </main>` + rodape();
   carregarSoltos().then(() => filtrarSoltos(c.id)).catch(()=>{});
+  carregarClientes().catch(()=>{});
   pintarAssinaturas();
   pintarDocsCaso();
   pintarLinha();
@@ -2380,6 +2429,9 @@ async function telaClientes(){
     <div class="kpi ${perto?'al':''}"><div class="n">${perto}</div><div class="l">prescrevem em até 180 dias</div></div>
   </div>
   <div class="aviso" style="border-color:var(--ln)">
+    <b>Casos sem cliente:</b> os casos que ainda não têm cliente amarrado aparecem pelo número do processo.
+    <a class="lnk" href="#/semcliente">Amarrar agora, de uma vez</a>.</div>
+  <div class="aviso" style="border-color:var(--ln)">
     <b>Procuração e contrato</b> saem em Word, no timbre do escritório, a partir de
     “Ficha e documentos”. Sem CPF, RG e endereço preenchidos o documento sai com a
     qualificação pela metade — o gerador não inventa dado.</div>
@@ -2828,6 +2880,73 @@ window.salvarEscritorio = async (ev) => {
     .eq('id', e1.id);
   document.getElementById('esc-st').textContent = error ? 'erro: '+error.message : 'salvo ✓';
 };
+/* ------------------------------------------- amarrar cliente aos casos */
+let CLILISTA = [], SEMCLI = [], SCFILTRO = '';
+async function carregarClientes(){
+  if (CLILISTA.length) return CLILISTA;
+  const { data } = await sb.from('cliente').select('id,nome').order('nome').limit(1000);
+  CLILISTA = data || [];
+  return CLILISTA;
+}
+window.ligarCliente = async (casoId, clienteId, el) => {
+  const st = el?.parentElement?.querySelector('.sub');
+  if (st) st.textContent = 'salvando…';
+  const { error } = await sb.from('caso')
+    .update({ cliente_id: clienteId || null, atualizado_em: new Date().toISOString() }).eq('id', casoId);
+  if (st) st.textContent = error ? 'erro: ' + error.message : 'ligado ✓';
+  if (error) return;
+  if (typeof CASO !== 'undefined' && CASO && CASO.id === casoId) return telaCaso(casoId);
+  SEMCLI = SEMCLI.filter(c => c.id !== casoId);
+  if (document.getElementById('sclista')) pintarSemCliente();
+};
+window.usarNomeDoCliente = async (casoId, clienteId) => {
+  const c = CLILISTA.find(x => x.id === clienteId); if (!c) return;
+  await sb.from('caso').update({ titulo: c.nome, atualizado_em: new Date().toISOString() }).eq('id', casoId);
+  if (typeof CASO !== 'undefined' && CASO && CASO.id === casoId) telaCaso(casoId);
+};
+function seletorCliente(casoId, atual){
+  return `<select onchange="ligarCliente('${casoId}', this.value, this)" style="min-width:230px;font-size:12.5px">
+      <option value="">— sem cliente —</option>
+      ${CLILISTA.map(c=>`<option value="${c.id}" ${atual===c.id?'selected':''}>${esc(c.nome)}</option>`).join('')}
+    </select><span class="sub" style="margin:0 0 0 6px"></span>`;
+}
+window.filtrarSemCli = v => { SCFILTRO = v.toLowerCase().trim(); pintarSemCliente(); };
+function pintarSemCliente(){
+  const alvo = document.getElementById('sclista'); if (!alvo) return;
+  const l = SEMCLI.filter(c => !SCFILTRO || String(c.titulo||'').toLowerCase().includes(SCFILTRO));
+  const q = document.getElementById('sc-qtd'); if (q) q.textContent = SEMCLI.length;
+  if (!l.length) return alvo.innerHTML = SEMCLI.length
+    ? '<div class="vazio">Nenhum caso com esse termo.</div>'
+    : '<div class="vazio">Todos os casos já têm cliente amarrado.</div>';
+  alvo.innerHTML = `<table><thead><tr><th>Caso</th><th>Área</th><th style="width:300px">Cliente</th></tr></thead>
+    <tbody>${l.slice(0,300).map(c=>`<tr>
+      <td><a class="lnk" href="#/caso/${c.id}">${esc(c.titulo)}</a></td>
+      <td class="sub" style="padding-top:14px">${esc(c.area||'—')}</td>
+      <td>${seletorCliente(c.id, null)}</td>
+    </tr>`).join('')}</tbody></table>
+    ${l.length > 300 ? '<p class="nota">Mostrando os 300 primeiros. Use a busca para chegar nos outros.</p>' : ''}`;
+}
+async function telaSemCliente(){
+  await carregarClientes();
+  const { data, error } = await sb.from('caso').select('id,titulo,area')
+    .is('cliente_id', null).is('encerrado_em', null).order('titulo').limit(1000);
+  if (error) return erro(error.message);
+  SEMCLI = data || [];
+  app.innerHTML = menu('clientes') + `
+  <main><h1>Casos sem cliente</h1>
+  <p class="meta">Enquanto o caso não tem cliente, ele aparece pelo número do processo em vez do nome,
+    não entra na ficha do cliente e não recebe informativo. Amarre aqui, de uma vez.</p>
+  <div class="kpis">
+    <div class="kpi ${SEMCLI.length?'al':''}"><div class="n" id="sc-qtd">${SEMCLI.length}</div><div class="l">casos sem cliente</div></div>
+    <div class="kpi"><div class="n">${CLILISTA.length}</div><div class="l">clientes cadastrados</div></div>
+  </div>
+  <div class="card"><h2>Amarrar cliente</h2>
+    <div class="filtros"><input type="search" placeholder="filtrar pelo número ou pela classe"
+      oninput="filtrarSemCli(this.value)"></div>
+    <div id="sclista"></div></div>
+  </main>` + rodape();
+  pintarSemCliente();
+}
 /* ------------------------------------------------- triagem das publicações */
 let TRI = [], TRIFILTRO = 'pendentes', TRIDIAS = 30;
 const confRotulo = c => c == null ? ['—','cin']
@@ -4206,6 +4325,7 @@ async function rota(){
   const h = location.hash || '#/prazos';
   if(h.startsWith('#/processo/')) return telaProcesso(h.slice('#/processo/'.length));
   if(h.startsWith('#/caso/'))      return telaCaso(h.slice('#/caso/'.length));
+  if(h.startsWith('#/semcliente'))return telaSemCliente();
   if(h.startsWith('#/triagem'))    return telaTriagem();
   if(h.startsWith('#/agenda'))     return telaAgenda();
   if(h.startsWith('#/captacao'))   return telaCaptacao();
