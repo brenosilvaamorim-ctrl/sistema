@@ -2901,6 +2901,105 @@ window.salvarEscritorio = async (ev) => {
     .eq('id', e1.id);
   document.getElementById('esc-st').textContent = error ? 'erro: '+error.message : 'salvo ✓';
 };
+/* ------------------------------------------ auditoria e permissões */
+const PERMISSOES = [
+  ['excluir_caso',       'Excluir casos'],
+  ['excluir_cliente',    'Excluir clientes'],
+  ['excluir_processo',   'Excluir processos'],
+  ['excluir_lancamento', 'Excluir lançamentos do financeiro'],
+  ['prazos_confirmar',   'Confirmar prazos'],
+  ['financeiro_ver',     'Ver o financeiro'],
+  ['cliente_editar',     'Editar dados e qualificação do cliente'],
+  ['cadastro_criar',     'Cadastrar casos, clientes e processos'],
+  ['backup_baixar',      'Baixar cópia de segurança'],
+  ['config_editar',      'Mexer nas configurações do escritório'],
+];
+let EQUIPE = [], AUD = [], AUDF = { tabela:'', acao:'', dias:30 };
+const ACAO = { insert:['criou','good'], update:['alterou','warn'], delete:['apagou','crit'],
+               baixou:['baixou','ser'], entrou:['entrou','cin'] };
+const TABELA_NOME = { caso:'caso', cliente:'cliente', processo:'processo', prazo:'prazo',
+  evento:'compromisso', lancamento:'lançamento', honorario:'honorário', parceiro:'parceiro',
+  delegacao:'delegação', usuario:'pessoa da equipe', assinatura:'assinatura', backup:'backup' };
+window.registrarAcao = async (acao, tabela, descricao) => {
+  try {
+    await sb.from('auditoria').insert({ escritorio_id: await escId(),
+      usuario_id: USER?.id ?? null, usuario_nome: USER?.email ?? null,
+      acao, tabela, descricao });
+  } catch (e) { /* registro não pode quebrar a ação */ }
+};
+window.mudarPermissao = async (uid, chave, valor) => {
+  const u = EQUIPE.find(x => x.id === uid); if (!u) return;
+  const p = { ...(u.permissoes || {}) };
+  if (valor === 'padrao') delete p[chave]; else p[chave] = valor === 'sim';
+  const { error } = await sb.from('usuario').update({ permissoes: p }).eq('id', uid);
+  if (error) return alert('Não foi possível: ' + error.message);
+  u.permissoes = p;
+};
+window.filtrarAud = (campo, v) => { AUDF[campo] = campo === 'dias' ? Number(v) : v; telaAuditoria(); };
+async function telaAuditoria(){
+  const desde = new Date(Date.now() - AUDF.dias * 864e5).toISOString();
+  let q = sb.from('auditoria').select('*').gte('criado_em', desde)
+    .order('criado_em', { ascending:false }).limit(500);
+  if (AUDF.tabela) q = q.eq('tabela', AUDF.tabela);
+  if (AUDF.acao)   q = q.eq('acao', AUDF.acao);
+  const [au, eq] = await Promise.all([q, sb.from('usuario').select('id,nome,email,perfil,ativo,permissoes').order('nome')]);
+  if (au.error) return erro(au.error.message);
+  AUD = au.data || []; EQUIPE = eq.data || [];
+  const apagou = AUD.filter(a => a.acao === 'delete').length;
+  const pessoas = [...new Set(AUD.map(a => a.usuario_nome).filter(Boolean))];
+  app.innerHTML = menu('config') + `
+  <main><h1>Registro de atividade</h1>
+  <p class="meta">Quem fez o quê, gravado pelo próprio banco de dados — não dá para desligar pela tela
+    nem apagar sem deixar rastro. Serve para responder “o que aconteceu aqui” quando algo der errado.</p>
+  <div class="kpis">
+    <div class="kpi"><div class="n">${AUD.length}</div><div class="l">registros no período</div></div>
+    <div class="kpi ${apagou?'al':''}"><div class="n">${apagou}</div><div class="l">exclusões</div></div>
+    <div class="kpi"><div class="n">${pessoas.length}</div><div class="l">pessoas com atividade</div></div>
+    <div class="kpi"><div class="n">${EQUIPE.filter(u=>u.ativo).length}</div><div class="l">com acesso ativo</div></div>
+  </div>
+
+  <div class="card"><h2>O que cada pessoa pode</h2>
+    <p class="nota">Sem escolha, vale o padrão: <b>titular pode, os demais não</b>. O bloqueio de exclusão
+      é aplicado no banco — não adianta contornar pela tela. Você é titular e não consegue se travar sozinho
+      por engano: mesmo marcando “não”, o banco recusa apenas a exclusão, nunca a leitura.</p>
+    ${EQUIPE.length ? `<table><thead><tr><th>Pessoa</th>
+      ${PERMISSOES.map(([,r])=>`<th style="font-size:11px">${esc(r)}</th>`).join('')}</tr></thead><tbody>
+      ${EQUIPE.map(u=>`<tr>
+        <td><b>${esc(u.nome)}</b><span class="sub">${esc(u.perfil)}${u.ativo?'':' · inativo'}</span></td>
+        ${PERMISSOES.map(([k])=>{
+          const v = u.permissoes && k in u.permissoes ? (u.permissoes[k] ? 'sim' : 'nao') : 'padrao';
+          return `<td><select onchange="mudarPermissao('${u.id}','${k}',this.value)" style="font-size:11.5px">
+            <option value="padrao" ${v==='padrao'?'selected':''}>padrão</option>
+            <option value="sim" ${v==='sim'?'selected':''}>pode</option>
+            <option value="nao" ${v==='nao'?'selected':''}>não pode</option></select></td>`;
+        }).join('')}
+      </tr>`).join('')}</tbody></table>` : '<div class="vazio">Ninguém além de você ainda.</div>'}
+  </div>
+
+  <div class="card"><h2>Histórico</h2>
+    <div style="padding:0 18px 12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <select onchange="filtrarAud('tabela', this.value)" style="font-size:12px">
+        <option value="">tudo</option>
+        ${Object.entries(TABELA_NOME).map(([k,r])=>`<option value="${k}" ${AUDF.tabela===k?'selected':''}>${r}</option>`).join('')}
+      </select>
+      <select onchange="filtrarAud('acao', this.value)" style="font-size:12px">
+        <option value="">qualquer ação</option>
+        ${Object.entries(ACAO).map(([k,[r]])=>`<option value="${k}" ${AUDF.acao===k?'selected':''}>${r}</option>`).join('')}
+      </select>
+      <select onchange="filtrarAud('dias', this.value)" style="font-size:12px">
+        ${[7,30,90,365].map(d=>`<option value="${d}" ${AUDF.dias===d?'selected':''}>${d} dias</option>`).join('')}
+      </select>
+    </div>
+    ${AUD.length ? `<table><thead><tr><th style="width:150px">Quando</th><th>Quem</th><th>Fez o quê</th><th>Onde</th></tr></thead>
+    <tbody>${AUD.map(a=>{ const [rot, cor] = ACAO[a.acao] || [a.acao, 'cin']; return `<tr>
+      <td class="dt">${br(String(a.criado_em).slice(0,10))}<span class="sub">${String(a.criado_em).slice(11,16)}</span></td>
+      <td>${esc(a.usuario_nome || 'robô/sistema')}</td>
+      <td><span class="pill ${cor}">${esc(rot)}</span> ${esc(TABELA_NOME[a.tabela] || a.tabela || '')}</td>
+      <td>${esc((a.descricao || '').slice(0,70) || '—')}</td>
+    </tr>`; }).join('')}</tbody></table>` : '<div class="vazio">Nada registrado nesse filtro.</div>'}
+  </div>
+  </main>` + rodape();
+}
 /* --------------------------------------------------- convite de acesso */
 window.convidarMembro = async ev => {
   ev.preventDefault();
@@ -2946,6 +3045,26 @@ window.ligarCliente = async (casoId, clienteId, el) => {
   SEMCLI = SEMCLI.filter(c => c.id !== casoId);
   if (document.getElementById('sclista')) pintarSemCliente();
 };
+window.criarClienteAqui = async (casoId, campoId) => {
+  const inp = document.getElementById(campoId);
+  const nome = (inp?.value || '').trim();
+  const st = inp?.parentElement?.querySelector('.sub');
+  if (!nome) { if (st) st.textContent = 'digite o nome'; return; }
+  if (st) st.textContent = 'cadastrando…';
+  const eid = await escId();
+  const { data: novo, error } = await sb.from('cliente')
+    .insert({ escritorio_id: eid, nome, tipo: 'fisica', anterior_ao_sistema: true })
+    .select('id,nome').single();
+  if (error) { if (st) st.textContent = 'erro: ' + error.message; return; }
+  CLILISTA.push({ id: novo.id, nome: novo.nome });
+  CLILISTA.sort((a,b) => a.nome.localeCompare(b.nome));
+  const e2 = (await sb.from('caso').update({ cliente_id: novo.id, titulo: nome,
+    atualizado_em: new Date().toISOString() }).eq('id', casoId)).error;
+  if (e2) { if (st) st.textContent = 'cliente criado, mas falhou ao amarrar: ' + e2.message; return; }
+  if (typeof CASO !== 'undefined' && CASO && CASO.id === casoId) return telaCaso(casoId);
+  SEMCLI = SEMCLI.filter(c => c.id !== casoId);
+  pintarSemCliente();
+};
 window.usarNomeDoCliente = async (casoId, clienteId) => {
   const c = CLILISTA.find(x => x.id === clienteId); if (!c) return;
   await sb.from('caso').update({ titulo: c.nome, atualizado_em: new Date().toISOString() }).eq('id', casoId);
@@ -2969,7 +3088,13 @@ function pintarSemCliente(){
     <tbody>${l.slice(0,300).map(c=>`<tr>
       <td><a class="lnk" href="#/caso/${c.id}">${esc(c.titulo)}</a></td>
       <td class="sub" style="padding-top:14px">${esc(c.area||'—')}</td>
-      <td>${seletorCliente(c.id, null)}</td>
+      <td>${seletorCliente(c.id, null)}
+        <div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <input id="nc${c.id}" placeholder="ou digite um cliente novo" style="min-width:180px;font-size:12px"
+                 onkeydown="if(event.key==='Enter'){event.preventDefault();criarClienteAqui('${c.id}','nc${c.id}')}">
+          <button class="btn" onclick="criarClienteAqui('${c.id}','nc${c.id}')">Cadastrar e amarrar</button>
+          <span class="sub" style="margin:0"></span>
+        </div></td>
     </tr>`).join('')}</tbody></table>
     ${l.length > 300 ? '<p class="nota">Mostrando os 300 primeiros. Use a busca para chegar nos outros.</p>' : ''}`;
 }
@@ -2982,7 +3107,10 @@ async function telaSemCliente(){
   app.innerHTML = menu('clientes') + `
   <main><h1>Casos sem cliente</h1>
   <p class="meta">Enquanto o caso não tem cliente, ele aparece pelo número do processo em vez do nome,
-    não entra na ficha do cliente e não recebe informativo. Amarre aqui, de uma vez.</p>
+    não entra na ficha do cliente e não recebe informativo. Escolha um cliente já cadastrado
+    ou digite o nome de um cliente novo — ele entra direto, sem passar pela Captação,
+    e fica marcado como <b>anterior ao sistema</b>, fora das métricas de captação.
+    O nome digitado também vira o título do caso.</p>
   <div class="kpis">
     <div class="kpi ${SEMCLI.length?'al':''}"><div class="n" id="sc-qtd">${SEMCLI.length}</div><div class="l">casos sem cliente</div></div>
     <div class="kpi"><div class="n">${CLILISTA.length}</div><div class="l">clientes cadastrados</div></div>
@@ -4289,6 +4417,11 @@ async function telaConfig(){
       <button class="btn" onclick="limparRotulos()">Voltar tudo ao padrão</button>
       <span class="sub" id="rot-st" style="margin:0"></span></div></div>
 
+  <div class="card" style="margin-top:18px"><h2>Registro de atividade e permissões</h2>
+    <p class="nota">Quem confirmou prazo, quem alterou dado de cliente, quem apagou o quê — e o que
+      cada pessoa da equipe tem permissão de fazer.</p>
+    <div style="padding:0 18px 18px"><a class="btn ok" href="#/auditoria">Abrir o registro</a></div></div>
+
   <div class="card" style="margin-top:18px"><h2>Cor do dia de hoje</h2>
     <p class="nota">A cor que marca o dia atual no calendário da Agenda. O dia selecionado continua com a borda azul.</p>
     <div id="chpal" style="padding:0 18px 18px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -4346,6 +4479,7 @@ const TABELAS_BACKUP = ['escritorio','usuario','cliente','caso','processo','part
   'tese','tese_candidata','precedente','minuta','informativo_rascunho','preferencia',
   'area_atuacao','origem_captacao','categoria_financeira'];
 window.baixarBackup = async () => {
+  registrarAcao('baixou', 'backup', 'cópia completa baixada pela tela');
   const st = document.getElementById('bk-st');
   st.style.color = 'var(--i3)';
   const pacote = { gerado_em: new Date().toISOString(), sistema: ESC_NOME, tabelas: {} };
@@ -4407,6 +4541,7 @@ async function rota(){
   if(h.startsWith('#/dicionario')) return telaDicionario();
   if(h.startsWith('#/documentos')) return telaDocumentos();
   if(h.startsWith('#/tutoriais'))  return telaTutoriais();
+  if(h.startsWith('#/auditoria'))  return telaAuditoria();
   if(h.startsWith('#/config'))     return telaConfig();
   return telaPrazos();
 }
