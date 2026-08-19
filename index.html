@@ -3313,7 +3313,7 @@ function acharCol(cab){
   cab.forEach((c, i) => {
     const t = semAcento(c);
     if (/numero|processo|cnj/.test(t) && idx.numero == null) idx.numero = i;
-    else if (/reu|réu|reclamad|passiv/.test(t) && idx.reu == null) idx.reu = i;
+    else if (/\bre[u]?\b|reclamad|passiv|contrari/.test(t) && idx.reu == null) idx.reu = i;
     else if (/autor|reclamante|ativa|requerente/.test(t) && idx.autor == null) idx.autor = i;
     else if (/cliente|nome/.test(t) && idx.cliente == null) idx.cliente = i;
     else if (/area/.test(t) && idx.area == null) idx.area = i;
@@ -3523,6 +3523,10 @@ function comarcaDe(orgao){
         || t.match(/\bComarca\s+de\s+(.+)$/i);
   return (m ? m[1] : '').replace(/\s*[-–].*$/,'').trim();
 }
+function nomeParte(t){
+  return String(t||'').replace(/\s+E\s+OUTRO(S)?\.?$/i,'').replace(/\s*-\s*(EM RECUPERACAO JUDICIAL|ME|EPP)$/i,'')
+    .replace(/\s+/g,' ').trim();
+}
 function agrupa(lista, chave){
   const m = new Map();
   for (const p of lista) {
@@ -3563,8 +3567,8 @@ function pintarAnalogos(){
   const alvo = document.getElementById('janalogos'); if (!alvo) return;
   const t = JUR.busca;
   if (!t) return alvo.innerHTML = '<div class="vazio">Escreva o assunto, a classe, a vara ou a comarca para comparar.</div>';
-  const achados = JUR.procs.filter(p => [p.classe,p.assunto,p.orgao,p.tribunal_sigla,p.comarca,p.titulo,p.area]
-    .some(v => String(v||'').toLowerCase().includes(t)));
+  const achados = JUR.procs.filter(p => [p.classe,p.assunto,p.orgao,p.tribunal_sigla,p.comarca,p.titulo,p.area,
+    p.parte_ativa,p.parte_passiva].some(v => String(v||'').toLowerCase().includes(t)));
   if (!achados.length) return alvo.innerHTML = '<div class="vazio">Nada parecido na sua carteira ainda.</div>';
   const enc = achados.filter(p=>p.encerrado_em);
   const ex  = enc.filter(p=>EXITO.includes(String(p.resultado||'').toLowerCase()));
@@ -3576,13 +3580,14 @@ function pintarAnalogos(){
     <div class="kpi"><div class="n">${new Set(achados.map(p=>p.orgao||'—')).size}</div><div class="l">varas diferentes</div></div>
   </div>
   <table><thead><tr><th>Processo</th><th>Cliente / caso</th><th>Vara</th><th>Comarca</th><th>Classe / assunto</th>
-    <th>Ajuizado</th><th>Situação</th></tr></thead><tbody>
+    <th>Parte contrária</th><th>Ajuizado</th><th>Situação</th></tr></thead><tbody>
   ${achados.slice(0,60).map(p=>`<tr>
     <td class="proc"><a class="lnk" href="#/processo/${p.id}">${esc(p.numero_formatado||p.numero_cnj)}</a></td>
     <td>${p.caso_id?`<a class="lnk" href="#/caso/${p.caso_id}">${esc(p.titulo||'ver caso')}</a>`:'—'}</td>
     <td>${esc(p.orgao||'—')}<span class="sub">${esc(p.tribunal_sigla||'')}</span></td>
     <td>${esc(p.comarca||'—')}</td>
     <td>${esc(p.classe||'—')}<span class="sub">${esc(p.assunto||'')}</span></td>
+    <td>${esc(nomeParte(p.parte_passiva)||'—')}</td>
     <td class="dt">${p.data_ajuizamento?br(p.data_ajuizamento):'—'}</td>
     <td>${p.encerrado_em
       ? `<span class="pill ${EXITO.includes(String(p.resultado||'').toLowerCase())?'good':'cin'}">${esc(p.resultado||'encerrado')}</span>`
@@ -3671,7 +3676,7 @@ window.tirarDecisao = async id => {
 };
 async function telaJurimetria(){
   const [pr, cs, dc, pend] = await Promise.all([
-    sb.from('processo').select('id,numero_cnj,numero_formatado,tribunal_sigla,orgao,classe,assunto,data_ajuizamento,valor_causa,fase,caso_id').limit(2000),
+    sb.from('processo').select('id,numero_cnj,numero_formatado,tribunal_sigla,orgao,classe,assunto,data_ajuizamento,valor_causa,fase,caso_id,parte_ativa,parte_passiva').limit(2000),
     sb.from('caso').select('id,titulo,area,resultado,encerrado_em,valor_causa').limit(2000),
     sb.from('decisao').select('*').order('data', { ascending:false }).limit(300),
     sb.from('processo').select('id,caso_id,numero_cnj,numero_formatado,tribunal_sigla,orgao,classe,parte_ativa,parte_passiva,caso:caso_id(id,cliente_id,cliente_lado,encerrado_em)')
@@ -3709,6 +3714,7 @@ async function telaJurimetria(){
     <div class="kpi"><div class="n">${new Set(P.map(p=>p.tribunal_sigla||'—')).size}</div><div class="l">tribunais</div></div>
     <div class="kpi"><div class="n">${new Set(P.map(p=>p.orgao||'—')).size}</div><div class="l">varas</div></div>
     <div class="kpi"><div class="n">${new Set(P.map(p=>p.comarca||'—')).size}</div><div class="l">comarcas</div></div>
+    <div class="kpi"><div class="n">${new Set(P.filter(p=>p.parte_passiva).map(p=>nomeParte(p.parte_passiva))).size}</div><div class="l">reclamadas diferentes</div></div>
     <div class="kpi"><div class="n">${enc.length ? Math.round(ex.length*100/enc.length)+'%' : '—'}</div><div class="l">êxito nos encerrados</div></div>
     <div class="kpi"><div class="n" style="font-size:18px">${media!=null?humano(media):'—'}</div><div class="l">do ajuizamento ao fim</div></div>
   </div>
@@ -3729,6 +3735,8 @@ async function telaJurimetria(){
      agrupa(P, p=>p.orgao), 'Vara / órgão')}
   ${bloco('Por comarca','Deduzida do nome da vara. Onde vier vazio, é porque o órgão não traz a cidade.',
      agrupa(P, p=>p.comarca), 'Comarca')}
+  ${bloco('Por parte contrária','As empresas que mais aparecem do outro lado. Quando você acumula ações contra a mesma reclamada, isto vira estratégia: dá para ver quanto tempo ela leva, o que costuma acontecer e o que já foi decidido.',
+     agrupa(P.filter(p=>p.parte_passiva), p=>nomeParte(p.parte_passiva)), 'Reclamada')}
   ${bloco('Por classe','Que tipo de ação você mais leva, e como cada uma termina.',
      agrupa(P, p=>p.classe), 'Classe')}
   ${bloco('Por assunto','Depende do assunto vir preenchido do DataJud.',
