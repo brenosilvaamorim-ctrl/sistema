@@ -936,6 +936,11 @@ window.confirmarPrec = async (id, v) => {
     verificado_em: v ? new Date().toISOString() : null }).eq('id', id);
   telaAprender();
 };
+window.copiarTexto = async (jsonTxt, el) => {
+  try { await navigator.clipboard.writeText(JSON.parse(jsonTxt)); el.textContent = 'copiado ✓'; }
+  catch(e){ el.textContent = 'não deu para copiar'; }
+  setTimeout(()=>{ el.textContent = 'Copiar trecho'; }, 2500);
+};
 window.abrirPrec = (id) => {
   const el = document.getElementById('pc'+id); if (!el) return;
   el.style.display = el.style.display === 'none' ? 'block' : 'none';
@@ -1016,10 +1021,15 @@ async function telaAprender(){
         ${p.ementa?'<span class="pill cin">com ementa</span>':'<span class="pill cin">sem ementa</span>'}
       </div>
       <div class="sub" style="margin-top:3px">${esc(p.tema||'sem tema anotado')}</div>
-      ${p.citacao ? `<div style="margin-top:6px;padding:8px 10px;border-left:3px solid var(--ln);background:#faf9f6">
-        <div class="sub" style="margin:0 0 3px"><b>Como você citou</b>${p.citacao_fonte?` · ${esc(p.citacao_fonte)}`:''}</div>
-        <div style="font-size:12.5px">…${esc(p.citacao)}…</div></div>`
-        : '<div class="sub" style="margin-top:4px;color:var(--crit)">Não guardei o trecho em que este julgado foi citado — ensine a peça de novo no campo acima e ele passa a vir junto.</div>'}
+      ${p.citacao ? `<div style="margin-top:6px;padding:10px 12px;border-left:3px solid var(--ln);background:#faf9f6">
+        <div class="sub" style="margin:0 0 4px"><b>Como você citou</b>${p.citacao_fonte?` · ${esc(p.citacao_fonte)}`:''}</div>
+        <div style="font-size:12.8px;line-height:1.6;white-space:pre-wrap;max-height:260px;overflow:auto">${esc(p.citacao)}</div>
+        <div style="margin-top:6px"><button class="btn" style="font-size:11.4px;padding:3px 7px"
+          onclick="copiarTexto(${JSON.stringify(JSON.stringify(p.citacao))}, this)">Copiar trecho</button></div></div>`
+        : '<div class="sub" style="margin-top:4px;color:var(--crit)">Não guardei o trecho em que este julgado foi citado — ensine a peça de novo no campo "Ensinar uma peça ao banco" e ele passa a vir junto, com a ementa que a peça transcrever.</div>'}
+      ${p.ementa ? `<div style="margin-top:6px;padding:10px 12px;border-left:3px solid var(--good);background:#f7faf6">
+        <div class="sub" style="margin:0 0 4px"><b>Ementa, como está na peça</b></div>
+        <div style="font-size:12.8px;line-height:1.6;white-space:pre-wrap;max-height:320px;overflow:auto">${esc(p.ementa)}</div></div>` : ''}
       ${p.relator?`<div class="sub">Relator: ${esc(p.relator)}${p.orgao?' · '+esc(p.orgao):''}</div>`:''}
       ${p.origem?`<div class="sub">Citado em: ${esc(p.origem)}</div>`:''}
       <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -3121,6 +3131,23 @@ O filtro padrão é "a conferir (fora os prazos acima)", para você não tratar 
 
 **Aplicar as regras a tudo o que está aberto** roda o motor de regras (item 17) sobre as publicações pendentes.
 
+### O passo a passo de uma publicação
+
+1. Leia o cartão. Ele diz o que o robô entendeu e com que confiança — **alta**, **regular** ou **baixa**. Confiança regular ou baixa quer dizer: leia o texto antes de aceitar.
+2. Clique em **Ver a publicação** para abrir o texto integral. Ele vem direto do Diário, sem corte.
+3. Se virou prazo, confira a **data fatal** e a **memória de cálculo** — o sistema mostra de que data contou, quantos dias e se contou em dias úteis. Errou? Descarte e marque à mão.
+4. Se marcou audiência, cadastre na agenda e cole o **link da sala**, se for por vídeo.
+5. Se o processo não estiver cadastrado, use **Cadastrar processo**: ele já vem com número, tribunal e órgão preenchidos da própria publicação.
+6. Se for caso de avisar o cliente, **Escrever ao cliente** abre a mensagem daquele caso já montada.
+7. Terminado, **Marcar como lida**. A publicação sai da fila e fica guardada no caso.
+
+### O que significa cada situação
+
+- **prazo** — o robô encontrou prazo processual e já propôs a data.
+- **audiência** — encontrou designação de audiência.
+- **sem providência** — mera ciência, nada a fazer.
+- **processo não cadastrado** — a publicação é de processo que não está no sistema.
+
 ## 5. Agenda
 
 Prazos, audiências, perícias, reuniões, tarefas e prescrições no mesmo calendário.
@@ -3148,9 +3175,19 @@ As **etiquetas** você cria dentro do caso e viram filtro aqui no topo.
 
 **Tipo do caso e etiquetas.** Escolher o tipo (verbas rescisórias, vínculo, acidente de trabalho, concurso, servidor, cível) traz de uma vez a lista de documentos, as primeiras tarefas já datadas e os campos próprios daquela ação. Nada é apagado: só se acrescenta o que falta.
 
-**Ler um documento.** Manda o PDF ou a foto — CTPS, TRCT, contracheque, cartão de ponto, laudo, edital. O sistema lê e devolve os campos e os fatos, com o trecho e a página de cada um. Serve tanto para PDF de texto quanto para documento escaneado ou foto de celular. Até 6 MB por arquivo. **Nada entra no caso sem você marcar.** O que estiver ilegível ele deixa de fora em vez de chutar.
+**Ler um documento.** Manda o PDF ou a foto — CTPS, TRCT, contracheque, cartão de ponto, laudo, edital. O sistema lê e devolve os campos e os fatos, com o trecho e a página de cada um.
+
+Não existe OCR separado: as páginas são vistas como imagem, então **PDF de texto, PDF digitalizado e foto de celular passam pelo mesmo caminho**. Documento torto, com sombra ou fundo cinza é lido do mesmo jeito.
+
+- **PDF acima de 3 MB é dividido sozinho** em blocos de 12 páginas, lido bloco a bloco, e o resultado é remontado com a numeração real das páginas. Dá para mandar processo inteiro, até 60 MB.
+- **Foto avulsa**: até 6 MB, o que cobre qualquer câmera de celular.
+- Depois de ler, confira a **ressalva da leitura** — é ali que ele avisa o que ficou ilegível.
+- **Nada entra no caso sem você marcar.** Campo que ele não conseguiu ler fica de fora, em vez de ser chutado.
+- A transcrição integral fica guardada e é ela que alimenta a busca na prova, logo abaixo.
 
 **Linha do tempo dos fatos, com a prova de cada um.** Um fato por linha, na ordem em que aconteceu, dizendo qual documento prova aquilo. Fato sem prova indicada aparece marcado em vermelho. O botão "Copiar a narrativa" entrega o texto pronto para a inicial.
+
+**Onde isto está provado?** Escreva a afirmação que você quer levar para a peça — "trabalhava aos domingos", "recebia por fora", "foi dispensado sem justa causa" — e o sistema procura nos documentos já lidos daquele caso, devolvendo o trecho e o nome do arquivo. Cada resultado tem **"Virar fato com esta prova"**, que joga direto na linha do tempo, já com o trecho amarrado. Só encontra o que passou pelo "Ler um documento": quanto mais documento você mandar, mais ele acha.
 
 **Processos.** Cadastre o número assim que protocolar — não precisa esperar o diário. A partir daí o robô do DataJud acompanha sozinho.
 
@@ -3198,7 +3235,23 @@ Quem são os parceiros e o que foi delegado a cada um: tipo de serviço, valor c
 - **casos análogos**: escreva o assunto, a classe, a vara ou a comarca e ele junta os processos parecidos, com o que aconteceu em cada um;
 - **banco de decisões**: decisões de fora, com tribunal, vara, comarca, relator, tema, tese, resultado e link do inteiro teor. Serve para saber como aquele juízo vem decidindo antes de ajuizar, recorrer ou fechar acordo.
 
-Duas ressalvas honestas: número pequeno é indício, não estatística; e a taxa de êxito só passa a valer quando você fechar os casos escolhendo o resultado (acordo, procedente, improcedente…).
+### Resultado sugerido pelas movimentações
+
+O robô do DataJud lê o que o juízo registrou e propõe o desfecho de cada caso encerrado que ainda está sem resultado.
+
+- Sugestão com **decisão de mérito** — "Procedência em Parte", "Improcedência", "Homologação de Transação" — vem marcada e entra no botão **"Gravar de uma vez"**.
+- Sugestão só de **encerramento** — "Trânsito em julgado", "Arquivamento definitivo" — vem em âmbar, com o aviso de que o mérito não aparece nas movimentações, e **fica de fora** do gravar tudo. Nesses, escolha o resultado no seletor ou pule.
+- Você pode corrigir qualquer resultado depois, na ficha do caso.
+
+Conforme o robô sincroniza os processos de madrugada, a lista cresce. Vale voltar aqui de tempos em tempos.
+
+### Quem é o cliente nestes processos
+
+Processos vindos do acervo antigo que ainda não têm o lado definido. Um clique em **é o autor** ou **é o réu**: o nome vira cliente (marcado como anterior ao sistema), o caso ganha o polo certo e a linha some. Há também **nenhum dos dois**, para o processo que não é seu cliente.
+
+### Ressalvas honestas
+
+Número pequeno é indício, não estatística. A taxa de êxito só passa a valer quando os casos encerrados tiverem resultado. E a comarca é deduzida do nome da vara — onde o órgão não traz a cidade, ela fica vazia.
 
 ## 13. Financeiro
 
@@ -3208,7 +3261,17 @@ Contas a receber e a pagar, por caso, cliente e categoria. Honorário por êxito
 
 **Minutas** — a peça redigida a partir dos fatos do caso e das teses do banco. Sai como minuta, nunca protocolada: a revisão e a assinatura são suas.
 
-**Aprender** — ensina uma peça sua ao banco. O sistema extrai as teses e o modo de escrever e guarda para as próximas.
+**Aprender** — ensina uma peça sua ao banco. Cole a peça que você **protocolou** (não a minuta), diga de onde veio, e o sistema extrai três coisas: teses novas, refinamentos de teses que já existem e os precedentes citados. Nada entra direto — tudo vira candidato na **Fila de aprovação**, e você aprova ou descarta um por um.
+
+**Precedentes.** Cada julgado citado nas suas peças vira uma ficha, com tribunal, número, relator, órgão, data e tema. Em cada ficha:
+
+- **Como você citou** — o trecho da sua própria peça em que aquele julgado aparece. É isto que permite conferir sem sair do sistema: você lê o que escreveu e vê se o julgado sustenta mesmo aquilo. Tem botão para copiar o trecho.
+- **Ementa, como está na peça** — quando a peça transcreve a ementa, ela é copiada inteira, literal.
+- **Abrir e conferir** — abre os campos para colar a ementa, guardar o link do inteiro teor e marcar a situação da tese: **em vigor**, **superado** ou **em dúvida**.
+- **Procurar no Google** e **Procurar no Jusbrasil** — já vão preenchidos com tribunal e número.
+- **Marcar conferido** — enquanto não estiver conferido, o sistema trata o precedente com ressalva.
+
+Precedente antigo, absorvido antes desta melhoria, pode aparecer sem o trecho. Basta reensinar aquela peça que ele passa a vir completo.
 
 **Playbook** — as suas teses padrão. É o que faz a peça sair no seu jeito e não num jeito genérico: ao minutar, o sistema puxa as teses do playbook da área daquele caso, aplica só as que os fatos sustentarem e escreve com a sua redação e o seu fundamento, em vez de redigir por conta própria. Ele é proibido de inventar fundamento e de esticar a tese além do que está escrito ali.
 
@@ -3252,7 +3315,9 @@ Três caminhos: baixar a planilha modelo e subir preenchida; colar direto da tel
 
 As colunas podem vir em qualquer ordem — ele reconhece pelo cabeçalho. O mínimo é o número do processo **ou** o nome do cliente. Quanto mais vara, classe, assunto, datas e resultado, melhor a estatística.
 
-Antes de gravar ele mostra a conferência: quantas linhas leu, quais têm problema, quantas já vêm encerradas. Processo cujo número já existe é pulado — pode rodar de novo sem duplicar. Tudo o que entra por aí nasce marcado como anterior ao sistema.
+Antes de gravar ele mostra a conferência: quantas linhas leu, quais têm problema, quantas já vêm encerradas. Processo cujo número já existe é pulado — pode rodar de novo sem duplicar, e nesse caso ele só completa as partes que faltavam. Tudo o que entra por aí nasce marcado como anterior ao sistema.
+
+**Colunas de parte.** Se em vez de "cliente" você informar **parte autora** e **parte ré**, o caso entra sem cliente definido e o processo aparece na Jurimetria, em "Quem é o cliente nestes processos", para você marcar o lado depois. É o caminho certo quando você não sabe de cabeça quem é o seu.
 
 ## 17. Regras
 
@@ -3281,6 +3346,8 @@ Vale saber, para não contar com o que não existe:
 - **Não emite boleto nem nota fiscal** — precisaria contratar um gateway.
 - **Não tem portal do cliente** — por decisão sua.
 - **Não dá parecer.** A confiança que ele mostra é do robô que leu o texto, não do advogado que responde pelo caso.
+- **Não busca jurisprudência sozinho.** O banco de precedentes é alimentado pelas suas peças; a conferência do inteiro teor é feita por você, pelos links de busca.
+- **Não inventa ementa.** Só transcreve a que estiver na peça.
 
 ## 20. Quando der errado
 
@@ -3293,6 +3360,14 @@ Vale saber, para não contar com o que não existe:
 **Um processo aparece "nunca consultado"** — o DataJud não achou aquele número. Costuma ser número digitado errado ou processo em segredo de justiça.
 
 **O prazo sugerido veio com data estranha** — descarte e marque à mão. É exatamente para isso que existe a confirmação.
+
+**A leitura de um PDF grande parou no meio** — ele lê em blocos de 12 páginas; se um bloco falhar, o status diz em quais páginas parou. Mande de novo só aquele intervalo.
+
+**"Onde isto está provado?" não acha nada** — só procura em documentos que passaram pelo "Ler um documento" daquele caso. Documento anexado por outro caminho não entra na busca.
+
+**Um precedente aparece sem o trecho da citação** — foi absorvido antes da melhoria. Reensine a peça no menu Aprender.
+
+**A jurimetria mostra 0% de êxito** — falta preencher o resultado dos casos encerrados. Comece por "Resultado sugerido pelas movimentações".
 
 **Perdi alguma coisa** — as cópias automáticas ficam em Configurações. Todo dia às 7h30.
 
