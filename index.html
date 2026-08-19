@@ -3634,14 +3634,15 @@ function pintarPendentes(){
     <td class="proc"><a class="lnk" href="#/processo/${p.id}">${esc(p.numero_formatado||p.numero_cnj)}</a>
       <span class="sub">${esc(p.tribunal_sigla||'')}</span></td>
     <td>${esc(p.orgao||'—')}<span class="sub">${esc(p.classe||'')}</span></td>
-    <td class="dt">${p.encerrado_em?br(p.encerrado_em):'—'}</td>
+    <td class="dt">${p.encerrado_em?br(p.encerrado_em):'—'}
+      ${p.jaTem?'<span class="sub">hoje está no autor</span>':'<span class="pill crit">sem cliente</span>'}</td>
     <td><div class="acoes" style="flex-wrap:wrap">
       <button class="btn ok" style="text-align:left;max-width:330px"
         onclick="definirCliente('${p.id}','${p.caso_id}','ativo')">
-        <b>autor</b> · ${esc(p.parte_ativa||'—')}</button>
+        <b>é o autor</b> · ${esc(p.parte_ativa||'—')}</button>
       <button class="btn" style="text-align:left;max-width:330px"
         onclick="definirCliente('${p.id}','${p.caso_id}','passivo')">
-        <b>réu</b> · ${esc(p.parte_passiva||'—')}</button>
+        <b>é o réu</b> · ${esc(p.parte_passiva||'—')}</button>
       <button class="btn" onclick="definirCliente('${p.id}','${p.caso_id}','outro')">nenhum dos dois</button>
       <span class="sub" id="dl-${p.id}" style="margin:0"></span>
     </div></td></tr>`).join('')}
@@ -3685,8 +3686,8 @@ async function telaJurimetria(){
              valor_causa: p.valor_causa || c?.valor_causa || null };
   });
   JUR.casos = cs.data||[]; JUR.decisoes = dc.data||[];
-  PENDENTES = (pend.data||[]).filter(p => p.caso && !p.caso.cliente_lado && !p.caso.cliente_id)
-    .map(p => ({ ...p, encerrado_em: p.caso?.encerrado_em || null }));
+  PENDENTES = (pend.data||[]).filter(p => p.caso && !p.caso.cliente_lado)
+    .map(p => ({ ...p, encerrado_em: p.caso?.encerrado_em || null, jaTem: p.caso?.cliente_id || null }));
   const P = JUR.procs;
   const enc = P.filter(p=>p.encerrado_em);
   const ex  = enc.filter(p=>EXITO.includes(String(p.resultado||'').toLowerCase()));
@@ -3736,9 +3737,10 @@ async function telaJurimetria(){
      agrupa(P.filter(p=>p.area), p=>p.area), 'Área')}
 
   <div class="card"><h2>Quem é o cliente nestes processos</h2>
-    <p class="nota">Vieram do acervo antigo com as duas partes, mas sem dizer qual delas é sua.
-      Marque de pouco em pouco: o nome vira cliente na hora, o caso ganha o polo certo
-      e o processo sai desta lista. <span id="jpendc"></span></p>
+    <p class="nota">Processos do acervo antigo esperando você dizer de que lado está o seu cliente.
+      Um clique: o nome vira cliente, o caso ganha o polo certo e a linha some daqui.
+      Onde diz "hoje está no autor", foi o palpite da importação — se estiver errado, é só marcar o réu.
+      <span id="jpendc"></span></p>
     <div id="jpend" style="padding:0 18px 18px"></div></div>
 
   <div class="card"><h2>Banco de decisões — casos análogos de fora</h2>
