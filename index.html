@@ -936,10 +936,27 @@ window.confirmarPrec = async (id, v) => {
     verificado_em: v ? new Date().toISOString() : null }).eq('id', id);
   telaAprender();
 };
-window.copiarTexto = async (jsonTxt, el) => {
-  try { await navigator.clipboard.writeText(JSON.parse(jsonTxt)); el.textContent = 'copiado ✓'; }
-  catch(e){ el.textContent = 'não deu para copiar'; }
-  setTimeout(()=>{ el.textContent = 'Copiar trecho'; }, 2500);
+window.copiarDe = async (idOrigem, el) => {
+  const src = document.getElementById(idOrigem);
+  if (!src) { el.textContent = 'não achei o texto'; return; }
+  const txt = src.innerText;
+  const rotulo = el.dataset.rot || el.textContent;
+  el.dataset.rot = rotulo;
+  let ok = false;
+  try { await navigator.clipboard.writeText(txt); ok = true; } catch (e) { ok = false; }
+  if (!ok) {
+    const ta = document.createElement('textarea');
+    ta.value = txt; ta.style.position = 'fixed'; ta.style.top = '-1000px'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    ta.remove();
+  }
+  if (!ok) {
+    const r = document.createRange(); r.selectNodeContents(src);
+    const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    el.textContent = 'selecionei — use Ctrl+C';
+  } else el.textContent = 'copiado ✓';
+  setTimeout(() => { el.textContent = rotulo; }, 3000);
 };
 window.abrirPrec = (id) => {
   const el = document.getElementById('pc'+id); if (!el) return;
@@ -1023,13 +1040,15 @@ async function telaAprender(){
       <div class="sub" style="margin-top:3px">${esc(p.tema||'sem tema anotado')}</div>
       ${p.citacao ? `<div style="margin-top:6px;padding:10px 12px;border-left:3px solid var(--ln);background:#faf9f6">
         <div class="sub" style="margin:0 0 4px"><b>Como você citou</b>${p.citacao_fonte?` · ${esc(p.citacao_fonte)}`:''}</div>
-        <div style="font-size:12.8px;line-height:1.6;white-space:pre-wrap;max-height:260px;overflow:auto">${esc(p.citacao)}</div>
+        <div id="pctr-${p.id}" style="font-size:12.8px;line-height:1.6;white-space:pre-wrap;max-height:260px;overflow:auto">${esc(p.citacao)}</div>
         <div style="margin-top:6px"><button class="btn" style="font-size:11.4px;padding:3px 7px"
-          onclick="copiarTexto(${JSON.stringify(JSON.stringify(p.citacao))}, this)">Copiar trecho</button></div></div>`
+          onclick="copiarDe('pctr-${p.id}', this)">Copiar trecho</button></div></div>`
         : '<div class="sub" style="margin-top:4px;color:var(--crit)">Não guardei o trecho em que este julgado foi citado — ensine a peça de novo no campo "Ensinar uma peça ao banco" e ele passa a vir junto, com a ementa que a peça transcrever.</div>'}
       ${p.ementa ? `<div style="margin-top:6px;padding:10px 12px;border-left:3px solid var(--good);background:#f7faf6">
         <div class="sub" style="margin:0 0 4px"><b>Ementa, como está na peça</b></div>
-        <div style="font-size:12.8px;line-height:1.6;white-space:pre-wrap;max-height:320px;overflow:auto">${esc(p.ementa)}</div></div>` : ''}
+        <div id="pcem2-${p.id}" style="font-size:12.8px;line-height:1.6;white-space:pre-wrap;max-height:320px;overflow:auto">${esc(p.ementa)}</div>
+        <div style="margin-top:6px"><button class="btn" style="font-size:11.4px;padding:3px 7px"
+          onclick="copiarDe('pcem2-${p.id}', this)">Copiar ementa</button></div></div>` : ''}
       ${p.relator?`<div class="sub">Relator: ${esc(p.relator)}${p.orgao?' · '+esc(p.orgao):''}</div>`:''}
       ${p.origem?`<div class="sub">Citado em: ${esc(p.origem)}</div>`:''}
       <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
