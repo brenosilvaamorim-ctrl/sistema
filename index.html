@@ -204,10 +204,10 @@ function telaLogin(msg){
 }
 
 let ESC_NOME = 'Breno S. Amorim Advocacia', ESC_LOGO = null, ESC_ID = null, ESC_TOKEN = null;
-const MENU_PADRAO = [['prazos','Prazos'],['agenda','Agenda'],['captacao','Captação'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['clientes','Clientes'],['mensageria','Mensagens'],['metricas','Métricas'],['financeiro','Financeiro'],['parceiros','Parceiros'],['minutas','Minutas'],['aprender','Aprender'],['dicionario','Dicionário'],['documentos','Documentos'],['tutoriais','Tutoriais'],['config','Configurações']];
+const MENU_PADRAO = [['prazos','Prazos'],['triagem','Triagem'],['agenda','Agenda'],['captacao','Captação'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['clientes','Clientes'],['mensageria','Mensagens'],['metricas','Métricas'],['financeiro','Financeiro'],['parceiros','Parceiros'],['minutas','Minutas'],['aprender','Aprender'],['dicionario','Dicionário'],['documentos','Documentos'],['tutoriais','Tutoriais'],['config','Configurações']];
 let MENUCFG = MENU_PADRAO.map(([k,r]) => ({ k, r, v:true }));
 let ROTULOS = {};
-const PALAVRAS = {"Telas e seções": ["Prazos", "Agenda", "Captação", "Casos", "Processos", "Andamento", "Clientes", "Mensagens", "Métricas", "Financeiro", "Parceiros", "Delegar um servi\u00e7o", "Acompanhamento", "Quem s\u00e3o os parceiros", "Delegado a parceiro", "Minutas", "Aprender", "Dicionário", "Documentos", "Tutoriais", "Configurações", "Calendário", "Pela frente", "Vencidos e ainda abertos", "Linha do tempo", "Todos os processos", "Andamento dos processos", "Os mais parados primeiro", "Precedentes", "Teses", "Fila de aprovação", "Minutas recentes", "Análise prévia", "Modo juiz", "Marcar prazo, audiência ou tarefa", "Levar tudo para o Google Agenda", "Equipe e acessos", "Dados do escritório", "Áreas de atuação", "Origens de captação", "Categorias financeiras", "Dicionário de movimentações", "Cor do dia de hoje", "Cópias automáticas", "Documentos a pedir", "Documentos do cliente", "Assinatura de documentos", "Tutoriais para clientes", "Ensinar uma peça ao banco", "Mensagem para o cliente", "Novo contato", "Novo lançamento", "Resultado da leitura"], "Colunas das tabelas": ["Feito", "Em trâmite", "Parado há", "Fase", "Situação e providência", "Aguardando até", "Chegou", "Documento", "Onde consigo", "Recebido em", "Vence", "Quando", "Situação", "Providência", "Cliente / vara", "Cliente / caso", "Processo", "Trecho lido e memória", "Conf.", "Ação", "Tipo", "O quê", "Descrição", "Origem", "Valor", "Vencimento", "Tribunal", "Relator", "Tema", "Órgão", "Área", "Nome", "Pessoa", "Perfil", "Ativo", "E-mail", "Telefone", "Telefone / WhatsApp", "Última movimentação", "Último informativo", "Encerrado em", "Motivo", "Resultado", "Vezes", "Cód."], "Números do topo": ["em aberto", "vencem em até 5 dias", "já vencidos", "aguardando confirmação", "compromissos à frente", "nos próximos 7 dias", "audiências", "já passaram e seguem abertos", "casos abertos", "casos ativos", "clientes", "processos", "pedindo providência", "merecendo conferência", "execuções com o prazo correndo", "tempo médio em trâmite", "em trâmite", "parado há", "sem telefone", "sem contato há mais de 30 dias", "parados há mais de 90 dias", "prescrevem em até 180 dias", "com prazo em até 5 dias", "com novidade desde o último informativo", "teses no banco", "esperando sua decisão", "precedentes a conferir", "teses novas", "refinamentos", "tempo de leitura", "a pagar", "a receber", "saldo do mês", "recebido neste mês", "projeção para o ano"]};
+const PALAVRAS = {"Telas e seções": ["Prazos", "Triagem", "Triagem das publicações", "O que chegou", "Agenda", "Captação", "Casos", "Processos", "Andamento", "Clientes", "Mensagens", "Métricas", "Financeiro", "Parceiros", "Delegar um servi\u00e7o", "Acompanhamento", "Quem s\u00e3o os parceiros", "Delegado a parceiro", "Minutas", "Aprender", "Dicionário", "Documentos", "Tutoriais", "Configurações", "Calendário", "Pela frente", "Vencidos e ainda abertos", "Linha do tempo", "Todos os processos", "Andamento dos processos", "Os mais parados primeiro", "Precedentes", "Teses", "Fila de aprovação", "Minutas recentes", "Análise prévia", "Modo juiz", "Marcar prazo, audiência ou tarefa", "Levar tudo para o Google Agenda", "Equipe e acessos", "Dados do escritório", "Áreas de atuação", "Origens de captação", "Categorias financeiras", "Dicionário de movimentações", "Cor do dia de hoje", "Cópias automáticas", "Documentos a pedir", "Documentos do cliente", "Assinatura de documentos", "Tutoriais para clientes", "Ensinar uma peça ao banco", "Mensagem para o cliente", "Novo contato", "Novo lançamento", "Resultado da leitura"], "Colunas das tabelas": ["Feito", "Em trâmite", "Parado há", "Fase", "Situação e providência", "Aguardando até", "Chegou", "Documento", "Onde consigo", "Recebido em", "Vence", "Quando", "Situação", "Providência", "Cliente / vara", "Cliente / caso", "Processo", "Trecho lido e memória", "Conf.", "Ação", "Tipo", "O quê", "Descrição", "Origem", "Valor", "Vencimento", "Tribunal", "Relator", "Tema", "Órgão", "Área", "Nome", "Pessoa", "Perfil", "Ativo", "E-mail", "Telefone", "Telefone / WhatsApp", "Última movimentação", "Último informativo", "Encerrado em", "Motivo", "Resultado", "Vezes", "Cód."], "Números do topo": ["em aberto", "vencem em até 5 dias", "já vencidos", "aguardando confirmação", "compromissos à frente", "nos próximos 7 dias", "audiências", "já passaram e seguem abertos", "casos abertos", "casos ativos", "clientes", "processos", "pedindo providência", "merecendo conferência", "execuções com o prazo correndo", "tempo médio em trâmite", "em trâmite", "parado há", "sem telefone", "sem contato há mais de 30 dias", "parados há mais de 90 dias", "prescrevem em até 180 dias", "com prazo em até 5 dias", "com novidade desde o último informativo", "teses no banco", "esperando sua decisão", "precedentes a conferir", "teses novas", "refinamentos", "tempo de leitura", "a pagar", "a receber", "saldo do mês", "recebido neste mês", "projeção para o ano"]};
 function aplicarRotulos(raiz){
   const pares = Object.entries(ROTULOS).filter(([k,v]) => v && v !== k);
   if (!pares.length || !raiz) return;
@@ -2828,6 +2828,175 @@ window.salvarEscritorio = async (ev) => {
     .eq('id', e1.id);
   document.getElementById('esc-st').textContent = error ? 'erro: '+error.message : 'salvo ✓';
 };
+/* ------------------------------------------------- triagem das publicações */
+let TRI = [], TRIFILTRO = 'pendentes', TRIDIAS = 30;
+const confRotulo = c => c == null ? ['—','cin']
+  : (c >= 0.8 ? ['confiança alta','good'] : (c >= 0.5 ? ['confiança regular','warn'] : ['confiança baixa','ser']));
+function classificar(i){
+  if (i.prazos.length) {
+    const c = Math.max(...i.prazos.map(p => Number(p.confianca ?? 0)));
+    const p = i.prazos[0];
+    return { chave:'prazo', rotulo:'Prazo sugerido', cor:'ser', conf:c,
+      titulo: p.descricao,
+      explica: 'O robô leu ' + p.dias + ' dias no texto e calculou o vencimento para ' + br(p.data_fatal) + '.' };
+  }
+  if (i.audiencias.length) {
+    const a = i.audiencias[0];
+    return { chave:'audiencia', rotulo:'Audiência', cor:'crit', conf:null,
+      titulo:'Audiência designada',
+      explica:'Data lida na publicação: ' + br(String(a.inicio).slice(0,10)) +
+        ' às ' + String(a.inicio).slice(11,16) + '. Confira no PJe antes de confiar.' };
+  }
+  return { chave:'sem', rotulo:'Sem providência', cor:'good', conf:null,
+    titulo: i.tipo_documento || i.tipo_comunicacao || 'Publicação',
+    explica:'O robô leu o texto e não encontrou prazo nem audiência para a nossa parte.' };
+}
+window.verPublicacao = id => {
+  const el = document.getElementById('tx-' + id);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+};
+window.baixarIntimacao = async (id, situacao) => {
+  const st = document.getElementById('ts-' + id);
+  if (st) st.textContent = 'gravando…';
+  const { error } = await sb.from('intimacao')
+    .update({ situacao, lida_em: new Date().toISOString() }).eq('id', id);
+  if (error) { if (st) st.textContent = 'erro: ' + error.message; return; }
+  const i = TRI.find(x => x.id === id); if (i) i.situacao = situacao;
+  pintarTriagem();
+};
+window.confirmarPrazoTri = async (intimId, prazoId) => {
+  const st = document.getElementById('ts-' + intimId);
+  if (st) st.textContent = 'confirmando…';
+  const e1 = (await sb.from('prazo').update({ situacao:'confirmado',
+    confirmado_em: new Date().toISOString() }).eq('id', prazoId)).error;
+  if (e1) { if (st) st.textContent = 'erro: ' + e1.message; return; }
+  await sb.from('intimacao').update({ situacao:'confirmada', lida_em:new Date().toISOString() }).eq('id', intimId);
+  const i = TRI.find(x => x.id === intimId);
+  if (i) { i.situacao = 'confirmada'; const p = i.prazos.find(x=>x.id===prazoId); if (p) p.situacao = 'confirmado'; }
+  pintarTriagem();
+};
+window.cadastrarDaPublicacao = async id => {
+  const i = TRI.find(x => x.id === id); if (!i) return;
+  const st = document.getElementById('ts-' + id);
+  if (st) st.textContent = 'cadastrando…';
+  const eid = await escId();
+  const numero = (i.numero_processo || '').replace(/\D/g, '');
+  if (!numero) { if (st) st.textContent = 'a publicação não traz número de processo'; return; }
+  let { data: proc } = await sb.from('processo').select('id,caso_id').eq('numero_cnj', numero).maybeSingle();
+  if (!proc) {
+    const { data: caso, error: ec } = await sb.from('caso').insert({
+      escritorio_id: eid, area: areaDoTribunal(i.tribunal_sigla),
+      titulo: [i.numero_formatado || cnjFormata(numero), i.classe].filter(Boolean).join(' — '),
+      observacoes: 'Caso criado a partir de uma publicação do DJEN. Confira o cliente e ajuste o título.',
+    }).select('id').single();
+    if (ec) { if (st) st.textContent = 'erro no caso: ' + ec.message; return; }
+    const { data: np, error: ep } = await sb.from('processo').insert({
+      escritorio_id: eid, caso_id: caso.id, numero_cnj: numero,
+      numero_formatado: i.numero_formatado || cnjFormata(numero),
+      tribunal_sigla: i.tribunal_sigla || null, orgao: i.orgao || null, classe: i.classe || null,
+    }).select('id,caso_id').single();
+    if (ep) { if (st) st.textContent = 'erro no processo: ' + ep.message; return; }
+    proc = np;
+  }
+  const { error } = await sb.from('intimacao')
+    .update({ processo_id: proc.id, caso_id: proc.caso_id }).eq('id', id);
+  if (error) { if (st) st.textContent = 'erro: ' + error.message; return; }
+  if (st) st.textContent = 'processo cadastrado ✓';
+  telaTriagem();
+};
+window.filtrarTriagem = v => { TRIFILTRO = v; pintarTriagem(); };
+window.mudarDiasTri = v => { TRIDIAS = Number(v); telaTriagem(); };
+function pintarTriagem(){
+  const alvo = document.getElementById('trilista'); if (!alvo) return;
+  for (const b of document.querySelectorAll('#trif .btn')) b.classList.toggle('ok', b.dataset.f === TRIFILTRO);
+  const baixada = i => ['sem_providencia','confirmada','cumprida'].includes(i.situacao);
+  let l = TRI.map(i => ({ i, c: classificar(i) }));
+  if (TRIFILTRO === 'pendentes')  l = l.filter(x => !baixada(x.i));
+  else if (TRIFILTRO !== 'tudo')  l = l.filter(x => x.c.chave === TRIFILTRO);
+  if (!l.length) return alvo.innerHTML =
+    '<div class="vazio">Nada nesta lista. Se filtrou por pendentes, é porque está tudo baixado.</div>';
+  alvo.innerHTML = l.map(({i,c}) => {
+    const [rc, cc] = confRotulo(c.conf);
+    const prazo = i.prazos[0];
+    return `<div class="card" style="margin:0 18px 12px;box-shadow:none">
+      <div style="padding:14px 16px 4px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <span class="pill ${c.cor}">${esc(c.rotulo)}</span>
+        ${c.conf != null ? `<span class="pill ${cc}">${esc(rc)}</span>` : ''}
+        ${baixada(i) ? '<span class="pill cin">baixada</span>' : ''}
+        <span class="sub" style="margin:0">${br(i.data_disponibilizacao)} · ${esc(i.tribunal_sigla||'')} · ${esc(i.orgao||'')}</span>
+      </div>
+      <div style="padding:0 16px 6px"><b>${esc(c.titulo)}</b>
+        <div class="sub" style="margin-top:2px">${esc(c.explica)}</div>
+        <div class="sub" style="margin-top:4px">
+          ${i.caso_id ? `Caso: <a class="lnk" href="#/caso/${i.caso_id}">${esc(i.caso?.titulo || 'ver')}</a>` :
+            '<b style="color:var(--crit)">Processo não cadastrado</b>'}
+          ${i.numero_formatado ? ' · ' + esc(i.numero_formatado) : ''}
+        </div></div>
+      <div style="padding:0 16px 14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button class="btn" onclick="verPublicacao('${i.id}')">Ver a publicação</button>
+        ${prazo && prazo.situacao === 'sugerido'
+          ? `<button class="btn ok" onclick="confirmarPrazoTri('${i.id}','${prazo.id}')">Confirmar o prazo</button>` : ''}
+        ${!i.processo_id ? `<button class="btn ok" onclick="cadastrarDaPublicacao('${i.id}')">Cadastrar processo</button>` : ''}
+        ${i.temRascunho ? `<a class="btn" href="#/mensageria">Revisar a mensagem do cliente</a>` : ''}
+        ${!baixada(i) ? `<button class="btn" onclick="baixarIntimacao('${i.id}','sem_providencia')">Marcar como lida</button>` : ''}
+        <span class="sub" id="ts-${i.id}" style="margin:0"></span>
+      </div>
+      <div id="tx-${i.id}" style="display:none;padding:0 16px 16px">
+        ${i.link_pje ? `<p class="sub"><a class="lnk" href="${esc(i.link_pje)}" target="_blank" rel="noreferrer">abrir no PJe</a></p>` : ''}
+        <textarea rows="12" readonly onclick="this.select()">${esc(i.texto||'')}</textarea></div>
+    </div>`;
+  }).join('');
+  aplicarRotulos(alvo);
+}
+async function telaTriagem(){
+  const desde = new Date(Date.now() - TRIDIAS * 864e5).toISOString().slice(0,10);
+  const [it, pz, ev, rs] = await Promise.all([
+    sb.from('intimacao').select('id,numero_processo,numero_formatado,orgao,tribunal_sigla,tipo_comunicacao,tipo_documento,classe,data_disponibilizacao,texto,link_pje,situacao,processo_id,caso_id,caso:caso_id(titulo)')
+      .gte('data_disponibilizacao', desde).order('data_disponibilizacao', { ascending:false }).limit(400),
+    sb.from('prazo').select('id,intimacao_id,descricao,data_fatal,dias,confianca,situacao').not('intimacao_id','is',null).limit(1000),
+    sb.from('evento').select('id,titulo,inicio,tipo,descricao,processo_id').eq('tipo','audiencia').limit(1000),
+    sb.from('informativo_rascunho').select('caso_id,status').eq('status','rascunho').limit(500),
+  ]);
+  if (it.error) return erro(it.error.message);
+  const rascunhos = new Set((rs.data||[]).map(r => r.caso_id));
+  TRI = (it.data||[]).map(i => ({
+    ...i,
+    prazos: (pz.data||[]).filter(p => p.intimacao_id === i.id),
+    audiencias: (ev.data||[]).filter(e => e.processo_id && e.processo_id === i.processo_id &&
+      String(e.descricao||'').includes(i.data_disponibilizacao)),
+    temRascunho: i.caso_id ? rascunhos.has(i.caso_id) : false,
+  }));
+  const cls = TRI.map(classificar);
+  const baixada = i => ['sem_providencia','confirmada','cumprida'].includes(i.situacao);
+  const pend = TRI.filter(i => !baixada(i)).length;
+  const semProc = TRI.filter(i => !i.processo_id).length;
+  app.innerHTML = menu('triagem') + `
+  <main><h1>Triagem das publicações</h1>
+  <p class="meta">Tudo o que o robô leu no Diário, com o que ele concluiu e o quanto confia na leitura.
+    O texto integral fica aqui, sem precisar abrir o PJe. Nada some da lista sem você mandar.</p>
+  <div class="kpis">
+    <div class="kpi ${pend?'al':''}"><div class="n">${pend}</div><div class="l">esperando sua conferência</div></div>
+    <div class="kpi"><div class="n">${cls.filter(c=>c.chave==='prazo').length}</div><div class="l">com prazo sugerido</div></div>
+    <div class="kpi"><div class="n">${cls.filter(c=>c.chave==='audiencia').length}</div><div class="l">com audiência</div></div>
+    <div class="kpi ${semProc?'al':''}"><div class="n">${semProc}</div><div class="l">de processo não cadastrado</div></div>
+  </div>
+  <div class="card"><h2>O que chegou</h2>
+    <div id="trif" style="padding:0 18px 12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button class="btn" data-f="pendentes" onclick="filtrarTriagem('pendentes')">a conferir</button>
+      <button class="btn" data-f="prazo" onclick="filtrarTriagem('prazo')">com prazo</button>
+      <button class="btn" data-f="audiencia" onclick="filtrarTriagem('audiencia')">audiências</button>
+      <button class="btn" data-f="sem" onclick="filtrarTriagem('sem')">sem providência</button>
+      <button class="btn" data-f="tudo" onclick="filtrarTriagem('tudo')">tudo</button>
+      <span class="sub" style="margin:0 0 0 8px">período:</span>
+      <select onchange="mudarDiasTri(this.value)" style="font-size:12px">
+        ${[7,15,30,60,90,365].map(d=>`<option value="${d}" ${TRIDIAS===d?'selected':''}>${d} dias</option>`).join('')}
+      </select>
+    </div>
+    <div id="trilista"></div></div>
+  </main>` + rodape();
+  pintarTriagem();
+}
+
 /* ------------------------------------------- cor do dia de hoje no calendário */
 const CORES_HOJE = [
   ['#2a78d6', 'Azul'], ['#0ca30c', 'Verde'], ['#d03b3b', 'Vermelho'],
@@ -4037,6 +4206,7 @@ async function rota(){
   const h = location.hash || '#/prazos';
   if(h.startsWith('#/processo/')) return telaProcesso(h.slice('#/processo/'.length));
   if(h.startsWith('#/caso/'))      return telaCaso(h.slice('#/caso/'.length));
+  if(h.startsWith('#/triagem'))    return telaTriagem();
   if(h.startsWith('#/agenda'))     return telaAgenda();
   if(h.startsWith('#/captacao'))   return telaCaptacao();
   if(h.startsWith('#/casos'))      return telaCasos();
