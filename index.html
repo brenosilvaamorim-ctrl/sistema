@@ -1016,6 +1016,10 @@ async function telaAprender(){
         ${p.ementa?'<span class="pill cin">com ementa</span>':'<span class="pill cin">sem ementa</span>'}
       </div>
       <div class="sub" style="margin-top:3px">${esc(p.tema||'sem tema anotado')}</div>
+      ${p.citacao ? `<div style="margin-top:6px;padding:8px 10px;border-left:3px solid var(--ln);background:#faf9f6">
+        <div class="sub" style="margin:0 0 3px"><b>Como você citou</b>${p.citacao_fonte?` · ${esc(p.citacao_fonte)}`:''}</div>
+        <div style="font-size:12.5px">…${esc(p.citacao)}…</div></div>`
+        : '<div class="sub" style="margin-top:4px;color:var(--crit)">Não guardei o trecho em que este julgado foi citado — ensine a peça de novo no campo acima e ele passa a vir junto.</div>'}
       ${p.relator?`<div class="sub">Relator: ${esc(p.relator)}${p.orgao?' · '+esc(p.orgao):''}</div>`:''}
       ${p.origem?`<div class="sub">Citado em: ${esc(p.origem)}</div>`:''}
       <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -2125,7 +2129,9 @@ async function telaCaso(id){
   <div class="card"><h2>Ler um documento</h2>
     <p class="nota">Mande a CTPS, o TRCT, o contracheque, o cartão de ponto, o laudo ou o edital em PDF ou foto.
       O sistema lê e devolve os campos e os fatos com a página onde cada um aparece. Ele só extrai o que está
-      escrito: o que estiver ilegível fica de fora, e nada entra no caso sem você marcar. Até 6 MB por arquivo.</p>
+      escrito: o que estiver ilegível fica de fora, e nada entra no caso sem você marcar.
+      Serve para PDF de texto, PDF digitalizado e foto. <b>PDF grande é dividido sozinho em blocos de 12 páginas</b>
+      e lido bloco a bloco — dá para mandar processo inteiro, até 60 MB. Foto avulsa, até 6 MB.</p>
     <div style="padding:0 18px 12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <input type="file" accept="application/pdf,image/*" onchange="lerDocumento(this)">
       <span class="sub" id="ld-st" style="margin:0"></span>
@@ -5602,32 +5608,86 @@ window.virarFato = async (i) => {
   telaCaso(CASO.id);
 };
 let LIDO = null;
+async function carregarPdfLib(){
+  if (window.PDFLib) return window.PDFLib;
+  await new Promise((ok, err) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js';
+    s.onload = ok; s.onerror = () => err(new Error('não consegui carregar o divisor de PDF'));
+    document.head.appendChild(s);
+  });
+  return window.PDFLib;
+}
+async function fatiarPdf(file, porBloco){
+  const { PDFDocument } = await carregarPdfLib();
+  const doc = await PDFDocument.load(await file.arrayBuffer(), { ignoreEncryption: true });
+  const n = doc.getPageCount();
+  const partes = [];
+  for (let i = 0; i < n; i += porBloco) {
+    const novo = await PDFDocument.create();
+    const idx = [];
+    for (let k = 0; k < porBloco && i + k < n; k++) idx.push(i + k);
+    const pgs = await novo.copyPages(doc, idx);
+    pgs.forEach(pg => novo.addPage(pg));
+    partes.push({ b64: await novo.saveAsBase64(), de: i + 1, ate: i + idx.length });
+  }
+  return { paginas: n, partes };
+}
+async function mandarAoLeitor(b64, mime, nome){
+  const { data: { session } } = await sb.auth.getSession();
+  const r = await fetch(SB_URL + '/functions/v1/ler-documento', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', apikey: SB_KEY,
+               Authorization: 'Bearer ' + session.access_token },
+    body: JSON.stringify({ arquivo: b64, mime, nome, caso_id: CASO.id }),
+  });
+  return r.json();
+}
 window.lerDocumento = async (input) => {
   const f = input.files?.[0]; if (!f) return;
   const st = document.getElementById('ld-st');
   const alvo = document.getElementById('ldres');
-  if (f.size > 6*1024*1024) { st.style.color='var(--crit)';
-    st.textContent = 'arquivo grande demais (máx. 6 MB). Reduza a foto ou divida o PDF.'; return; }
+  const ehPdf = /pdf/i.test(f.type) || /\.pdf$/i.test(f.name);
+  if (!ehPdf && f.size > 6*1024*1024) { st.style.color='var(--crit)';
+    st.textContent = 'foto grande demais (máx. 6 MB). Reduza a imagem.'; return; }
+  if (f.size > 60*1024*1024) { st.style.color='var(--crit)';
+    st.textContent = 'PDF acima de 60 MB. Divida em duas partes.'; return; }
   st.style.color='var(--i3)'; st.textContent = 'lendo o documento…'; alvo.innerHTML = '';
-  const b64 = await new Promise(res => {
-    const r = new FileReader();
-    r.onload = () => res(String(r.result).split(',')[1]);
-    r.readAsDataURL(f);
-  });
   let j;
   try {
-    const { data: { session } } = await sb.auth.getSession();
-    const r = await fetch(SB_URL + '/functions/v1/ler-documento', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', apikey: SB_KEY,
-                 Authorization: 'Bearer ' + session.access_token },
-      body: JSON.stringify({ arquivo: b64, mime: f.type, nome: f.name, caso_id: CASO.id }),
-    });
-    j = await r.json();
-  } catch (e) { st.style.color='var(--crit)'; st.textContent = 'não consegui falar com o leitor: ' + e.message; return; }
+    if (ehPdf && f.size > 3*1024*1024) {
+      st.textContent = 'PDF grande: dividindo em blocos de páginas…';
+      const { paginas, partes } = await fatiarPdf(f, 12);
+      const juntos = { tipo: null, campos: {}, fatos: [], transcricao: '', observacao: '', arquivo: f.name };
+      for (let i = 0; i < partes.length; i++) {
+        const parte = partes[i];
+        st.textContent = `lendo páginas ${parte.de} a ${parte.ate} de ${paginas}…`;
+        const r = await mandarAoLeitor(parte.b64, 'application/pdf', `${f.name} (p. ${parte.de}-${parte.ate})`);
+        if (r.erro) { st.style.color='var(--crit)';
+          st.textContent = `erro nas páginas ${parte.de}-${parte.ate}: ${r.erro}`; return; }
+        juntos.tipo = juntos.tipo || r.tipo;
+        for (const [k, v] of Object.entries(r.campos || {})) if (juntos.campos[k] == null) juntos.campos[k] = v;
+        for (const ft of (r.fatos || []))
+          juntos.fatos.push({ ...ft, pagina: (Number(ft.pagina) || 1) + parte.de - 1 });
+        if (r.transcricao) juntos.transcricao += (juntos.transcricao ? '\n\n' : '')
+          + `--- páginas ${parte.de} a ${parte.ate} ---\n` + r.transcricao;
+        if (r.observacao) juntos.observacao += (juntos.observacao ? ' ' : '') + r.observacao;
+      }
+      juntos.paginas = paginas;
+      j = juntos;
+    } else {
+      const b64 = await new Promise(res => {
+        const r = new FileReader();
+        r.onload = () => res(String(r.result).split(',')[1]);
+        r.readAsDataURL(f);
+      });
+      j = await mandarAoLeitor(b64, f.type, f.name);
+    }
+  } catch (e) { st.style.color='var(--crit)'; st.textContent = 'não consegui ler: ' + e.message; return; }
   if (j.erro) { st.style.color='var(--crit)'; st.textContent = 'erro: ' + j.erro; return; }
   LIDO = j;
-  st.style.color='var(--good)'; st.textContent = 'lido: ' + (j.tipo || 'documento') + ' — confira antes de gravar';
+  st.style.color='var(--good)';
+  st.textContent = 'lido: ' + (j.tipo || 'documento') + (j.paginas ? ` · ${j.paginas} páginas` : '') + ' — confira antes de gravar';
   const campos = Object.entries(j.campos || {});
   alvo.innerHTML = `
     ${j.observacao ? `<p class="nota"><b>Ressalva da leitura:</b> ${esc(j.observacao)}</p>` : ''}
