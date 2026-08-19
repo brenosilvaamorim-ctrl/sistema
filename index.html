@@ -3291,6 +3291,8 @@ let IMP = [];
 const COLS = [
   ['numero',    'número do processo (CNJ)'],
   ['cliente',   'cliente'],
+  ['autor',     'parte autora'],
+  ['reu',       'parte ré'],
   ['area',      'área'],
   ['tribunal',  'tribunal'],
   ['vara',      'vara ou órgão'],
@@ -3307,7 +3309,9 @@ function acharCol(cab){
   cab.forEach((c, i) => {
     const t = semAcento(c);
     if (/numero|processo|cnj/.test(t) && idx.numero == null) idx.numero = i;
-    else if (/cliente|nome|parte|reclamante|autor/.test(t) && idx.cliente == null) idx.cliente = i;
+    else if (/reu|réu|reclamad|passiv/.test(t) && idx.reu == null) idx.reu = i;
+    else if (/autor|reclamante|ativa|requerente/.test(t) && idx.autor == null) idx.autor = i;
+    else if (/cliente|nome/.test(t) && idx.cliente == null) idx.cliente = i;
     else if (/area/.test(t) && idx.area == null) idx.area = i;
     else if (/tribunal/.test(t) && idx.tribunal == null) idx.tribunal = i;
     else if (/vara|orgao|juizo|comarca/.test(t) && idx.vara == null) idx.vara = i;
@@ -3343,13 +3347,14 @@ function lerLinhas(linhas){
     const g = k => mapa[k] != null ? String(l[mapa[k]] ?? '').trim() : '';
     const dig = g('numero').replace(/\D/g,'');
     return { numero: dig, formatado: dig.length===20 ? cnjFormata(dig) : g('numero'),
-      cliente: g('cliente'), area: g('area'), tribunal: g('tribunal'), vara: g('vara'),
+      cliente: g('cliente'), autor: g('autor'), reu: g('reu'),
+      area: g('area'), tribunal: g('tribunal'), vara: g('vara'),
       classe: g('classe'), assunto: g('assunto'),
       ajuizado: dataBr(g('ajuizado')), encerrado: dataBr(g('encerrado')),
       resultado: g('resultado').toLowerCase(), valor: numeroBr(g('valor')),
       erro: (dig && dig.length !== 20) ? 'número não tem 20 dígitos'
-          : (!dig && !g('cliente')) ? 'sem número e sem cliente' : null };
-  }).filter(r => r.numero || r.cliente);
+          : (!dig && !g('cliente') && !g('autor')) ? 'sem número e sem parte' : null };
+  }).filter(r => r.numero || r.cliente || r.autor);
 }
 window.colarAntigos = () => {
   const t = document.getElementById('impcola').value;
@@ -3396,7 +3401,8 @@ function pintarImp(){
     <th>Ajuizado</th><th>Encerrado</th><th>Resultado</th><th>Valor</th></tr></thead><tbody>
   ${IMP.slice(0,200).map(r=>`<tr>
     <td class="proc">${esc(r.formatado||'—')}${r.erro?`<span class="sub" style="color:var(--crit)">${esc(r.erro)}</span>`:''}</td>
-    <td>${esc(r.cliente||'—')}</td><td>${esc(r.vara||'—')}<span class="sub">${esc(r.tribunal||'')}</span></td>
+    <td>${esc(r.cliente || (r.autor ? r.autor + ' × ' + (r.reu||'?') : '—'))}
+      ${!r.cliente && r.autor ? '<span class="sub">cliente a definir</span>' : ''}</td><td>${esc(r.vara||'—')}<span class="sub">${esc(r.tribunal||'')}</span></td>
     <td>${esc(r.classe||'—')}<span class="sub">${esc(r.assunto||'')}</span></td>
     <td class="dt">${r.ajuizado?br(r.ajuizado):'—'}</td><td class="dt">${r.encerrado?br(r.encerrado):'—'}</td>
     <td>${esc(r.resultado||'—')}</td><td>${r.valor?rs(r.valor):'—'}</td></tr>`).join('')}
@@ -3422,8 +3428,17 @@ window.gravarAntigos = async () => {
   const clientes = new Map(((await sb.from('cliente').select('id,nome')).data||[])
     .map(c=>[semAcento(c.nome), c.id]));
   let casos = 0, procs = 0, pulados = 0, erros = [];
+  let atualizados = 0;
   for (const r of bons) {
-    if (r.numero && jaProc.has(r.numero)) { pulados++; continue; }
+    if (r.numero && jaProc.has(r.numero)) {
+      pulados++;
+      if (r.autor || r.reu) {
+        await sb.from('processo').update({ parte_ativa: r.autor || null, parte_passiva: r.reu || null })
+          .eq('numero_cnj', r.numero).is('parte_ativa', null);
+        atualizados++;
+      }
+      continue;
+    }
     let clienteId = null;
     if (r.cliente) {
       clienteId = clientes.get(semAcento(r.cliente)) || null;
@@ -3434,7 +3449,7 @@ window.gravarAntigos = async () => {
         clienteId = data.id; clientes.set(semAcento(r.cliente), clienteId);
       }
     }
-    const titulo = r.cliente || r.formatado || 'processo antigo';
+    const titulo = r.cliente || (r.autor && r.reu ? r.autor + ' × ' + r.reu : (r.autor || r.formatado || 'processo antigo'));
     const { data: caso, error: e1 } = await sb.from('caso').insert({
       escritorio_id: eid, cliente_id: clienteId, titulo, area: r.area || null,
       coluna_id: r.encerrado ? colFim : colIni,
@@ -3448,6 +3463,7 @@ window.gravarAntigos = async () => {
         escritorio_id: eid, caso_id: caso.id, numero_cnj: r.numero, numero_formatado: r.formatado,
         tribunal_sigla: r.tribunal || null, orgao: r.vara || null, classe: r.classe || null,
         assunto: r.assunto || null, data_ajuizamento: r.ajuizado, valor_causa: r.valor,
+        parte_ativa: r.autor || null, parte_passiva: r.reu || null,
         monitorar: !!comRobo,
       });
       if (e2) erros.push(r.formatado + ': ' + e2.message); else { procs++; jaProc.add(r.numero); }
@@ -3457,7 +3473,7 @@ window.gravarAntigos = async () => {
   await registrarAcao('importou', 'caso', `acervo antigo: ${casos} caso(s) e ${procs} processo(s)`);
   st.style.color = erros.length ? 'var(--ser)' : 'var(--good)';
   st.textContent = `${casos} caso(s) e ${procs} processo(s) importados`
-    + (pulados ? ` · ${pulados} já existiam` : '')
+    + (pulados ? ` · ${pulados} já existiam${atualizados?' ('+atualizados+' com as partes preenchidas agora)':''}` : '')
     + (erros.length ? ` · ${erros.length} com erro: ${erros.slice(0,3).join(' | ')}` : '');
   IMP = [];
 };
@@ -3537,6 +3553,7 @@ function bloco(titulo, nota, pares, colRotulo){
 window.buscarAnalogos = () => {
   JUR.busca = (document.getElementById('jbusca')?.value || '').toLowerCase().trim();
   pintarAnalogos();
+  pintarPendentes();
 };
 function pintarAnalogos(){
   const alvo = document.getElementById('janalogos'); if (!alvo) return;
@@ -3570,6 +3587,63 @@ function pintarAnalogos(){
   ${achados.length>60?`<p class="nota">Mostrando 60 de ${achados.length}.</p>`:''}`;
   aplicarRotulos(alvo);
 }
+let PENDENTES = [];
+window.definirCliente = async (procId, casoId, lado) => {
+  const st = document.getElementById('dl-'+procId);
+  const p = PENDENTES.find(x=>x.id===procId); if (!p) return;
+  const nome = lado === 'ativo' ? p.parte_ativa : p.parte_passiva;
+  if (lado !== 'outro' && !nome) { st.textContent = 'essa parte está vazia'; return; }
+  st.style.color='var(--i3)'; st.textContent = 'gravando…';
+  const eid = await escId();
+  let clienteId = null;
+  if (lado !== 'outro') {
+    const chave = semAcento(nome);
+    const { data: achados } = await sb.from('cliente').select('id,nome').ilike('nome', nome).limit(5);
+    clienteId = (achados||[]).find(c => semAcento(c.nome) === chave)?.id || null;
+    if (!clienteId) {
+      const { data, error } = await sb.from('cliente').insert({ escritorio_id: eid, nome,
+        tipo: /LTDA|S\.A|EIRELI|INSTITUTO|FUNDACAO|SINDICATO|MUNICIPIO|ASSOCIACAO|COOPERATIVA|BANCO|CIA|ME$/i.test(nome) ? 'juridica' : 'fisica',
+        anterior_ao_sistema: true }).select('id').single();
+      if (error) { st.style.color='var(--crit)'; st.textContent = 'erro: ' + error.message; return; }
+      clienteId = data.id;
+    }
+  }
+  const up = { cliente_lado: lado };
+  if (clienteId) { up.cliente_id = clienteId; up.titulo = nome;
+    up.polo = lado === 'ativo' ? 'Reclamante' : 'Reclamado'; }
+  const { error } = await sb.from('caso').update(up).eq('id', casoId);
+  if (error) { st.style.color='var(--crit)'; st.textContent = 'erro: ' + error.message; return; }
+  await registrarAcao('definiu', 'caso', `cliente do processo ${p.numero_formatado}: ${lado === 'outro' ? 'nenhum dos dois' : nome}`);
+  PENDENTES = PENDENTES.filter(x=>x.id!==procId);
+  pintarPendentes();
+};
+function pintarPendentes(){
+  const alvo = document.getElementById('jpend'); if (!alvo) return;
+  const cont = document.getElementById('jpendc');
+  if (cont) cont.textContent = PENDENTES.length
+    ? `faltam ${PENDENTES.length} processo(s)` : 'nenhum pendente — tudo definido';
+  if (!PENDENTES.length) return alvo.innerHTML =
+    '<div class="vazio">Todos os processos importados já têm o cliente definido.</div>';
+  alvo.innerHTML = `<table><thead><tr><th>Processo</th><th>Vara / classe</th><th>Arquivado</th>
+    <th>Quem é o seu cliente?</th></tr></thead><tbody>
+  ${PENDENTES.slice(0,40).map(p=>`<tr>
+    <td class="proc"><a class="lnk" href="#/processo/${p.id}">${esc(p.numero_formatado||p.numero_cnj)}</a>
+      <span class="sub">${esc(p.tribunal_sigla||'')}</span></td>
+    <td>${esc(p.orgao||'—')}<span class="sub">${esc(p.classe||'')}</span></td>
+    <td class="dt">${p.encerrado_em?br(p.encerrado_em):'—'}</td>
+    <td><div class="acoes" style="flex-wrap:wrap">
+      <button class="btn ok" style="text-align:left;max-width:330px"
+        onclick="definirCliente('${p.id}','${p.caso_id}','ativo')">
+        <b>autor</b> · ${esc(p.parte_ativa||'—')}</button>
+      <button class="btn" style="text-align:left;max-width:330px"
+        onclick="definirCliente('${p.id}','${p.caso_id}','passivo')">
+        <b>réu</b> · ${esc(p.parte_passiva||'—')}</button>
+      <button class="btn" onclick="definirCliente('${p.id}','${p.caso_id}','outro')">nenhum dos dois</button>
+      <span class="sub" id="dl-${p.id}" style="margin:0"></span>
+    </div></td></tr>`).join('')}
+  </tbody></table>
+  ${PENDENTES.length>40?`<p class="nota">Mostrando 40 de ${PENDENTES.length}. Vá marcando: a lista encurta sozinha.</p>`:''}`;
+}
 window.addDecisao = async ev => {
   ev.preventDefault();
   const f = ev.target, v = n => (f.elements[n]?.value || '').trim() || null;
@@ -3591,10 +3665,12 @@ window.tirarDecisao = async id => {
   telaJurimetria();
 };
 async function telaJurimetria(){
-  const [pr, cs, dc] = await Promise.all([
+  const [pr, cs, dc, pend] = await Promise.all([
     sb.from('processo').select('id,numero_cnj,numero_formatado,tribunal_sigla,orgao,classe,assunto,data_ajuizamento,valor_causa,fase,caso_id').limit(2000),
     sb.from('caso').select('id,titulo,area,resultado,encerrado_em,valor_causa').limit(2000),
     sb.from('decisao').select('*').order('data', { ascending:false }).limit(300),
+    sb.from('processo').select('id,caso_id,numero_cnj,numero_formatado,tribunal_sigla,orgao,classe,parte_ativa,parte_passiva,caso:caso_id(id,cliente_id,cliente_lado,encerrado_em)')
+      .not('parte_ativa','is',null).limit(1000),
   ]);
   if (pr.error) return erro(pr.error.message);
   const casos = new Map((cs.data||[]).map(c=>[c.id,c]));
@@ -3605,6 +3681,8 @@ async function telaJurimetria(){
              valor_causa: p.valor_causa || c?.valor_causa || null };
   });
   JUR.casos = cs.data||[]; JUR.decisoes = dc.data||[];
+  PENDENTES = (pend.data||[]).filter(p => p.caso && !p.caso.cliente_lado && !p.caso.cliente_id)
+    .map(p => ({ ...p, encerrado_em: p.caso?.encerrado_em || null }));
   const P = JUR.procs;
   const enc = P.filter(p=>p.encerrado_em);
   const ex  = enc.filter(p=>EXITO.includes(String(p.resultado||'').toLowerCase()));
@@ -3652,6 +3730,12 @@ async function telaJurimetria(){
      agrupa(P.filter(p=>p.assunto), p=>p.assunto), 'Assunto')}
   ${bloco('Por área','Visão mais larga, por área de atuação.',
      agrupa(P.filter(p=>p.area), p=>p.area), 'Área')}
+
+  <div class="card"><h2>Quem é o cliente nestes processos</h2>
+    <p class="nota">Vieram do acervo antigo com as duas partes, mas sem dizer qual delas é sua.
+      Marque de pouco em pouco: o nome vira cliente na hora, o caso ganha o polo certo
+      e o processo sai desta lista. <span id="jpendc"></span></p>
+    <div id="jpend" style="padding:0 18px 18px"></div></div>
 
   <div class="card"><h2>Banco de decisões — casos análogos de fora</h2>
     <p class="nota">Decisões de outros processos, com tribunal, vara, comarca, relator, tema e resultado.
