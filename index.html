@@ -217,7 +217,7 @@ function telaLogin(msg){
 }
 
 let ESC_NOME = 'Breno S. Amorim Advocacia', ESC_LOGO = null, ESC_ID = null, ESC_TOKEN = null;
-const MENU_PADRAO = [['prazos','Prazos e publicações'],['agenda','Agenda'],['captacao','Captação'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['clientes','Clientes'],['mensageria','Mensagens'],['metricas','Métricas'],['financeiro','Financeiro'],['parceiros','Parceiros'],['minutas','Minutas'],['aprender','Aprender'],['dicionario','Dicionário'],['documentos','Documentos'],['tutoriais','Tutoriais'],['config','Configurações']];
+const MENU_PADRAO = [['inicio','Início'],['prazos','Prazos e publicações'],['agenda','Agenda'],['captacao','Captação'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['clientes','Clientes'],['mensageria','Mensagens'],['metricas','Métricas'],['financeiro','Financeiro'],['parceiros','Parceiros'],['minutas','Minutas'],['aprender','Aprender'],['dicionario','Dicionário'],['documentos','Documentos'],['tutoriais','Tutoriais'],['config','Configurações']];
 let MENUCFG = MENU_PADRAO.map(([k,r]) => ({ k, r, v:true }));
 let ROTULOS = {};
 const PALAVRAS = {"Telas e seções": ["Prazos", "Triagem", "Triagem das publicações", "O que chegou", "Agenda", "Captação", "Casos", "Processos", "Andamento", "Clientes", "Mensagens", "Métricas", "Financeiro", "Parceiros", "Delegar um servi\u00e7o", "Acompanhamento", "Quem s\u00e3o os parceiros", "Delegado a parceiro", "Minutas", "Aprender", "Dicionário", "Documentos", "Tutoriais", "Configurações", "Calendário", "Pela frente", "Vencidos e ainda abertos", "Linha do tempo", "Todos os processos", "Andamento dos processos", "Os mais parados primeiro", "Precedentes", "Teses", "Fila de aprovação", "Minutas recentes", "Análise prévia", "Modo juiz", "Marcar prazo, audiência ou tarefa", "Levar tudo para o Google Agenda", "Equipe e acessos", "Dados do escritório", "Áreas de atuação", "Origens de captação", "Categorias financeiras", "Dicionário de movimentações", "Cor do dia de hoje", "Cópias automáticas", "Casos sem cliente", "Cliente do caso", "Amarrar cliente", "Documentos a pedir", "Documentos do cliente", "Assinatura de documentos", "Tutoriais para clientes", "Ensinar uma peça ao banco", "Mensagem para o cliente", "Novo contato", "Novo lançamento", "Resultado da leitura"], "Colunas das tabelas": ["Feito", "Em trâmite", "Parado há", "Fase", "Situação e providência", "Aguardando até", "Chegou", "Documento", "Onde consigo", "Recebido em", "Vence", "Quando", "Situação", "Providência", "Cliente / vara", "Cliente / caso", "Processo", "Trecho lido e memória", "Conf.", "Ação", "Tipo", "O quê", "Descrição", "Origem", "Valor", "Vencimento", "Tribunal", "Relator", "Tema", "Órgão", "Área", "Nome", "Pessoa", "Perfil", "Ativo", "E-mail", "Telefone", "Telefone / WhatsApp", "Última movimentação", "Última atualização", "Encerrado em", "Motivo", "Resultado", "Vezes", "Cód."], "Números do topo": ["em aberto", "vencem em até 5 dias", "já vencidos", "aguardando confirmação", "compromissos à frente", "nos próximos 7 dias", "audiências", "já passaram e seguem abertos", "casos abertos", "casos ativos", "clientes", "processos", "pedindo providência", "merecendo conferência", "execuções com o prazo correndo", "tempo médio em trâmite", "em trâmite", "parado há", "sem telefone", "sem contato há mais de 30 dias", "parados há mais de 90 dias", "prescrevem em até 180 dias", "com prazo em até 5 dias", "com novidade desde o último contato", "teses no banco", "esperando sua decisão", "precedentes a conferir", "teses novas", "refinamentos", "tempo de leitura", "a pagar", "a receber", "saldo do mês", "recebido neste mês", "projeção para o ano"]};
@@ -308,7 +308,7 @@ window.restaurarMenu = async () => {
   await gravarMenu(); telaConfig();
 };
 const GRUPOS = [
-  ['Rotina',    ['prazos','agenda','mensageria']],
+  ['Rotina',    ['inicio','prazos','agenda','mensageria']],
   ['Processos', ['casos','processos','andamento','minutas']],
   ['Pessoas',   ['clientes','captacao','parceiros']],
   ['Gestão',    ['metricas','financeiro']],
@@ -387,6 +387,94 @@ function linhaPrazo(p, podeConfirmar){
     <td>${p.confianca ? Math.round(p.confianca*100)+'%' : '—'}</td>
     <td>${acoes}</td></tr>`;
 }
+/* --------------------------------------------------------------- início */
+function botaoSala(link){
+  if (!link) return '';
+  return `<a class="btn ok" href="${esc(link)}" target="_blank" rel="noreferrer"
+     style="text-decoration:none;padding:4px 9px;font-size:11.6px">Entrar agora</a>`;
+}
+async function telaInicio(){
+  const h = hoje();
+  const d7  = new Date(Date.now() + 7*864e5).toISOString().slice(0,10);
+  const d30 = new Date(Date.now() - 30*864e5).toISOString().slice(0,10);
+  const mes = h.slice(0,7);
+  const [pz, ev, itm, lc, cs] = await Promise.all([
+    sb.from('prazo').select('id,descricao,data_fatal,situacao,caso:caso_id(id,titulo)')
+      .in('situacao',['sugerido','confirmado']).order('data_fatal'),
+    sb.from('evento').select('id,titulo,tipo,inicio,local,link_sala,situacao,caso:caso_id(id,titulo),cliente:cliente_id(nome)')
+      .not('situacao','in','("concluida","cancelada")').order('inicio'),
+    sb.from('intimacao').select('id,situacao').gte('data_disponibilizacao', d30),
+    sb.from('lancamento').select('tipo,valor,situacao,vencimento').gte('vencimento', mes+'-01').lte('vencimento', mes+'-31'),
+    sb.from('caso').select('id,encerrado_em'),
+  ]);
+  if (pz.error) return erro(pz.error.message);
+  const PZ = pz.data||[], EV = ev.data||[], LC = lc.data||[];
+  const dia = e => String(e.inicio).slice(0,10);
+  const vencidos  = PZ.filter(p => p.data_fatal <  h);
+  const prHoje    = PZ.filter(p => p.data_fatal === h);
+  const pr7       = PZ.filter(p => p.data_fatal >  h && p.data_fatal <= d7);
+  const evHoje    = EV.filter(e => dia(e) === h);
+  const ev7       = EV.filter(e => dia(e) >  h && dia(e) <= d7);
+  const aud7      = EV.filter(e => e.tipo === 'audiencia' && dia(e) >= h && dia(e) <= d7);
+  const conferir  = (itm.data||[]).filter(i => !['sem_providencia','confirmada','cumprida'].includes(i.situacao)).length;
+  const abertos   = (cs.data||[]).filter(c => !c.encerrado_em).length;
+  const entra = LC.filter(x=>x.tipo==='entrada').reduce((a,b)=>a+Number(b.valor||0),0);
+  const sai   = LC.filter(x=>x.tipo==='saida').reduce((a,b)=>a+Number(b.valor||0),0);
+
+  const linhaPz = p => `<div class="tl"><div class="tldata"><b>${br(p.data_fatal)}</b>
+      <span class="sub">${dias(p.data_fatal)===0?'hoje':(dias(p.data_fatal)<0?'venceu':'em '+dias(p.data_fatal)+'d')}</span></div>
+    <div class="tlponto"></div><div class="tlcorpo"><span class="pill ${p.data_fatal<h?'crit':'ser'}">Prazo</span>
+      <b>${esc(p.descricao)}</b>${p.caso?`<span class="sub"><a class="lnk" href="#/caso/${p.caso.id}">${esc(p.caso.titulo)}</a></span>`:''}</div></div>`;
+  const linhaEv = e => `<div class="tl"><div class="tldata"><b>${br(dia(e))}</b>
+      <span class="sub">${String(e.inicio).slice(11,16)}</span></div>
+    <div class="tlponto"></div><div class="tlcorpo">
+      <span class="pill ${e.tipo==='audiencia'?'crit':'cin'}">${esc(TIPOLINHA[e.tipo]?.[0]||e.tipo)}</span>
+      <b>${esc(e.titulo)}</b>
+      <span class="sub">${esc(e.cliente?.nome || e.caso?.titulo || '')}${e.local?' · '+esc(e.local):''}</span>
+      ${e.link_sala?`<span class="sub">${botaoSala(e.link_sala)}</span>`:''}</div></div>`;
+
+  app.innerHTML = menu('inicio') + `
+  <main><h1>Bom dia, ${esc((ESC_NOME||'').split(' ')[0] || 'Breno')}</h1>
+  <p class="meta">O que precisa da sua atenção hoje, ${br(h)}.</p>
+  <div class="kpis">
+    <div class="kpi ${vencidos.length?'al':''}"><div class="n">${vencidos.length}</div><div class="l">prazos já vencidos</div></div>
+    <div class="kpi ${prHoje.length?'al':''}"><div class="n">${prHoje.length}</div><div class="l">prazos hoje</div></div>
+    <div class="kpi"><div class="n">${pr7.length}</div><div class="l">prazos nos próximos 7 dias</div></div>
+    <div class="kpi"><div class="n">${aud7.length}</div><div class="l">audiências na semana</div></div>
+    <div class="kpi ${conferir?'al':''}"><div class="n">${conferir}</div><div class="l">publicações a conferir</div></div>
+    <div class="kpi"><div class="n">${abertos}</div><div class="l">casos abertos</div></div>
+  </div>
+  <div class="card"><h2>Começar alguma coisa</h2>
+    <div style="padding:0 18px 18px;display:flex;gap:8px;flex-wrap:wrap">
+      <a class="btn ok" style="text-decoration:none" href="#/captacao">Novo atendimento</a>
+      <a class="btn" style="text-decoration:none" href="#/casos">Casos</a>
+      <a class="btn" style="text-decoration:none" href="#/agenda">Marcar compromisso</a>
+      <a class="btn" style="text-decoration:none" href="#/prazos">Prazos e publicações</a>
+      <a class="btn" style="text-decoration:none" href="#/mensageria">Escrever ao cliente</a>
+      <a class="btn" style="text-decoration:none" href="#/financeiro">Lançar no financeiro</a>
+      <a class="btn" style="text-decoration:none" href="#/minutas">Minutar uma peça</a>
+    </div></div>
+  <div class="card"><h2>Hoje</h2>
+    <p class="nota">Prazo que vence hoje, compromisso do dia e o que ficou para trás.</p>
+    <div style="padding:0 18px 18px">
+      ${(vencidos.map(linhaPz).join('') + prHoje.map(linhaPz).join('') + evHoje.map(linhaEv).join(''))
+        || '<div class="vazio">Nada marcado para hoje e nada vencido. Bom sinal.</div>'}
+    </div></div>
+  <div class="card"><h2>Os próximos sete dias</h2>
+    <div style="padding:0 18px 18px">
+      ${(pr7.map(linhaPz).join('') + ev7.map(linhaEv).join(''))
+        || '<div class="vazio">Semana livre pela frente.</div>'}
+    </div></div>
+  <div class="card"><h2>O mês no dinheiro</h2>
+    <div class="kpis" style="padding-top:0">
+      <div class="kpi"><div class="n" style="font-size:19px">${rs(entra)}</div><div class="l">a receber no mês</div></div>
+      <div class="kpi"><div class="n" style="font-size:19px">${rs(sai)}</div><div class="l">a pagar no mês</div></div>
+      <div class="kpi"><div class="n" style="font-size:19px">${rs(entra-sai)}</div><div class="l">resultado previsto</div></div>
+    </div>
+    <p class="nota">Detalhe e baixa dos lançamentos no menu Financeiro.</p></div>
+  </main>` + rodape();
+}
+
 function tabelaPrazos(titulo, nota, itens, podeConfirmar){
   if(!itens.length) return '';
   return `<div class="card"><h2>${titulo}</h2><p class="nota">${nota}</p><table>
@@ -1109,12 +1197,12 @@ window.salvarEvento = async (ev) => {
     ({ error } = await sb.from('evento').insert({ escritorio_id: await escId(), tipo,
       titulo: v('titulo'), descricao: v('obs'), inicio: data + 'T' + hora + ':00+00:00',
       local: v('local'), caso_id: v('caso'), cliente_id: v('cliente'), urgencia: v('urgencia'),
-      convidado_email: v('convidado') }));
+      link_sala: v('sala'), convidado_email: v('convidado') }));
   }
   if (semColuna(error)){
     const base = { escritorio_id: await escId(), tipo, titulo: v('titulo'), descricao: v('obs'),
       inicio: data + 'T' + hora + ':00+00:00', local: v('local'), caso_id: v('caso'),
-      cliente_id: v('cliente'), urgencia: v('urgencia') };
+      cliente_id: v('cliente'), urgencia: v('urgencia'), link_sala: v('sala') };
     ({ error } = tipo === 'prazo'
       ? await sb.from('prazo').insert({ escritorio_id: await escId(), caso_id: v('caso'),
           descricao: v('titulo'), providencia: v('obs'), data_fatal: data,
@@ -1181,6 +1269,9 @@ function formEvento(){
     <label style="display:flex;flex-direction:column;gap:3px;min-width:200px">
       <span class="sub" style="margin:0">Onde</span>
       <input name="local" type="text" placeholder="Vara, sala, endereço"></label>
+    <label style="display:flex;flex-direction:column;gap:3px;min-width:250px">
+      <span class="sub" style="margin:0">Link da sala (audiência ou reunião por vídeo)</span>
+      <input name="sala" type="url" placeholder="cole aqui o link do Zoom, Meet ou PJe"></label>
     ${TEMCONV === false ? '' : `<label style="display:flex;flex-direction:column;gap:3px;min-width:250px">
       <span class="sub" style="margin:0">E-mail do parceiro (recebe o convite)</span>
       <input name="convidado" type="email" placeholder="advogado@parceiro.com.br"></label>`}
@@ -1194,7 +1285,7 @@ function formEvento(){
 async function telaAgenda(){
   const colPz = c => 'id,descricao,data_fatal,dias,situacao,urgencia' + c +
     ',intimacao:intimacao_id(numero_formatado,orgao),caso:caso_id(titulo)';
-  const colEv = c => 'id,tipo,titulo,inicio,local,descricao,urgencia,situacao' + c +
+  const colEv = c => 'id,tipo,titulo,inicio,local,descricao,urgencia,situacao,link_sala' + c +
     ',cliente:cliente_id(nome),caso:caso_id(titulo)';
   const extra = TEMCONV === false ? '' : ',convidado_email';
   let [pz, ev, cs, cl, ca] = await Promise.all([
@@ -1225,7 +1316,7 @@ async function telaAgenda(){
     urgencia:e.urgencia, convidado:e.convidado_email,
     titulo:`${e.tipo === 'audiencia' ? 'Audiência' : e.tipo}: ${e.titulo}` +
       (e.cliente?.nome ? ' — '+e.cliente.nome : (e.caso?.titulo ? ' — '+e.caso.titulo : '')),
-    detalhe:e.descricao||'', local:e.local||'' });
+    detalhe:e.descricao||'', local:e.local||'', sala:e.link_sala||'' });
   for (const c of (cs.data||[])) AGE.push({
     id:'presc-'+c.id, tipo:'prescricao', data:c.prescricao_em,
     titulo:`Prescrição — ${c.titulo}`, detalhe:c.prescricao_obs||'Prazo prescricional anotado no cadastro.', local:'' });
@@ -1245,7 +1336,8 @@ async function telaAgenda(){
       <td><span class="pill ${cor[it.tipo]||'cin'}">${it.tipo}</span></td>
       <td><b>${esc(it.titulo)}</b>${it.local?`<span class="sub">${esc(it.local)}</span>`:''}
         ${it.urgencia && it.urgencia!=='normal' ? `<span class="pill ${URG[it.urgencia]?.[1]||'cin'}">${URG[it.urgencia]?.[0]||it.urgencia}</span>` : ''}</td>
-      <td><a class="btn" href="${linkGoogle(it)}" target="_blank" rel="noreferrer" style="text-decoration:none">Google Agenda</a>
+      <td>${botaoSala(it.sala)}
+        <a class="btn" href="${linkGoogle(it)}" target="_blank" rel="noreferrer" style="text-decoration:none">Google Agenda</a>
         ${it.convidado ? `<a class="btn" style="text-decoration:none" href="${linkEmail(it)}">Avisar ${esc(it.convidado.split('@')[0])}</a>` : ''}
         ${it.qual === 'evento' ? `<button class="btn" onclick="cancelarEvento('${it.ref}')">Cancelar</button>` : ''}</td>
     </tr>`;
@@ -1540,6 +1632,53 @@ window.reabrirCaso = async (id) => {
   const { error } = await sb.from('caso').update({ encerrado_em: null, resultado: null }).eq('id', id);
   if (error) alert(error.message); else telaCasos();
 };
+let TAGS = [], CASOTAGS = {}, TAGFILTRO = null;
+let CASOVISTA = localStorage.getItem('casovista') || 'quadro';
+window.mudarVistaCasos = v => { CASOVISTA = v; localStorage.setItem('casovista', v); telaCasos(); };
+window.filtrarTag = id => { TAGFILTRO = (TAGFILTRO === id ? null : id); telaCasos(); };
+function tagsDoCaso(id){ return (CASOTAGS[id] || []); }
+function pillsTag(id){
+  return tagsDoCaso(id).map(t =>
+    `<span class="pill" style="background:${esc(t.cor||'#eceae4')};color:#1b1a17">${esc(t.nome)}</span>`).join('');
+}
+async function carregarTags(){
+  const [tg, ct] = await Promise.all([
+    sb.from('tag').select('id,nome,cor').order('nome'),
+    sb.from('caso_tag').select('caso_id, tag:tag_id(id,nome,cor)'),
+  ]);
+  TAGS = tg.data || []; CASOTAGS = {};
+  for (const r of (ct.data||[])) {
+    if (!r.tag) continue;
+    (CASOTAGS[r.caso_id] = CASOTAGS[r.caso_id] || []).push(r.tag);
+  }
+}
+window.novaTagCaso = async (casoId) => {
+  const inp = document.getElementById('tagnova');
+  const sel = document.getElementById('tagsel');
+  const st  = document.getElementById('tag-st');
+  const nome = (inp?.value || '').trim();
+  let tagId = sel?.value || '';
+  st.textContent = 'salvando…';
+  if (nome) {
+    const achou = TAGS.find(t => t.nome.toLowerCase() === nome.toLowerCase());
+    if (achou) tagId = achou.id;
+    else {
+      const { data, error } = await sb.from('tag')
+        .insert({ escritorio_id: await escId(), nome, cor: '#eceae4' }).select().single();
+      if (error) { st.textContent = 'erro: ' + error.message; return; }
+      tagId = data.id;
+    }
+  }
+  if (!tagId) { st.textContent = 'escolha uma etiqueta ou escreva o nome de uma nova'; return; }
+  const { error } = await sb.from('caso_tag').insert({ caso_id: casoId, tag_id: tagId });
+  if (error && !/duplicate|unique/i.test(error.message)) { st.textContent = 'erro: ' + error.message; return; }
+  telaCaso(casoId);
+};
+window.tirarTagCaso = async (casoId, tagId) => {
+  const { error } = await sb.from('caso_tag').delete().eq('caso_id', casoId).eq('tag_id', tagId);
+  if (error) return alert('Não foi possível: ' + error.message);
+  telaCaso(casoId);
+};
 function cartao(c){
   const d = c.proximo_prazo ? dias(c.proximo_prazo) : null;
   const k = d === null ? '' : (d < 0 ? 'crit' : (d <= 5 ? 'ser' : (d <= 15 ? 'warn' : 'good')));
@@ -1551,6 +1690,7 @@ function cartao(c){
       c.polo ? ' · ' + esc(c.polo) : ''} · ${c.processos} processo(s)</div>
     ${d !== null ? `<span class="pill ${k}">prazo ${br(c.proximo_prazo)}${d<0?' (vencido)':''}</span>` : ''}
     ${parado !== null && parado > 90 ? `<span class="pill ser">parado há ${parado} dias</span>` : ''}
+    ${pillsTag(c.id)}
     <div style="margin-top:9px;display:flex;gap:5px;flex-wrap:wrap">
       <select onchange="moverCaso('${c.id}', this.value)" style="flex:1;min-width:130px;font-size:11.6px">
         ${COLUNAS.map(x=>`<option value="${x.id}" ${x.id===c.coluna_id?'selected':''}>${esc(x.nome)}</option>`).join('')}
@@ -1576,7 +1716,10 @@ async function telaCasos(){
   ]);
   if (q.error) return erro(q.error.message);
   QUADRO = q.data||[]; COLUNAS = co.data||[];
-  const abertos = QUADRO.filter(c=>!c.encerrado_em);
+  await carregarTags().catch(()=>{});
+  if (TAGFILTRO && !TAGS.some(t=>t.id===TAGFILTRO)) TAGFILTRO = null;
+  let abertos = QUADRO.filter(c=>!c.encerrado_em);
+  if (TAGFILTRO) abertos = abertos.filter(c => tagsDoCaso(c.id).some(t => t.id === TAGFILTRO));
   const encerrados = QUADRO.filter(c=>c.encerrado_em)
     .sort((a,b)=>String(b.encerrado_em).localeCompare(String(a.encerrado_em)));
   const comPrazo = abertos.filter(c=>c.proximo_prazo && dias(c.proximo_prazo) <= 5).length;
@@ -1592,6 +1735,28 @@ async function telaCasos(){
     <div class="kpi ${parados?'al':''}"><div class="n">${parados}</div><div class="l">parados há mais de 90 dias</div></div>
     <div class="kpi"><div class="n">${encerrados.length}</div><div class="l">encerrados</div></div>
   </div>
+  <div class="card"><div style="padding:12px 18px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <button class="btn ${CASOVISTA==='quadro'?'ok':''}" onclick="mudarVistaCasos('quadro')">Quadro</button>
+    <button class="btn ${CASOVISTA==='lista'?'ok':''}" onclick="mudarVistaCasos('lista')">Lista</button>
+    ${TAGS.length?`<span class="sub" style="margin:0 0 0 10px">etiquetas:</span>`:''}
+    ${TAGS.map(t=>`<button class="btn ${TAGFILTRO===t.id?'ok':''}" onclick="filtrarTag('${t.id}')">${esc(t.nome)}</button>`).join('')}
+    ${TAGFILTRO?`<button class="btn" onclick="filtrarTag('${TAGFILTRO}')">limpar filtro</button>`:''}
+    ${TAGS.length?'':'<span class="sub" style="margin:0">nenhuma etiqueta criada ainda — crie a primeira dentro de um caso</span>'}
+  </div></div>
+  ${CASOVISTA === 'lista' ? `<div class="card"><h2>Casos abertos</h2>
+    <table><thead><tr><th>Cliente</th><th>Área</th><th>Etapa</th><th>Etiquetas</th><th>Próximo prazo</th><th>Processos</th><th></th></tr></thead>
+    <tbody>${abertos.map(c=>{
+      const d = c.proximo_prazo ? dias(c.proximo_prazo) : null;
+      return `<tr>
+      <td><a class="lnk" href="#/caso/${c.id}"><b>${esc(c.cliente_nome || c.titulo || 'Sem cliente')}</b></a></td>
+      <td>${esc(c.area_nome || c.area || '—')}</td>
+      <td>${esc(COLUNAS.find(x=>x.id===c.coluna_id)?.nome || '—')}</td>
+      <td>${pillsTag(c.id) || '<span class="sub" style="margin:0">—</span>'}</td>
+      <td class="dt">${c.proximo_prazo ? br(c.proximo_prazo)+`<span class="sub">${d<0?'vencido':(d===0?'hoje':'em '+d+'d')}</span>` : '—'}</td>
+      <td>${c.processos}</td>
+      <td><button class="btn" onclick="verCaso('${c.id}')">Abrir</button></td></tr>`;
+    }).join('') || '<tr><td colspan="7" class="vazio">Nenhum caso neste filtro.</td></tr>'}
+    </tbody></table></div>` : `
   <div class="quadro">
     ${COLUNAS.map(col=>{
       const meus = abertos.filter(c=>c.coluna_id===col.id);
@@ -1601,7 +1766,7 @@ async function telaCasos(){
         ${meus.map(cartao).join('') || '<div class="sub" style="padding:10px 2px">vazio</div>'}
       </div>`;
     }).join('')}
-  </div>
+  </div>`}
   ${encerrados.length?`<div class="card" style="margin-top:20px"><h2>Encerrados</h2>
     <table><thead><tr><th>Cliente</th><th>Área</th><th>Resultado</th><th>Encerrado em</th><th></th></tr></thead>
     <tbody>${encerrados.slice(0,40).map(c=>`<tr>
@@ -1683,7 +1848,8 @@ window.addAtividade = async (ev) => {
     ({ error } = await sb.from('evento').insert({
       escritorio_id: CASO.escritorio_id, caso_id: CASO.id, cliente_id: CASO.cliente_id,
       tipo, titulo: v('titulo'), descricao: v('obs'),
-      inicio: data + 'T' + hora + ':00+00:00', local: v('local'), urgencia: v('urgencia') }));
+      inicio: data + 'T' + hora + ':00+00:00', local: v('local'), urgencia: v('urgencia'),
+      link_sala: v('sala') }));
   }
   if (error) { st.style.color='var(--crit)'; return st.textContent = 'erro: ' + error.message; }
   telaCaso(CASO.id);
@@ -1714,11 +1880,12 @@ function pintarLinha(){
         <b>${esc(i.titulo)}</b>
         ${i.detalhe ? `<span class="sub">${esc(i.detalhe)}</span>` : ''}
         ${i.situacao ? `<span class="sub">situação: ${esc(i.situacao)}</span>` : ''}
+        ${i.sala ? `<span class="sub">${botaoSala(i.sala)}</span>` : ''}
       </div></div>`;
   }).join('') : '<div class="vazio">Nada registrado com esse filtro.</div>';
 }
 async function telaCaso(id){
-  const [cs, pr, pz, ev, it, hn, dc, mn, cd, cm, asg, dlg] = await Promise.all([
+  const [cs, pr, pz, ev, it, hn, dc, mn, cd, cm, tpc, asg, dlg] = await Promise.all([
     sb.from('caso').select('*, cliente:cliente_id(id,nome,telefone,whatsapp,cpf_cnpj,cidade,uf), responsavel:responsavel_id(nome)').eq('id', id).single(),
     sb.from('processo').select('*').eq('caso_id', id).order('criado_em'),
     sb.from('prazo').select('*').eq('caso_id', id).order('data_fatal'),
@@ -1729,6 +1896,7 @@ async function telaCaso(id){
     sb.from('minuta').select('id,tipo,criado_em,status').eq('caso_id', id),
     sb.from('caso_documento').select('*').eq('caso_id', id).order('ordem'),
     sb.from('checklist_modelo').select('id,nome,itens').eq('ativo', true).order('ordem'),
+    sb.from('tipo_caso').select('*').eq('ativo', true).order('ordem'),
     sb.from('assinatura').select('*').eq('caso_id', id).order('criado_em'),
     sb.from('delegacao').select('*, parceiro:parceiro_id(nome,telefone,cidade,oab,uf_oab)')
       .eq('caso_id', id).order('criado_em'),
@@ -1737,6 +1905,8 @@ async function telaCaso(id){
   await carregarClientes().catch(()=>{});
   CASO = cs.data; CASOPROC = pr.data || [];
   CASODOCS = cd.data || []; CASOMODELOS = cm.data || []; CASOASSIN = asg.data || [];
+  CASOTIPOS = tpc.data || [];
+  await carregarTags().catch(()=>{});
   const procIds = CASOPROC.map(p => p.id);
   const mv = procIds.length
     ? await sb.from('movimentacao').select('*').in('processo_id', procIds).order('data', {ascending:false}).limit(300)
@@ -1750,7 +1920,7 @@ async function telaCaso(id){
     titulo:p.descricao, detalhe:[p.providencia, p.dias?p.dias+' dias':''].filter(Boolean).join(' · '),
     situacao:p.situacao, futuro: dias(p.data_fatal) >= 0 && p.situacao !== 'cumprido' });
   for (const e of (ev.data||[])) L.push({ tipo:e.tipo, data:String(e.inicio).slice(0,10),
-    hora:String(e.inicio).slice(11,16), titulo:e.titulo,
+    hora:String(e.inicio).slice(11,16), titulo:e.titulo, sala:e.link_sala,
     detalhe:[e.local, e.descricao].filter(Boolean).join(' · '), situacao:e.situacao,
     futuro: dias(String(e.inicio).slice(0,10)) >= 0 && e.situacao === 'aberta' });
   for (const i of (it.data||[])) L.push({ tipo:'contato', data:String(i.data).slice(0,10),
@@ -1809,6 +1979,39 @@ async function telaCaso(id){
     <div class="kpi"><div class="n" style="font-size:19px">${humano(idade)}</div><div class="l">em trâmite</div></div>
     <div class="kpi ${paradoMais>=90?'al':''}"><div class="n" style="font-size:19px">${paradoMais!=null?humano(paradoMais):'—'}</div><div class="l">parado há</div></div>
   </div>
+
+  <div class="card"><h2>Tipo do caso e etiquetas</h2>
+    <p class="nota">Escolher o tipo traz de uma vez a lista de documentos, as primeiras tarefas e os campos
+      próprios daquele tipo de ação. Nada é apagado: só se acrescenta o que ainda não existe.</p>
+    <div style="padding:0 18px 10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <select id="tipocaso" style="min-width:320px">
+        <option value="">— escolha o tipo —</option>
+        ${CASOTIPOS.map(t=>`<option value="${t.id}" ${t.id===c.tipo_caso_id?'selected':''}>${esc(t.nome)}</option>`).join('')}
+      </select>
+      <button class="btn ok" onclick="aplicarTipo('${c.id}')">Aplicar o tipo</button>
+      <span class="sub" id="tp-st" style="margin:0"></span>
+    </div>
+    ${tipoAtual(c) && (tipoAtual(c).campos||[]).length ? `
+    <div style="padding:0 18px 14px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+      ${(tipoAtual(c).campos||[]).map(f=>`
+        <label style="display:flex;flex-direction:column;gap:3px;min-width:190px">
+          <span class="sub" style="margin:0">${esc(f.r)}</span>
+          <input data-campo="${esc(f.k)}" type="${f.tipo==='date'?'date':'text'}"
+                 value="${esc((c.dados||{})[f.k] || '')}"></label>`).join('')}
+      <button class="btn" onclick="salvarCampos('${c.id}')">Guardar os dados</button>
+      <span class="sub" id="cp-st" style="margin:0"></span>
+    </div>` : ''}
+    <div style="padding:0 18px 18px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <span class="sub" style="margin:0">Etiquetas:</span>
+      ${tagsDoCaso(c.id).map(t=>`<span class="pill" style="background:${esc(t.cor||'#eceae4')};color:#1b1a17">${esc(t.nome)}
+        <a href="javascript:void(0)" onclick="tirarTagCaso('${c.id}','${t.id}')" style="text-decoration:none">&times;</a></span>`).join('')
+        || '<span class="sub" style="margin:0">nenhuma</span>'}
+      <select id="tagsel" style="min-width:170px"><option value="">— etiqueta existente —</option>
+        ${TAGS.filter(t=>!tagsDoCaso(c.id).some(x=>x.id===t.id)).map(t=>`<option value="${t.id}">${esc(t.nome)}</option>`).join('')}</select>
+      <input id="tagnova" placeholder="ou crie uma nova" style="min-width:170px">
+      <button class="btn" onclick="novaTagCaso('${c.id}')">Etiquetar</button>
+      <span class="sub" id="tag-st" style="margin:0"></span>
+    </div></div>
 
   <div class="card"><h2>Processos</h2>
     <p class="nota">Cadastre o número assim que protocolar — não precisa esperar o diário publicar.
@@ -1871,6 +2074,9 @@ async function telaCaso(id){
       <label style="display:flex;flex-direction:column;gap:3px;min-width:180px">
         <span class="sub" style="margin:0">Onde</span>
         <input name="local" placeholder="Vara, sala, endereço"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:220px">
+        <span class="sub" style="margin:0">Link da sala (se for por vídeo)</span>
+        <input name="sala" type="url" placeholder="Zoom, Meet ou PJe"></label>
       <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:220px">
         <span class="sub" style="margin:0">Observações</span>
         <input name="obs" placeholder="o que precisa ser feito"></label>
@@ -4017,7 +4223,53 @@ async function telaAndamento(){
 }
 
 /* ------------------------------------------- documentos pedidos em um caso */
-let CASODOCS = [], CASOMODELOS = [];
+let CASODOCS = [], CASOMODELOS = [], CASOTIPOS = [];
+function tipoAtual(c){ return CASOTIPOS.find(t => t.id === (c||CASO)?.tipo_caso_id) || null; }
+window.aplicarTipo = async (casoId) => {
+  const st = document.getElementById('tp-st');
+  const id = document.getElementById('tipocaso')?.value || '';
+  if (!id) { st.textContent = 'escolha um tipo primeiro'; return; }
+  const t = CASOTIPOS.find(x => x.id === id); if (!t) return;
+  st.style.color = 'var(--i3)'; st.textContent = 'aplicando…';
+  const eid = await escId();
+  const up = { tipo_caso_id: id };
+  if (!CASO.area && t.area) up.area = t.area;
+  if (!CASO.polo && t.polo) up.polo = t.polo;
+  const { error } = await sb.from('caso').update(up).eq('id', casoId);
+  if (error) { st.style.color='var(--crit)'; st.textContent = 'erro: ' + error.message; return; }
+  let docs = 0, tarefas = 0;
+  if (t.checklist_id) {
+    const { data: m } = await sb.from('checklist_modelo').select('itens').eq('id', t.checklist_id).single();
+    const tem = new Set(CASODOCS.map(d => (d.descricao||'').trim().toLowerCase()));
+    const novos = (m?.itens||[]).filter(it => (it.t||'').trim() && !tem.has(it.t.trim().toLowerCase()))
+      .map((it, n) => ({ escritorio_id: eid, caso_id: casoId, descricao: it.t,
+                         obs: it.obs || null, ordem: CASODOCS.length + n }));
+    if (novos.length) { await sb.from('caso_documento').insert(novos); docs = novos.length; }
+  }
+  const jaTem = new Set((await sb.from('evento').select('titulo').eq('caso_id', casoId)).data
+    ?.map(e => (e.titulo||'').trim().toLowerCase()) || []);
+  const novasT = (t.tarefas||[]).filter(x => x.t && !jaTem.has(x.t.trim().toLowerCase())).map(x => ({
+    escritorio_id: eid, caso_id: casoId, cliente_id: CASO.cliente_id, tipo: 'tarefa',
+    titulo: x.t, descricao: 'criada pelo tipo do caso: ' + t.nome,
+    inicio: new Date(Date.now() + (Number(x.dias)||0) * 864e5).toISOString().slice(0,10) + 'T09:00:00+00:00',
+  }));
+  if (novasT.length) { await sb.from('evento').insert(novasT); tarefas = novasT.length; }
+  await registrarAcao('aplicou', 'caso', `tipo do caso: ${t.nome}`);
+  st.style.color = 'var(--good)';
+  st.textContent = `tipo aplicado · ${docs} documento(s) e ${tarefas} tarefa(s) criados`;
+  setTimeout(()=>telaCaso(casoId), 900);
+};
+window.salvarCampos = async (casoId) => {
+  const st = document.getElementById('cp-st');
+  const dados = {};
+  document.querySelectorAll('[data-campo]').forEach(i => { if (i.value.trim()) dados[i.dataset.campo] = i.value.trim(); });
+  st.style.color = 'var(--i3)'; st.textContent = 'guardando…';
+  const { error } = await sb.from('caso').update({ dados }).eq('id', casoId);
+  if (error) { st.style.color='var(--crit)'; st.textContent = 'erro: ' + error.message; return; }
+  CASO.dados = dados;
+  st.style.color = 'var(--good)'; st.textContent = 'guardado ✓';
+};
+
 window.aplicarLista = async mid => {
   const m = CASOMODELOS.find(x => x.id === mid); if (!m) return;
   const tem = new Set(CASODOCS.map(d => (d.descricao||'').trim().toLowerCase()));
@@ -4516,7 +4768,8 @@ async function rota(){
     await carregarRotulos().catch(()=>{});
     vigiarRotulos();
   }
-  const h = location.hash || '#/prazos';
+  const h = location.hash || '#/inicio';
+  if(h.startsWith('#/inicio'))     return telaInicio();
   if(h.startsWith('#/processo/')) return telaProcesso(h.slice('#/processo/'.length));
   if(h.startsWith('#/caso/'))      return telaCaso(h.slice('#/caso/'.length));
   if(h.startsWith('#/semcliente'))return telaSemCliente();
@@ -4540,7 +4793,7 @@ async function rota(){
   if(h.startsWith('#/tutoriais'))  return telaTutoriais();
   if(h.startsWith('#/auditoria'))  return telaAuditoria();
   if(h.startsWith('#/config'))     return telaConfig();
-  return telaPrazos();
+  return telaInicio();
 }
 window.addEventListener('hashchange', rota);
 sb.auth.onAuthStateChange(()=>rota());
