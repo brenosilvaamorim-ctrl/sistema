@@ -217,10 +217,10 @@ function telaLogin(msg){
 }
 
 let ESC_NOME = 'Breno S. Amorim Advocacia', ESC_LOGO = null, ESC_ID = null, ESC_TOKEN = null;
-const MENU_PADRAO = [['prazos','Prazos'],['triagem','Triagem'],['agenda','Agenda'],['captacao','Captação'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['clientes','Clientes'],['mensageria','Mensagens'],['metricas','Métricas'],['financeiro','Financeiro'],['parceiros','Parceiros'],['minutas','Minutas'],['aprender','Aprender'],['dicionario','Dicionário'],['documentos','Documentos'],['tutoriais','Tutoriais'],['config','Configurações']];
+const MENU_PADRAO = [['prazos','Prazos e publicações'],['agenda','Agenda'],['captacao','Captação'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['clientes','Clientes'],['mensageria','Mensagens'],['metricas','Métricas'],['financeiro','Financeiro'],['parceiros','Parceiros'],['minutas','Minutas'],['aprender','Aprender'],['dicionario','Dicionário'],['documentos','Documentos'],['tutoriais','Tutoriais'],['config','Configurações']];
 let MENUCFG = MENU_PADRAO.map(([k,r]) => ({ k, r, v:true }));
 let ROTULOS = {};
-const PALAVRAS = {"Telas e seções": ["Prazos", "Triagem", "Triagem das publicações", "O que chegou", "Agenda", "Captação", "Casos", "Processos", "Andamento", "Clientes", "Mensagens", "Métricas", "Financeiro", "Parceiros", "Delegar um servi\u00e7o", "Acompanhamento", "Quem s\u00e3o os parceiros", "Delegado a parceiro", "Minutas", "Aprender", "Dicionário", "Documentos", "Tutoriais", "Configurações", "Calendário", "Pela frente", "Vencidos e ainda abertos", "Linha do tempo", "Todos os processos", "Andamento dos processos", "Os mais parados primeiro", "Precedentes", "Teses", "Fila de aprovação", "Minutas recentes", "Análise prévia", "Modo juiz", "Marcar prazo, audiência ou tarefa", "Levar tudo para o Google Agenda", "Equipe e acessos", "Dados do escritório", "Áreas de atuação", "Origens de captação", "Categorias financeiras", "Dicionário de movimentações", "Cor do dia de hoje", "Cópias automáticas", "Casos sem cliente", "Cliente do caso", "Amarrar cliente", "Documentos a pedir", "Documentos do cliente", "Assinatura de documentos", "Tutoriais para clientes", "Ensinar uma peça ao banco", "Mensagem para o cliente", "Novo contato", "Novo lançamento", "Resultado da leitura"], "Colunas das tabelas": ["Feito", "Em trâmite", "Parado há", "Fase", "Situação e providência", "Aguardando até", "Chegou", "Documento", "Onde consigo", "Recebido em", "Vence", "Quando", "Situação", "Providência", "Cliente / vara", "Cliente / caso", "Processo", "Trecho lido e memória", "Conf.", "Ação", "Tipo", "O quê", "Descrição", "Origem", "Valor", "Vencimento", "Tribunal", "Relator", "Tema", "Órgão", "Área", "Nome", "Pessoa", "Perfil", "Ativo", "E-mail", "Telefone", "Telefone / WhatsApp", "Última movimentação", "Último informativo", "Encerrado em", "Motivo", "Resultado", "Vezes", "Cód."], "Números do topo": ["em aberto", "vencem em até 5 dias", "já vencidos", "aguardando confirmação", "compromissos à frente", "nos próximos 7 dias", "audiências", "já passaram e seguem abertos", "casos abertos", "casos ativos", "clientes", "processos", "pedindo providência", "merecendo conferência", "execuções com o prazo correndo", "tempo médio em trâmite", "em trâmite", "parado há", "sem telefone", "sem contato há mais de 30 dias", "parados há mais de 90 dias", "prescrevem em até 180 dias", "com prazo em até 5 dias", "com novidade desde o último informativo", "teses no banco", "esperando sua decisão", "precedentes a conferir", "teses novas", "refinamentos", "tempo de leitura", "a pagar", "a receber", "saldo do mês", "recebido neste mês", "projeção para o ano"]};
+const PALAVRAS = {"Telas e seções": ["Prazos", "Triagem", "Triagem das publicações", "O que chegou", "Agenda", "Captação", "Casos", "Processos", "Andamento", "Clientes", "Mensagens", "Métricas", "Financeiro", "Parceiros", "Delegar um servi\u00e7o", "Acompanhamento", "Quem s\u00e3o os parceiros", "Delegado a parceiro", "Minutas", "Aprender", "Dicionário", "Documentos", "Tutoriais", "Configurações", "Calendário", "Pela frente", "Vencidos e ainda abertos", "Linha do tempo", "Todos os processos", "Andamento dos processos", "Os mais parados primeiro", "Precedentes", "Teses", "Fila de aprovação", "Minutas recentes", "Análise prévia", "Modo juiz", "Marcar prazo, audiência ou tarefa", "Levar tudo para o Google Agenda", "Equipe e acessos", "Dados do escritório", "Áreas de atuação", "Origens de captação", "Categorias financeiras", "Dicionário de movimentações", "Cor do dia de hoje", "Cópias automáticas", "Casos sem cliente", "Cliente do caso", "Amarrar cliente", "Documentos a pedir", "Documentos do cliente", "Assinatura de documentos", "Tutoriais para clientes", "Ensinar uma peça ao banco", "Mensagem para o cliente", "Novo contato", "Novo lançamento", "Resultado da leitura"], "Colunas das tabelas": ["Feito", "Em trâmite", "Parado há", "Fase", "Situação e providência", "Aguardando até", "Chegou", "Documento", "Onde consigo", "Recebido em", "Vence", "Quando", "Situação", "Providência", "Cliente / vara", "Cliente / caso", "Processo", "Trecho lido e memória", "Conf.", "Ação", "Tipo", "O quê", "Descrição", "Origem", "Valor", "Vencimento", "Tribunal", "Relator", "Tema", "Órgão", "Área", "Nome", "Pessoa", "Perfil", "Ativo", "E-mail", "Telefone", "Telefone / WhatsApp", "Última movimentação", "Última atualização", "Encerrado em", "Motivo", "Resultado", "Vezes", "Cód."], "Números do topo": ["em aberto", "vencem em até 5 dias", "já vencidos", "aguardando confirmação", "compromissos à frente", "nos próximos 7 dias", "audiências", "já passaram e seguem abertos", "casos abertos", "casos ativos", "clientes", "processos", "pedindo providência", "merecendo conferência", "execuções com o prazo correndo", "tempo médio em trâmite", "em trâmite", "parado há", "sem telefone", "sem contato há mais de 30 dias", "parados há mais de 90 dias", "prescrevem em até 180 dias", "com prazo em até 5 dias", "com novidade desde o último contato", "teses no banco", "esperando sua decisão", "precedentes a conferir", "teses novas", "refinamentos", "tempo de leitura", "a pagar", "a receber", "saldo do mês", "recebido neste mês", "projeção para o ano"]};
 function aplicarRotulos(raiz){
   const pares = Object.entries(ROTULOS).filter(([k,v]) => v && v !== k);
   if (!pares.length || !raiz) return;
@@ -308,7 +308,7 @@ window.restaurarMenu = async () => {
   await gravarMenu(); telaConfig();
 };
 const GRUPOS = [
-  ['Rotina',    ['prazos','triagem','agenda','mensageria']],
+  ['Rotina',    ['prazos','agenda','mensageria']],
   ['Processos', ['casos','processos','andamento','minutas']],
   ['Pessoas',   ['clientes','captacao','parceiros']],
   ['Gestão',    ['metricas','financeiro']],
@@ -401,8 +401,10 @@ async function telaPrazos(){
   if(error) return erro(error.message);
   const lista = data||[], sug = lista.filter(p=>p.situacao==='sugerido'), conf = lista.filter(p=>p.situacao==='confirmado');
   const urg = lista.filter(p=>dias(p.data_fatal)<=5).length, venc = lista.filter(p=>dias(p.data_fatal)<0).length;
+  const tri = await blocoTriagem();
   app.innerHTML = menu('prazos') + `
-  <main><h1>Prazos</h1><p class="meta">Atualizado pelo robô do DJEN às 9h e 15h, dias úteis.</p>
+  <main><h1>Prazos e publicações</h1><p class="meta">Tudo o que chegou do Diário e o que virou prazo, no mesmo lugar.
+    Atualizado pelo robô do DJEN às 9h e 15h, dias úteis. Depois de tratado aqui, aparece na agenda e na ficha do caso.</p>
   <div class="kpis">
     <div class="kpi"><div class="n">${lista.length}</div><div class="l">em aberto</div></div>
     <div class="kpi ${urg?'al':''}"><div class="n">${urg}</div><div class="l">vencem em até 5 dias</div></div>
@@ -415,7 +417,9 @@ async function telaPrazos(){
   ${tabelaPrazos('Aguardando confirmação','Confirme, ajuste a data ou descarte o que não for prazo.',sug,true)}
   ${tabelaPrazos('Confirmados por você','Marque o quadradinho quando protocolar: o prazo sai do painel e some da agenda.',conf,false)}
   ${lista.length?'':'<div class="card"><div class="vazio">Nenhum prazo em aberto.</div></div>'}
+  ${tri}
   </main>` + rodape();
+  pintarTriagem();
 }
 
 /* --------------------------------------------------------------- processos */
@@ -492,7 +496,7 @@ async function telaProcessos(){
   </div>
   ${PROCS.filter(p=>!p.caso_id).length ? `<div class="card"><h2>Processos sem caso</h2>
     <p class="nota"><b>${PROCS.filter(p=>!p.caso_id).length} processo(s)</b> não estão ligados a caso nenhum —
-      não aparecem na ficha do cliente, não entram nos relatórios e não geram informativo.
+      não aparecem na ficha do cliente, não entram nos relatórios e não geram mensagem ao cliente.
       Na tabela abaixo dá para escolher o caso de cada um. Se preferir resolver de uma vez, o botão cria
       um caso por processo, com o número e a classe no título; o nome só entra quando a intimação
       permite identificar sem dúvida. Depois é só renomear caso a caso.</p>
@@ -524,20 +528,14 @@ window.gerarMensagem = async () => {
   const p = TL.proc;
   const box = document.getElementById('msgbox');
   box.style.display = 'block';
-  let n = 0;
-  if (p.caso_id) {
-    const { count } = await sb.from('interacao').select('id', { count:'exact', head:true })
-      .eq('caso_id', p.caso_id).eq('tipo','informativo');
-    n = count || 0;
-  }
   const rel = TL.itens.filter(i => i.rel && i.tipo === 'mov').slice(0, 5).reverse();
   const nome = nomeProprio((p.cliente_nome||'').split(' ')[0]) || 'tudo bem';
   const abertura = `Olá, ${nome}. Segue a atualização do seu processo.`;
   const corpo = rel.length
     ? rel.map(i => `• ${br(i.data)} — ${i.texto}`).join('\n')
     : '• Nenhuma decisão nova no período. O processo segue tramitando normalmente.';
-  const msg = `Informativo ${String(n+1).padStart(2,'0')} — seu processo ${p.numero_formatado || p.numero_cnj}`
-    + `\n\n${abertura}\n\n${corpo}\n\nContinuo acompanhando e envio o próximo informativo assim que houver novidade.`
+  const msg = `Atualização do processo ${p.numero_formatado || p.numero_cnj}`
+    + `\n\n${abertura}\n\n${corpo}\n\nContinuo acompanhando e aviso assim que houver novidade.`
     + ` Qualquer dúvida, é só responder por aqui.`;
   box.querySelector('textarea').value = msg;
   const fone = so(p.whatsapp || p.telefone);
@@ -1881,7 +1879,7 @@ async function telaCaso(id){
     </form></div>
 
   <div class="card"><h2>Cliente do caso</h2>
-    <p class="nota">O nome do cliente é o que aparece no quadro de casos, nos informativos e nos relatórios.
+    <p class="nota">O nome do cliente é o que aparece no quadro de casos, nas mensagens e nos relatórios.
       Sem ele, o caso continua identificado pelo número do processo.</p>
     <div style="padding:0 18px 18px;display:flex;gap:9px;align-items:center;flex-wrap:wrap">
       ${seletorCliente(c.id, c.cliente_id)}
@@ -2698,9 +2696,8 @@ const linkWa = (fone, texto) => {
   return 'https://wa.me/' + (f.length<=11 ? '55'+f : f) + '?text=' + encodeURIComponent(texto);
 };
 
-/* Monta o informativo numerado de um caso. */
+/* Monta a mensagem de atualização de um caso. */
 function montarInformativo(c){
-  const n = zero((c.informativos||0) + 1);
   const proc = c.procs?.[0];
   const numero = proc ? (proc.numero_formatado || proc.numero_cnj) : '';
   const nome = nomeProprio((c.nome||'').split(' ')[0]);
@@ -2710,8 +2707,8 @@ function montarInformativo(c){
     : ((c.movs||[]).length
       ? c.movs.map(m => `• ${br(m.data)} — ${m.texto_cliente}`).join('\n')
       : '• Nenhuma decisão nova no período. O processo segue tramitando normalmente.');
-  return `Informativo ${n} — seu processo ${numero}\n\n${abertura}\n\n${corpo}\n\n`
-       + `Continuo acompanhando e envio o próximo informativo assim que houver novidade. `
+  return `Atualização do processo ${numero}\n\n${abertura}\n\n${corpo}\n\n`
+       + `Continuo acompanhando e aviso assim que houver novidade. `
        + `Qualquer dúvida, é só responder por aqui.`;
 }
 
@@ -2738,7 +2735,7 @@ function linhaMsg(c){
   const d = semContato(c);
   const wa = linkWa(c.fone, c.texto);
   return `<tr id="lin${c.caso_id}">
-    <td><b>${esc(c.nome)}</b><span class="sub">${esc(c.area||'')} · próximo: informativo ${zero((c.informativos||0)+1)}</span>
+    <td><b>${esc(c.nome)}</b><span class="sub">${esc(c.area||'')}${c.informativos ? ' · '+c.informativos+' atualização(ões) enviada(s)' : ' · nunca atualizado'}</span>
       ${c.rascunho ? `<span class="sub"><span class="pill ${c.rascunho.relevancia==='alta'?'crit':'ser'}">texto redigido · ${esc(c.rascunho.relevancia)}</span>${c.rascunho.revisar?' <span class="pill cin">conferir</span>':''}</span>` : ''}
       ${c.rascunho?.revisar && c.rascunho.motivo_revisar ? `<span class="sub">${esc(c.rascunho.motivo_revisar)}</span>` : ''}</td>
     <td>${c.fone ? esc(c.fone) : '<span class="pill cin">sem telefone</span>'}</td>
@@ -2796,7 +2793,7 @@ window.registrarContato = async (casoId) => {
     .update({ status:'enviado', decidido_em: new Date().toISOString() })
     .eq('caso_id', c.caso_id).eq('status','rascunho');
   c.rascunho = null;
-  alvo.textContent = `informativo ${zero((c.informativos||0)+1)} registrado ✓`;
+  alvo.textContent = 'atualização registrada ✓';
   alvo.style.color = 'var(--good)';
   c.informativos = (c.informativos||0) + 1;
   c.ultimo_contato = new Date().toISOString();
@@ -2842,10 +2839,10 @@ async function telaMensageria(foco){
   const semFone = MSG.filter(c=>!c.fone).length;
   app.innerHTML = menu('mensageria') + `
   <main><h1>Mensagens</h1>
-  <p class="meta">Informativos numerados por cliente. O link já vai com o texto pronto — um clique abre o WhatsApp.</p>
+  <p class="meta">Uma mensagem de atualização por cliente. O link já vai com o texto pronto — um clique abre o WhatsApp.</p>
   <div class="kpis">
     <div class="kpi"><div class="n">${MSG.length}</div><div class="l">casos ativos</div></div>
-    <div class="kpi"><div class="n">${comNov}</div><div class="l">com novidade desde o último informativo</div></div>
+    <div class="kpi"><div class="n">${comNov}</div><div class="l">com novidade desde o último contato</div></div>
     <div class="kpi ${parados?'al':''}"><div class="n">${parados}</div><div class="l">sem contato há mais de 30 dias</div></div>
     <div class="kpi"><div class="n">${semFone}</div><div class="l">sem telefone cadastrado</div></div>
   </div>
@@ -2859,7 +2856,7 @@ async function telaMensageria(foco){
       <button class="btn" data-f="semfone"  onclick="filtroMsg('semfone')">Sem telefone</button>
       <button class="btn" data-f="todos"    onclick="filtroMsg('todos')">Todos</button>
     </div>
-    <table><thead><tr><th>Cliente</th><th>Telefone</th><th>Último informativo</th><th>Última movimentação</th><th></th></tr></thead>
+    <table><thead><tr><th>Cliente</th><th>Telefone</th><th>Última atualização</th><th>Última movimentação</th><th></th></tr></thead>
     <tbody id="cm"></tbody></table></div></main>`;
   if (foco) {
     MSGFOCO = foco;
@@ -3107,7 +3104,7 @@ async function telaSemCliente(){
   app.innerHTML = menu('clientes') + `
   <main><h1>Casos sem cliente</h1>
   <p class="meta">Enquanto o caso não tem cliente, ele aparece pelo número do processo em vez do nome,
-    não entra na ficha do cliente e não recebe informativo. Escolha um cliente já cadastrado
+    não entra na ficha do cliente e não recebe mensagem de atualização. Escolha um cliente já cadastrado
     ou digite o nome de um cliente novo — ele entra direto, sem passar pela Captação,
     e fica marcado como <b>anterior ao sistema</b>, fora das métricas de captação.
     O nome digitado também vira o título do caso.</p>
@@ -3123,7 +3120,7 @@ async function telaSemCliente(){
   pintarSemCliente();
 }
 /* ------------------------------------------------- triagem das publicações */
-let TRI = [], TRIFILTRO = 'pendentes', TRIDIAS = 30;
+let TRI = [], TRIFILTRO = 'semprazo', TRIDIAS = 30;
 const confRotulo = c => c == null ? ['—','cin']
   : (c >= 0.8 ? ['confiança alta','good'] : (c >= 0.5 ? ['confiança regular','warn'] : ['confiança baixa','ser']));
 function classificar(i){
@@ -3196,19 +3193,20 @@ window.cadastrarDaPublicacao = async id => {
     .update({ processo_id: proc.id, caso_id: proc.caso_id }).eq('id', id);
   if (error) { if (st) st.textContent = 'erro: ' + error.message; return; }
   if (st) st.textContent = 'processo cadastrado ✓';
-  telaTriagem();
+  telaPrazos();
 };
 window.filtrarTriagem = v => { TRIFILTRO = v; pintarTriagem(); };
-window.mudarDiasTri = v => { TRIDIAS = Number(v); telaTriagem(); };
+window.mudarDiasTri = v => { TRIDIAS = Number(v); telaPrazos(); };
 function pintarTriagem(){
   const alvo = document.getElementById('trilista'); if (!alvo) return;
   for (const b of document.querySelectorAll('#trif .btn')) b.classList.toggle('ok', b.dataset.f === TRIFILTRO);
   const baixada = i => ['sem_providencia','confirmada','cumprida'].includes(i.situacao);
   let l = TRI.map(i => ({ i, c: classificar(i) }));
-  if (TRIFILTRO === 'pendentes')  l = l.filter(x => !baixada(x.i));
-  else if (TRIFILTRO !== 'tudo')  l = l.filter(x => x.c.chave === TRIFILTRO);
+  if (TRIFILTRO === 'semprazo')        l = l.filter(x => !baixada(x.i) && !x.i.prazos.length);
+  else if (TRIFILTRO === 'pendentes')  l = l.filter(x => !baixada(x.i));
+  else if (TRIFILTRO !== 'tudo')       l = l.filter(x => x.c.chave === TRIFILTRO);
   if (!l.length) return alvo.innerHTML =
-    '<div class="vazio">Nada nesta lista. Se filtrou por pendentes, é porque está tudo baixado.</div>';
+    '<div class="vazio">Nada nesta lista. Se o filtro é o padrão, é porque tudo o que chegou já virou prazo acima ou já foi baixado.</div>';
   alvo.innerHTML = l.map(({i,c}) => {
     const [rc, cc] = confRotulo(c.conf);
     const prazo = i.prazos[0];
@@ -3242,7 +3240,7 @@ function pintarTriagem(){
   }).join('');
   aplicarRotulos(alvo);
 }
-async function telaTriagem(){
+async function blocoTriagem(){
   const desde = new Date(Date.now() - TRIDIAS * 864e5).toISOString().slice(0,10);
   const [it, pz, ev, rs] = await Promise.all([
     sb.from('intimacao').select('id,numero_processo,numero_formatado,orgao,tribunal_sigla,tipo_comunicacao,tipo_documento,classe,data_disponibilizacao,texto,link_pje,situacao,processo_id,caso_id,caso:caso_id(titulo)')
@@ -3251,7 +3249,7 @@ async function telaTriagem(){
     sb.from('evento').select('id,titulo,inicio,tipo,descricao,processo_id').eq('tipo','audiencia').limit(1000),
     sb.from('informativo_rascunho').select('caso_id,status').eq('status','rascunho').limit(500),
   ]);
-  if (it.error) return erro(it.error.message);
+  if (it.error) return `<div class="card"><div class="vazio">Não consegui ler as publicações: ${esc(it.error.message)}</div></div>`;
   const rascunhos = new Set((rs.data||[]).map(r => r.caso_id));
   TRI = (it.data||[]).map(i => ({
     ...i,
@@ -3264,8 +3262,8 @@ async function telaTriagem(){
   const baixada = i => ['sem_providencia','confirmada','cumprida'].includes(i.situacao);
   const pend = TRI.filter(i => !baixada(i)).length;
   const semProc = TRI.filter(i => !i.processo_id).length;
-  app.innerHTML = menu('triagem') + `
-  <main><h1>Triagem das publicações</h1>
+  return `
+  <h1 style="margin-top:26px">Publicações que chegaram</h1>
   <p class="meta">Tudo o que o robô leu no Diário, com o que ele concluiu e o quanto confia na leitura.
     O texto integral fica aqui, sem precisar abrir o PJe. Nada some da lista sem você mandar.</p>
   <div class="kpis">
@@ -3276,7 +3274,8 @@ async function telaTriagem(){
   </div>
   <div class="card"><h2>O que chegou</h2>
     <div id="trif" style="padding:0 18px 12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <button class="btn" data-f="pendentes" onclick="filtrarTriagem('pendentes')">a conferir</button>
+      <button class="btn" data-f="semprazo" onclick="filtrarTriagem('semprazo')">a conferir (fora os prazos acima)</button>
+      <button class="btn" data-f="pendentes" onclick="filtrarTriagem('pendentes')">todas a conferir</button>
       <button class="btn" data-f="prazo" onclick="filtrarTriagem('prazo')">com prazo</button>
       <button class="btn" data-f="audiencia" onclick="filtrarTriagem('audiencia')">audiências</button>
       <button class="btn" data-f="sem" onclick="filtrarTriagem('sem')">sem providência</button>
@@ -3286,9 +3285,7 @@ async function telaTriagem(){
         ${[7,15,30,60,90,365].map(d=>`<option value="${d}" ${TRIDIAS===d?'selected':''}>${d} dias</option>`).join('')}
       </select>
     </div>
-    <div id="trilista"></div></div>
-  </main>` + rodape();
-  pintarTriagem();
+    <div id="trilista"></div></div>`;
 }
 
 /* ------------------------------------------- cor do dia de hoje no calendário */
@@ -4523,7 +4520,7 @@ async function rota(){
   if(h.startsWith('#/processo/')) return telaProcesso(h.slice('#/processo/'.length));
   if(h.startsWith('#/caso/'))      return telaCaso(h.slice('#/caso/'.length));
   if(h.startsWith('#/semcliente'))return telaSemCliente();
-  if(h.startsWith('#/triagem'))    return telaTriagem();
+  if(h.startsWith('#/triagem'))    return telaPrazos();
   if(h.startsWith('#/agenda'))     return telaAgenda();
   if(h.startsWith('#/captacao'))   return telaCaptacao();
   if(h.startsWith('#/casos'))      return telaCasos();
