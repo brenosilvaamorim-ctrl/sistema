@@ -217,7 +217,7 @@ function telaLogin(msg){
 }
 
 let ESC_NOME = 'Breno S. Amorim Advocacia', ESC_LOGO = null, ESC_ID = null, ESC_TOKEN = null;
-const MENU_PADRAO = [['inicio','Início'],['prazos','Prazos e publicações'],['agenda','Agenda'],['captacao','Captação'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['clientes','Clientes'],['mensageria','Mensagens'],['metricas','Métricas'],['jurimetria','Jurimetria'],['financeiro','Financeiro'],['parceiros','Parceiros'],['minutas','Minutas'],['playbook','Playbook'],['aprender','Aprender'],['dicionario','Dicionário'],['documentos','Documentos'],['tutoriais','Tutoriais'],['regras','Regras'],['importar','Importar antigos'],['config','Configurações']];
+const MENU_PADRAO = [['inicio','Início'],['prazos','Prazos e publicações'],['agenda','Agenda'],['captacao','Captação'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['clientes','Clientes'],['mensageria','Mensagens'],['metricas','Métricas'],['jurimetria','Jurimetria'],['financeiro','Financeiro'],['parceiros','Parceiros'],['minutas','Minutas'],['playbook','Playbook'],['aprender','Aprender'],['dicionario','Dicionário'],['documentos','Documentos'],['tutoriais','Tutoriais'],['regras','Regras'],['importar','Importar antigos'],['manual','Manual'],['config','Configurações']];
 let MENUCFG = MENU_PADRAO.map(([k,r]) => ({ k, r, v:true }));
 let ROTULOS = {};
 const PALAVRAS = {"Telas e seções": ["Prazos", "Triagem", "Triagem das publicações", "O que chegou", "Agenda", "Captação", "Casos", "Processos", "Andamento", "Clientes", "Mensagens", "Métricas", "Financeiro", "Parceiros", "Delegar um servi\u00e7o", "Acompanhamento", "Quem s\u00e3o os parceiros", "Delegado a parceiro", "Minutas", "Aprender", "Dicionário", "Documentos", "Tutoriais", "Configurações", "Calendário", "Pela frente", "Vencidos e ainda abertos", "Linha do tempo", "Todos os processos", "Andamento dos processos", "Os mais parados primeiro", "Precedentes", "Teses", "Fila de aprovação", "Minutas recentes", "Análise prévia", "Modo juiz", "Marcar prazo, audiência ou tarefa", "Levar tudo para o Google Agenda", "Equipe e acessos", "Dados do escritório", "Áreas de atuação", "Origens de captação", "Categorias financeiras", "Dicionário de movimentações", "Cor do dia de hoje", "Cópias automáticas", "Casos sem cliente", "Cliente do caso", "Amarrar cliente", "Documentos a pedir", "Documentos do cliente", "Assinatura de documentos", "Tutoriais para clientes", "Ensinar uma peça ao banco", "Mensagem para o cliente", "Novo contato", "Novo lançamento", "Resultado da leitura"], "Colunas das tabelas": ["Feito", "Em trâmite", "Parado há", "Fase", "Situação e providência", "Aguardando até", "Chegou", "Documento", "Onde consigo", "Recebido em", "Vence", "Quando", "Situação", "Providência", "Cliente / vara", "Cliente / caso", "Processo", "Trecho lido e memória", "Conf.", "Ação", "Tipo", "O quê", "Descrição", "Origem", "Valor", "Vencimento", "Tribunal", "Relator", "Tema", "Órgão", "Área", "Nome", "Pessoa", "Perfil", "Ativo", "E-mail", "Telefone", "Telefone / WhatsApp", "Última movimentação", "Última atualização", "Encerrado em", "Motivo", "Resultado", "Vezes", "Cód."], "Números do topo": ["em aberto", "vencem em até 5 dias", "já vencidos", "aguardando confirmação", "compromissos à frente", "nos próximos 7 dias", "audiências", "já passaram e seguem abertos", "casos abertos", "casos ativos", "clientes", "processos", "pedindo providência", "merecendo conferência", "execuções com o prazo correndo", "tempo médio em trâmite", "em trâmite", "parado há", "sem telefone", "sem contato há mais de 30 dias", "parados há mais de 90 dias", "prescrevem em até 180 dias", "com prazo em até 5 dias", "com novidade desde o último contato", "teses no banco", "esperando sua decisão", "precedentes a conferir", "teses novas", "refinamentos", "tempo de leitura", "a pagar", "a receber", "saldo do mês", "recebido neste mês", "projeção para o ano"]};
@@ -312,7 +312,7 @@ const GRUPOS = [
   ['Processos', ['casos','processos','andamento','minutas','playbook']],
   ['Pessoas',   ['clientes','captacao','parceiros']],
   ['Gestão',    ['metricas','jurimetria','financeiro']],
-  ['Sistema',   ['aprender','dicionario','documentos','tutoriais','regras','importar','config']],
+  ['Sistema',   ['manual','aprender','dicionario','documentos','tutoriais','regras','importar','config']],
 ];
 window.abrirGrupo = (ev, nome) => {
   ev.preventDefault();
@@ -2991,6 +2991,301 @@ async function telaRegras(){
   </main>` + rodape();
 }
 
+/* ---------------------------------------------------------------- manual */
+const MANUAL_MD = `# Manual do sistema — Breno S. Amorim Advocacia
+
+Atualizado em 19 de agosto de 2026.
+
+Este manual explica o que cada menu faz, na ordem em que a coisa acontece no escritório: a publicação chega, vira prazo, vira tarefa, vira peça, vira dinheiro. No fim tem os limites do sistema e o que fazer quando algo der errado.
+
+Endereço: sistema.brenosamorimadvocacia.com.br — a entrada é por link mágico enviado ao seu e-mail, não há senha para decorar.
+
+## 1. Como o sistema pensa
+
+Três ideias sustentam tudo:
+
+**Cliente → caso → processo.** O cliente é a pessoa. O caso é o problema dela (pode existir antes de haver processo). O processo é o número no tribunal. Um caso pode ter vários processos; um processo pertence a um caso só.
+
+**Nada some sozinho.** Publicação, prazo, tarefa e mensagem só saem da sua frente quando você mandar. O sistema não decide por você e não escreve para cliente sem a sua ordem.
+
+**O robô traz, você decide.** Duas vezes por dia o sistema lê o DJEN e o DataJud, sugere prazos e classifica as publicações. Tudo o que ele conclui vem com um nível de confiança. A responsabilidade continua sendo sua — confira a data antes de aceitar.
+
+## 2. A rotina de cinco minutos
+
+De manhã: abra **Início**. Ele mostra o que venceu, o que vence hoje, o que vem nos próximos sete dias, quantas publicações estão esperando conferência e como está o mês no dinheiro.
+
+Depois: **Prazos e publicações**. Confirme ou descarte os prazos sugeridos, clique em "Aplicar as regras" e trate as publicações que sobraram.
+
+No fim do dia: marque o que foi feito. Prazo protocolado, tarefa concluída, audiência realizada. É esse clique que alimenta os relatórios — sem ele, a Métrica e a Jurimetria mostram zero.
+
+## 3. Início
+
+A tela de abertura. Seis números no topo, três blocos embaixo:
+
+- **Hoje** — o que venceu, o que vence hoje e o compromisso do dia. Audiência por vídeo aparece com o botão verde "Entrar agora".
+- **Os próximos sete dias** — prazos e compromissos da semana.
+- **O mês no dinheiro** — a receber, a pagar e o resultado previsto.
+
+A faixa "Começar alguma coisa" leva direto a novo atendimento, casos, agenda, prazos, mensagem, financeiro e minuta.
+
+## 4. Prazos e publicações
+
+É onde a maior parte do trabalho começa. A tela tem três partes, de cima para baixo:
+
+**Aguardando confirmação.** Prazos que o robô leu da intimação. Cada linha traz o trecho lido, a memória de cálculo e o nível de confiança. Você confirma, ajusta a data ou descarta. *Confirme sempre olhando a data — a contagem é sugestão do sistema.*
+
+**Confirmados por você.** Marque o quadradinho quando protocolar. O prazo sai do painel e some da agenda.
+
+**Publicações que chegaram.** Os cartões da triagem, com o texto integral da publicação — não precisa abrir o PJe para ler. Cada cartão diz o que o robô entendeu (prazo, audiência, sem providência, processo não cadastrado) e o quanto confia nisso. Botões: ver a publicação, confirmar o prazo, cadastrar processo, escrever ao cliente, marcar como lida.
+
+O filtro padrão é "a conferir (fora os prazos acima)", para você não tratar duas vezes a mesma coisa. Ao lado ficam os filtros por tipo e o seletor de período.
+
+**Aplicar as regras a tudo o que está aberto** roda o motor de regras (item 17) sobre as publicações pendentes.
+
+## 5. Agenda
+
+Prazos, audiências, perícias, reuniões, tarefas e prescrições no mesmo calendário.
+
+- **Marcar prazo, audiência ou tarefa** — o formulário de cima. O campo **link da sala** guarda o endereço do Zoom, Meet ou PJe e vira o botão "Entrar agora".
+- **Google Agenda** — copie o endereço de assinatura e cole em *Google Agenda → Outras agendas → + → De URL*. A partir daí tudo o que você marcar aqui aparece lá sozinho. **Esse endereço é a chave da sua agenda: não repasse.**
+- **Cor do dia de hoje** — em Configurações, se quiser trocar.
+
+## 6. Mensagens
+
+A lista de clientes com o texto de atualização já pronto, um por caso. O botão do WhatsApp abre a conversa com o texto colado; o registro entra na ficha do caso quando você clica em registrar.
+
+Não há numeração de informativo: a mensagem abre como "Atualização do processo tal". Filtros: com novidade, parados há mais de 30 dias, sem telefone.
+
+## 7. Casos
+
+Duas visões, alternadas no topo:
+
+- **Quadro** — cartões por etapa, com prazo mais próximo, tempo parado e etiquetas.
+- **Lista** — tabela com cliente, área, etapa, etiquetas, próximo prazo e nº de processos. Boa para varrer tudo de uma vez.
+
+As **etiquetas** você cria dentro do caso e viram filtro aqui no topo.
+
+### Dentro de um caso
+
+**Tipo do caso e etiquetas.** Escolher o tipo (verbas rescisórias, vínculo, acidente de trabalho, concurso, servidor, cível) traz de uma vez a lista de documentos, as primeiras tarefas já datadas e os campos próprios daquela ação. Nada é apagado: só se acrescenta o que falta.
+
+**Ler um documento.** Manda o PDF ou a foto — CTPS, TRCT, contracheque, cartão de ponto, laudo, edital. O sistema lê e devolve os campos e os fatos, com o trecho e a página de cada um. Serve tanto para PDF de texto quanto para documento escaneado ou foto de celular. Até 6 MB por arquivo. **Nada entra no caso sem você marcar.** O que estiver ilegível ele deixa de fora em vez de chutar.
+
+**Linha do tempo dos fatos, com a prova de cada um.** Um fato por linha, na ordem em que aconteceu, dizendo qual documento prova aquilo. Fato sem prova indicada aparece marcado em vermelho. O botão "Copiar a narrativa" entrega o texto pronto para a inicial.
+
+**Processos.** Cadastre o número assim que protocolar — não precisa esperar o diário. A partir daí o robô do DataJud acompanha sozinho.
+
+**Registrar atividade.** Prazo, audiência, perícia, reunião, tarefa ou contato, tudo amarrado ao caso.
+
+**Documentos do cliente.** A lista do que foi pedido, com data de recebimento, e o botão que monta a cobrança pronta no WhatsApp.
+
+**Assinatura de documentos.** Gera a procuração e o contrato, registra o envio e a assinatura, e monta a cobrança de quem não assinou. O envio é manual, pelo seu WhatsApp ou e-mail.
+
+**Delegado a parceiro.** Quando você passa a diligência, a audiência ou a peça para outro advogado: registra o combinado, o valor e o prazo, e joga o pagamento no financeiro.
+
+**Linha do tempo do caso.** Tudo o que aconteceu, filtrável por tipo.
+
+## 8. Processos e Andamento
+
+**Processos** é a lista de todos os números, com busca.
+
+**Andamento** ordena os processos pelos mais parados e mostra um semáforo por processo: em dia, atenção, parado. Dá para mudar a fase (conhecimento, recurso, execução, suspenso), marcar espera e silenciar o alerta de um processo que está corretamente parado.
+
+## 9. Clientes
+
+Cadastro, ficha completa e histórico. **CPF e endereço são obrigatórios para gerar procuração** — hoje é o que mais falta na base.
+
+**Casos sem cliente** é a tela de pareamento: casos que vieram do acervo antigo e ainda não têm dono. Dá para criar o cliente ali mesmo, marcado como anterior ao sistema, sem passar pela Captação e sem afetar a métrica do mês.
+
+## 10. Captação
+
+O funil de quem chega: novo contato, em análise, proposta, fechado, perdido. Quando fecha, o cliente e o caso são criados sozinhos.
+
+**Viabilidade** — em cada cartão, o botão abre a triagem: dentro do prazo (3), prova documental (3), testemunha (1), a outra parte tem como pagar (2), relato coerente (1). Sai uma nota de 0 a 10 no cartão. Serve para decidir o que aceitar e para saber, depois, o que dava certo e o que não dava.
+
+Registre o contato **na hora em que a pessoa chama**. Sem isso a métrica de origem não existe.
+
+## 11. Parceiros
+
+Quem são os parceiros e o que foi delegado a cada um: tipo de serviço, valor combinado, prazo, situação e pagamento. O acompanhamento aparece também dentro do caso.
+
+## 12. Métricas e Jurimetria
+
+**Métricas** é a produção do escritório: audiências, prazos e tarefas realizados por período e por área. Só conta o que você marcou como concluído.
+
+**Jurimetria** é a leitura da carteira:
+
+- números por **tribunal**, **vara/órgão**, **comarca**, **classe**, **assunto** e **área** — com quantos processos, quantos encerrados, taxa de êxito e duração média;
+- **casos análogos**: escreva o assunto, a classe, a vara ou a comarca e ele junta os processos parecidos, com o que aconteceu em cada um;
+- **banco de decisões**: decisões de fora, com tribunal, vara, comarca, relator, tema, tese, resultado e link do inteiro teor. Serve para saber como aquele juízo vem decidindo antes de ajuizar, recorrer ou fechar acordo.
+
+Duas ressalvas honestas: número pequeno é indício, não estatística; e a taxa de êxito só passa a valer quando você fechar os casos escolhendo o resultado (acordo, procedente, improcedente…).
+
+## 13. Financeiro
+
+Contas a receber e a pagar, por caso, cliente e categoria. Honorário por êxito amarrado ao caso. Projeção do mês e do ano. A baixa é manual: marque quando entrar ou sair de verdade.
+
+## 14. Minutas, Aprender, Playbook e Dicionário
+
+**Minutas** — a peça redigida a partir dos fatos do caso e das teses do banco. Sai como minuta, nunca protocolada: a revisão e a assinatura são suas.
+
+**Aprender** — ensina uma peça sua ao banco. O sistema extrai as teses e o modo de escrever e guarda para as próximas.
+
+**Playbook** — as suas teses padrão: quando usar, o fundamento, a resposta para a defesa mais comum e o texto pronto. É o que faz a peça sair no seu jeito e não num jeito genérico. Comece pelas teses que você mais usa.
+
+**Dicionário** — a tradução das movimentações processuais para o português que o cliente entende.
+
+## 15. Documentos e Tutoriais
+
+**Documentos** — as listas do que pedir por área (trabalhista, acidente de trabalho, cível/família, administrativo/concursos). Dentro do caso, a lista vira checklist com data de recebimento e cobrança pronta.
+
+**Tutoriais** — os textos de ajuda para mandar ao cliente: como tirar o extrato do FGTS, como baixar a CTPS digital, como pegar o CNIS. Um clique manda pelo WhatsApp.
+
+## 16. Importar antigos
+
+Para a jurimetria valer, ela precisa do acervo inteiro, inclusive o arquivado.
+
+Três caminhos: baixar a planilha modelo e subir preenchida; colar direto da tela do PJe ou de uma planilha; ou mandar só a lista de números e marcar "o robô do DataJud completa".
+
+As colunas podem vir em qualquer ordem — ele reconhece pelo cabeçalho. O mínimo é o número do processo **ou** o nome do cliente. Quanto mais vara, classe, assunto, datas e resultado, melhor a estatística.
+
+Antes de gravar ele mostra a conferência: quantas linhas leu, quais têm problema, quantas já vêm encerradas. Processo cujo número já existe é pulado — pode rodar de novo sem duplicar. Tudo o que entra por aí nasce marcado como anterior ao sistema.
+
+## 17. Regras
+
+"Quando acontecer isto, faça aquilo." As regras rodam sobre as publicações quando você clica em "Aplicar as regras", na tela de Prazos.
+
+Gatilhos: virou prazo, marcou audiência, é só ciência, processo não cadastrado, qualquer publicação — com filtro opcional por palavra no texto. Ações: criar tarefa, sugerir prazo, etiquetar o caso, lembrar de escrever ao cliente.
+
+**Nenhuma mensagem sai sozinha para cliente.** A regra cria a tarefa; o texto continua saindo pela sua mão.
+
+## 18. Configurações
+
+- **Equipe e acessos** — convide alguém só com o e-mail; a pessoa recebe o link de entrada.
+- **Permissões** — trave por pessoa o que ela pode apagar ou ver (casos, clientes, processos, prazos, financeiro, cadastro). A trava vale no banco, não só na tela.
+- **Auditoria** — quem fez o quê: quem confirmou prazo, quem apagou, quem baixou cópia. Registrado por gatilho no banco, não dá para burlar pelo navegador.
+- **Cópias automáticas** — backup todo dia às 7h30 e um completo por semana. A lista fica aqui, com link para baixar.
+- **Áreas, origens, categorias e colunas** — os campos que alimentam os menus.
+- **Cor do dia de hoje** no calendário.
+
+## 19. O que o sistema não faz
+
+Vale saber, para não contar com o que não existe:
+
+- **Não protocola.** Nenhuma peça sai daqui para o PJe. Minuta é minuta.
+- **Não envia mensagem sozinho.** WhatsApp e e-mail sempre saem pela sua mão.
+- **Não usa o seu certificado digital nem entra no PJe por você.**
+- **Não emite boleto nem nota fiscal** — precisaria contratar um gateway.
+- **Não tem portal do cliente** — por decisão sua.
+- **Não dá parecer.** A confiança que ele mostra é do robô que leu o texto, não do advogado que responde pelo caso.
+
+## 20. Quando der errado
+
+**A tela não mudou depois de uma atualização** — Ctrl+F5 (no Mac, Cmd+Shift+R). O navegador guarda a versão antiga.
+
+**"Não foi possível: new row violates row-level security"** — a sessão perdeu o vínculo com o escritório. Saia e entre de novo pelo link do e-mail.
+
+**O robô não trouxe publicação hoje** — o DJEN só publica em dia útil, e a captura roda às 9h e às 15h. Se passar dois dias úteis sem nada, me avise.
+
+**Um processo aparece "nunca consultado"** — o DataJud não achou aquele número. Costuma ser número digitado errado ou processo em segredo de justiça.
+
+**O prazo sugerido veio com data estranha** — descarte e marque à mão. É exatamente para isso que existe a confirmação.
+
+**Perdi alguma coisa** — as cópias automáticas ficam em Configurações. Todo dia às 7h30.
+
+---
+
+*Este manual acompanha o sistema. Quando entrar funcionalidade nova, ele é atualizado junto.*
+`;
+
+function mdHtml(t){
+  const linhas = t.split('\n');
+  const out = []; let emLista = false;
+  const inline = x => esc(x)
+    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+    .replace(/(^|[\s(])\*([^*]+)\*/g, '$1<i>$2</i>');
+  for (const l of linhas) {
+    const t2 = l.trim();
+    if (!t2) { if (emLista) { out.push('</ul>'); emLista = false; } continue; }
+    if (t2 === '---') { if (emLista) { out.push('</ul>'); emLista = false; } out.push('<hr>'); continue; }
+    const h = t2.match(/^(#{1,4})\s+(.*)$/);
+    if (h) {
+      if (emLista) { out.push('</ul>'); emLista = false; }
+      const n = h[1].length;
+      out.push(n === 1 ? '' : `<h${Math.min(n,3)} class="mh${n}">${inline(h[2])}</h${Math.min(n,3)}>`);
+      continue;
+    }
+    if (/^[-*]\s+/.test(t2)) {
+      if (!emLista) { out.push('<ul>'); emLista = true; }
+      out.push('<li>' + inline(t2.replace(/^[-*]\s+/,'')) + '</li>');
+      continue;
+    }
+    if (emLista) { out.push('</ul>'); emLista = false; }
+    out.push('<p>' + inline(t2) + '</p>');
+  }
+  if (emLista) out.push('</ul>');
+  return out.join('\n');
+}
+function secoesManual(){
+  const partes = MANUAL_MD.split(/\n(?=##\s)/);
+  return partes.map(p => {
+    const m = p.match(/^##\s+(.*)/);
+    return { titulo: m ? m[1] : 'Apresentação', corpo: p };
+  });
+}
+window.buscarManual = () => {
+  const t = (document.getElementById('mbusca')?.value || '').toLowerCase().trim();
+  const alvo = document.getElementById('mconteudo');
+  const secs = secoesManual();
+  const achou = t ? secs.filter(s => s.corpo.toLowerCase().includes(t)) : secs;
+  document.getElementById('mcont').textContent = t
+    ? `${achou.length} trecho(s) com "${t}"` : `${secs.length} seções`;
+  alvo.innerHTML = achou.length
+    ? achou.map(s => `<div class="card" id="m-${esc(s.titulo.replace(/\W+/g,'-').toLowerCase())}">
+        <div style="padding:14px 18px 18px">${mdHtml(s.corpo)}</div></div>`).join('')
+    : '<div class="card"><div class="vazio">Nada no manual com essa palavra.</div></div>';
+};
+window.baixarManual = () => {
+  const blob = new Blob(['﻿' + MANUAL_MD], { type:'text/markdown;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'manual-do-sistema.md'; a.click();
+};
+window.imprimirManual = () => {
+  const w = window.open('', '_blank');
+  w.document.write(`<!doctype html><html lang="pt-BR"><meta charset="utf-8"><title>Manual do sistema</title>
+  <style>@page{size:A4;margin:20mm 18mm}
+  body{font:11pt/1.55 Georgia,'Times New Roman',serif;color:#1b1a17;max-width:760px;margin:0 auto}
+  h2{font-size:14pt;margin:22px 0 6px;padding-top:10px;border-top:1px solid #ddd8cd;page-break-after:avoid}
+  h3{font-size:12pt;margin:14px 0 4px;page-break-after:avoid}
+  p,li{margin:0 0 7px} ul{margin:0 0 8px 18px;padding:0} hr{border:0;border-top:1px solid #ddd8cd;margin:18px 0}</style>
+  <h1 style="font-size:20pt;margin:0 0 6px">Manual do sistema — Breno S. Amorim Advocacia</h1>
+  ${mdHtml(MANUAL_MD)}</html>`);
+  w.document.close();
+  setTimeout(()=>w.print(), 400);
+};
+async function telaManual(){
+  const secs = secoesManual();
+  app.innerHTML = menu('manual') + `
+  <main><h1>Manual do sistema</h1>
+  <p class="meta">O que cada menu faz, na ordem em que a coisa acontece no escritório.
+    Busque pela palavra, ou imprima e deixe em cima da mesa.</p>
+  <div class="card"><div style="padding:12px 18px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <input id="mbusca" placeholder="Ex.: prazo, etiqueta, backup, DataJud, viabilidade"
+           style="flex:1;min-width:260px" oninput="buscarManual()">
+    <button class="btn" onclick="imprimirManual()">Imprimir ou salvar em PDF</button>
+    <button class="btn" onclick="baixarManual()">Baixar o texto</button>
+    <span class="sub" id="mcont" style="margin:0">${secs.length} seções</span>
+  </div>
+  <div style="padding:0 18px 16px;display:flex;gap:6px;flex-wrap:wrap">
+    ${secs.filter(x=>x.titulo!=='Apresentação').map(x=>
+      `<a class="btn" style="text-decoration:none;font-size:11.4px;padding:4px 8px"
+          href="#m-${esc(x.titulo.replace(/\W+/g,'-').toLowerCase())}">${esc(x.titulo)}</a>`).join('')}
+  </div></div>
+  <div id="mconteudo"></div>
+  </main>` + rodape();
+  buscarManual();
+}
+
 /* ------------------------------------------- importar processos antigos */
 let IMP = [];
 const COLS = [
@@ -5619,6 +5914,7 @@ async function rota(){
   if(h.startsWith('#/playbook'))   return telaPlaybook();
   if(h.startsWith('#/regras'))     return telaRegras();
   if(h.startsWith('#/importar'))   return telaImportar();
+  if(h.startsWith('#/manual'))     return telaManual();
   if(h.startsWith('#/financeiro')) return telaFinanceiro();
   if(h.startsWith('#/parceiros'))  return telaParceiros();
   if(h.startsWith('#/mensagens'))  return telaMensageria();
