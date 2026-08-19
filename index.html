@@ -3245,6 +3245,10 @@ window.buscarManual = () => {
         <div style="padding:14px 18px 18px">${mdHtml(s.corpo)}</div></div>`).join('')
     : '<div class="card"><div class="vazio">Nada no manual com essa palavra.</div></div>';
 };
+window.irManual = (id) => {
+  const el = document.getElementById(id);
+  if (el) el.scrollIntoView({ behavior:'smooth', block:'start' });
+};
 window.baixarManual = () => {
   const blob = new Blob(['﻿' + MANUAL_MD], { type:'text/markdown;charset=utf-8' });
   const a = document.createElement('a');
@@ -3278,8 +3282,8 @@ async function telaManual(){
   </div>
   <div style="padding:0 18px 16px;display:flex;gap:6px;flex-wrap:wrap">
     ${secs.filter(x=>x.titulo!=='Apresentação').map(x=>
-      `<a class="btn" style="text-decoration:none;font-size:11.4px;padding:4px 8px"
-          href="#m-${esc(x.titulo.replace(/\W+/g,'-').toLowerCase())}">${esc(x.titulo)}</a>`).join('')}
+      `<button class="btn" style="font-size:11.4px;padding:4px 8px"
+          onclick="irManual('m-${esc(x.titulo.replace(/\W+/g,'-').toLowerCase())}')">${esc(x.titulo)}</button>`).join('')}
   </div></div>
   <div id="mconteudo"></div>
   </main>` + rodape();
