@@ -2684,7 +2684,7 @@ async function telaFinanceiro(){
 }
 
 /* -------------------------------------------------------------- mensageria */
-let MSG = [], MSGF = 'novidade', ESCRITORIO = null;
+let MSG = [], MSGF = 'novidade', MSGFOCO = null, ESCRITORIO = null;
 async function escId(){ if (!ESC_ID) { const { data } = await sb.from('escritorio').select('id').limit(1).single(); ESC_ID = data?.id ?? null; } return ESC_ID; }
 async function escritorioId(){
   if (!ESCRITORIO) { const { data } = await sb.from('escritorio').select('id').limit(1).single(); ESCRITORIO = data.id; }
@@ -2724,6 +2724,15 @@ function pintaMsg(){
   document.getElementById('cm').innerHTML = f.map(linhaMsg).join('')
     || '<tr><td colspan="5" class="vazio">Ninguém neste filtro.</td></tr>';
   for (const b of document.querySelectorAll('#fm .btn')) b.classList.toggle('ok', b.dataset.f === MSGF);
+  if (MSGFOCO) {
+    const lin = document.getElementById('lin' + MSGFOCO);
+    if (lin) {
+      lin.style.boxShadow = 'inset 0 0 0 2px var(--serie)';
+      lin.scrollIntoView({ block:'center', behavior:'smooth' });
+      if (!document.getElementById('box' + MSGFOCO)) verTexto(MSGFOCO);
+    }
+    MSGFOCO = null;
+  }
 }
 function linhaMsg(c){
   const d = semContato(c);
@@ -2794,7 +2803,7 @@ window.registrarContato = async (casoId) => {
   c.novidades = 0; c.movs = [];
   c.texto = montarInformativo(c);
 };
-async function telaMensageria(){
+async function telaMensageria(foco){
   const [mp, pr] = await Promise.all([
     sb.from('mensageria_painel').select('*'),
     sb.from('processo').select('id,caso_id,numero_formatado,numero_cnj').not('caso_id','is',null),
@@ -2852,6 +2861,18 @@ async function telaMensageria(){
     </div>
     <table><thead><tr><th>Cliente</th><th>Telefone</th><th>Último informativo</th><th>Última movimentação</th><th></th></tr></thead>
     <tbody id="cm"></tbody></table></div></main>`;
+  if (foco) {
+    MSGFOCO = foco;
+    MSGF = 'todos';
+    const alvo = MSG.find(c => c.caso_id === foco);
+    if (!alvo) {
+      const av = document.createElement('div');
+      av.className = 'aviso';
+      av.innerHTML = '<b>O caso desta publicação não aparece na lista de mensagens.</b> ' +
+        'Isso acontece quando o caso ainda não tem cliente ou telefone cadastrado.';
+      app.querySelector('main')?.prepend(av);
+    }
+  }
   pintaMsg();
 }
 
@@ -2880,6 +2901,32 @@ window.salvarEscritorio = async (ev) => {
     .eq('id', e1.id);
   document.getElementById('esc-st').textContent = error ? 'erro: '+error.message : 'salvo ✓';
 };
+/* --------------------------------------------------- convite de acesso */
+window.convidarMembro = async ev => {
+  ev.preventDefault();
+  const f = ev.target, st = document.getElementById('cv-st');
+  const v = n => (f.elements[n]?.value || '').trim();
+  st.style.color = 'var(--i3)'; st.textContent = 'enviando…';
+  const { data:{ session } } = await sb.auth.getSession();
+  let r, j;
+  try {
+    r = await fetch(SB_URL + '/functions/v1/convidar-membro', {
+      method: 'POST',
+      headers: { apikey: SB_KEY, Authorization: 'Bearer ' + session.access_token,
+                 'content-type': 'application/json' },
+      body: JSON.stringify({ nome: v('nome'), email: v('email'), perfil: v('perfil'),
+                             destino: location.origin }),
+    });
+    j = await r.json();
+  } catch (e) { st.textContent = 'não consegui falar com o servidor: ' + e.message;
+                st.style.color = 'var(--crit)'; return; }
+  if (!r.ok || j.erro) { st.textContent = j.erro || ('erro ' + r.status); st.style.color = 'var(--crit)'; return; }
+  st.textContent = 'convite enviado para ' + j.email + ' ✓';
+  st.style.color = 'var(--good)';
+  f.reset();
+  setTimeout(() => telaConfig(), 1600);
+};
+
 /* ------------------------------------------- amarrar cliente aos casos */
 let CLILISTA = [], SEMCLI = [], SCFILTRO = '';
 async function carregarClientes(){
@@ -3056,7 +3103,7 @@ function pintarTriagem(){
         ${prazo && prazo.situacao === 'sugerido'
           ? `<button class="btn ok" onclick="confirmarPrazoTri('${i.id}','${prazo.id}')">Confirmar o prazo</button>` : ''}
         ${!i.processo_id ? `<button class="btn ok" onclick="cadastrarDaPublicacao('${i.id}')">Cadastrar processo</button>` : ''}
-        ${i.temRascunho ? `<a class="btn" href="#/mensageria">Revisar a mensagem do cliente</a>` : ''}
+        ${i.caso_id ? `<a class="btn" href="#/mensageria/${i.caso_id}">${i.temRascunho ? 'Revisar a mensagem do cliente' : 'Escrever ao cliente'}</a>` : ''}
         ${!baixada(i) ? `<button class="btn" onclick="baixarIntimacao('${i.id}','sem_providencia')">Marcar como lida</button>` : ''}
         <span class="sub" id="ts-${i.id}" style="margin:0"></span>
       </div>
@@ -4134,8 +4181,24 @@ async function telaConfig(){
 
   <div class="card"><h2>Equipe e acessos</h2>
     <p class="nota">Cada pessoa entra com o próprio e-mail, por link — não há senha para compartilhar.
-      Para incluir alguém: peça que abra o painel e faça login uma vez; o nome aparece aqui e você define o perfil.
+      Basta o e-mail: o sistema cria o acesso e manda o convite.
       <b>Só titular e advogado confirmam prazo.</b> O financeiro fica com titular e administrativo.</p>
+    <form onsubmit="convidarMembro(event)" style="display:flex;gap:9px;flex-wrap:wrap;padding:0 18px 16px;align-items:flex-end">
+      <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:180px">
+        <span class="sub" style="margin:0">Nome</span><input name="nome" required placeholder="como aparece no sistema"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;flex:2;min-width:230px">
+        <span class="sub" style="margin:0">E-mail</span><input name="email" type="email" required placeholder="pessoa@exemplo.com"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:165px">
+        <span class="sub" style="margin:0">Perfil</span>
+        <select name="perfil">
+          <option value="estagiario">Estagiário</option>
+          <option value="advogado">Advogado</option>
+          <option value="administrativo">Administrativo</option>
+          <option value="titular">Titular</option>
+        </select></label>
+      <button class="btn ok" type="submit">Enviar convite</button>
+      <span class="sub" id="cv-st" style="margin:0"></span>
+    </form>
     <table><thead><tr><th>Pessoa</th><th>E-mail</th><th>Perfil</th><th>Ativo</th><th></th></tr></thead>
     <tbody>${(us.data||[]).map(u=>`<tr>
       <td><input type="text" id="un${u.id}" value="${esc(u.nome||'')}" style="width:180px"></td>
@@ -4333,6 +4396,7 @@ async function rota(){
   if(h.startsWith('#/andamento'))  return telaAndamento();
   if(h.startsWith('#/processos'))  return telaProcessos();
   if(h.startsWith('#/clientes'))   return telaClientes();
+  if(h.startsWith('#/mensageria/')) return telaMensageria(h.slice('#/mensageria/'.length));
   if(h.startsWith('#/mensageria')) return telaMensageria();
   if(h.startsWith('#/metricas'))   return telaMetricas();
   if(h.startsWith('#/financeiro')) return telaFinanceiro();
