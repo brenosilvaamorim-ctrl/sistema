@@ -2100,6 +2100,17 @@ async function telaCaso(id){
       <span class="sub" id="ft-st" style="margin:0"></span>
     </form></div>
 
+  <div class="card"><h2>Onde isto está provado?</h2>
+    <p class="nota">Escreva a afirmação que você quer colocar na peça — "trabalhava aos domingos", "recebia por fora",
+      "foi dispensado sem justa causa" — e o sistema procura nos documentos já lidos deste caso, devolvendo o trecho
+      e o arquivo onde aquilo aparece. Serve para não alegar o que não se consegue provar.</p>
+    <div style="padding:0 18px 12px;display:flex;gap:8px;flex-wrap:wrap">
+      <input id="pvq" placeholder="Ex.: jornada das 7h às 19h, adicional de insalubridade, aviso prévio"
+             style="flex:1;min-width:280px" onkeydown="if(event.key==='Enter')buscarProva()">
+      <button class="btn ok" onclick="buscarProva()">Procurar na prova</button>
+    </div>
+    <div id="pvres" style="padding:0 18px 18px"><div class="vazio">Escreva a afirmação e eu procuro nos documentos deste caso.</div></div></div>
+
   <div class="card"><h2>Processos</h2>
     <p class="nota">Cadastre o número assim que protocolar — não precisa esperar o diário publicar.
       A partir daí o robô do DataJud passa a acompanhar os andamentos sozinho.</p>
@@ -3620,6 +3631,79 @@ function pintarAnalogos(){
   ${achados.length>60?`<p class="nota">Mostrando 60 de ${achados.length}.</p>`:''}`;
   aplicarRotulos(alvo);
 }
+let SUGRES = [];
+const CODRES = {
+  219:'procedente', 218:'procedente',
+  221:'parcialmente procedente', 238:'parcialmente procedente',
+  220:'improcedente', 239:'improcedente',
+  466:'acordo', 12649:'acordo', 11373:'acordo',
+  246:'arquivado', 848:'arquivado', 22:'arquivado',
+  198:'desistência', 471:'desistência',
+};
+function lerResultado(m){
+  const c = Number(m.codigo);
+  if (CODRES[c]) return CODRES[c];
+  const t = semAcento(m.descricao);
+  if (/homolog.*(acordo|transacao|conciliacao)|acordo homologado/.test(t)) return 'acordo';
+  if (/procedencia em parte|parcialmente procedente|provimento em parte/.test(t)) return 'parcialmente procedente';
+  if (/improcedenc|nao provimento|nego provimento/.test(t)) return 'improcedente';
+  if (/\bprocedencia\b|julgo procedente|provimento/.test(t)) return 'procedente';
+  if (/desistenc|renuncia/.test(t)) return 'desistência';
+  if (/extincao sem resolucao|arquivamento definitivo|arquivado definitivamente/.test(t)) return 'arquivado';
+  return null;
+}
+window.aplicarResultado = async (casoId, res, el) => {
+  const st = document.getElementById('sr-'+casoId);
+  if (st) { st.style.color='var(--i3)'; st.textContent='gravando…'; }
+  const { error } = await sb.from('caso').update({ resultado: res, resultado_origem: 'movimentação do processo' }).eq('id', casoId);
+  if (error) { if (st) { st.style.color='var(--crit)'; st.textContent='erro: '+error.message; } return; }
+  await registrarAcao('definiu', 'caso', 'resultado pela movimentação: ' + res);
+  SUGRES = SUGRES.filter(x => x.caso_id !== casoId);
+  pintarSugRes();
+};
+window.aplicarTodosResultados = async () => {
+  const st = document.getElementById('sr-todos');
+  const fila = [...SUGRES];
+  if (!fila.length) return;
+  if (!confirm(`Gravar o resultado sugerido em ${fila.length} caso(s)? Você pode corrigir qualquer um depois, na ficha.`)) return;
+  st.style.color='var(--i3)';
+  let n = 0;
+  for (const x of fila) {
+    const { error } = await sb.from('caso').update({ resultado: x.res, resultado_origem: 'movimentação do processo' }).eq('id', x.caso_id);
+    if (!error) n++;
+    st.textContent = `gravando… ${n} de ${fila.length}`;
+  }
+  await registrarAcao('definiu', 'caso', `${n} resultado(s) gravados a partir das movimentações`);
+  SUGRES = []; pintarSugRes();
+  st.style.color='var(--good)'; st.textContent = `${n} resultado(s) gravados ✓`;
+};
+window.descartarSug = (casoId) => { SUGRES = SUGRES.filter(x=>x.caso_id!==casoId); pintarSugRes(); };
+function pintarSugRes(){
+  const alvo = document.getElementById('jsugres'); if (!alvo) return;
+  const c = document.getElementById('jsugc');
+  if (c) c.textContent = SUGRES.length ? `${SUGRES.length} caso(s) com resultado identificado` : '';
+  if (!SUGRES.length) return alvo.innerHTML =
+    '<div class="vazio">Nada a sugerir agora. O robô do DataJud lê as movimentações de madrugada; conforme os processos sincronizam, as sugestões aparecem aqui.</div>';
+  alvo.innerHTML = `<div style="margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <button class="btn ok" onclick="aplicarTodosResultados()">Gravar todos os ${SUGRES.length} de uma vez</button>
+    <span class="sub" id="sr-todos" style="margin:0"></span></div>
+  <table><thead><tr><th>Caso</th><th>O que o processo registrou</th><th>Resultado</th><th></th></tr></thead><tbody>
+  ${SUGRES.slice(0,60).map(x=>`<tr>
+    <td><a class="lnk" href="#/caso/${x.caso_id}"><b>${esc(x.titulo)}</b></a>
+      <span class="sub">${esc(x.numero||'')}</span></td>
+    <td>${esc(x.mov)}<span class="sub">${br(x.data)}</span></td>
+    <td><span class="pill ${EXITO.includes(x.res)?'good':'cin'}">${esc(x.res)}</span></td>
+    <td><div class="acoes">
+      <button class="btn ok" onclick="aplicarResultado('${x.caso_id}','${x.res}')">Gravar</button>
+      <select onchange="aplicarResultado('${x.caso_id}', this.value)" style="font-size:11.6px">
+        <option value="">— outro —</option>
+        ${RESULTADOS.map(r=>`<option value="${r}">${r}</option>`).join('')}</select>
+      <button class="btn" onclick="descartarSug('${x.caso_id}')">Pular</button>
+      <span class="sub" id="sr-${x.caso_id}" style="margin:0"></span>
+    </div></td></tr>`).join('')}
+  </tbody></table>
+  ${SUGRES.length>60?`<p class="nota">Mostrando 60 de ${SUGRES.length}.</p>`:''}`;
+}
 let PENDENTES = [];
 window.definirCliente = async (procId, casoId, lado) => {
   const st = document.getElementById('dl-'+procId);
@@ -3699,12 +3783,13 @@ window.tirarDecisao = async id => {
   telaJurimetria();
 };
 async function telaJurimetria(){
-  const [pr, cs, dc, pend] = await Promise.all([
+  const [pr, cs, dc, pend, mvs] = await Promise.all([
     sb.from('processo').select('id,numero_cnj,numero_formatado,tribunal_sigla,orgao,classe,assunto,data_ajuizamento,valor_causa,fase,caso_id,parte_ativa,parte_passiva').limit(2000),
     sb.from('caso').select('id,titulo,area,resultado,encerrado_em,valor_causa').limit(2000),
     sb.from('decisao').select('*').order('data', { ascending:false }).limit(300),
     sb.from('processo').select('id,caso_id,numero_cnj,numero_formatado,tribunal_sigla,orgao,classe,parte_ativa,parte_passiva,caso:caso_id(id,cliente_id,cliente_lado,encerrado_em)')
       .not('parte_ativa','is',null).limit(1000),
+    sb.from('movimentacao').select('processo_id,codigo,descricao,data').order('data', { ascending:false }).limit(4000),
   ]);
   if (pr.error) return erro(pr.error.message);
   const casos = new Map((cs.data||[]).map(c=>[c.id,c]));
@@ -3715,6 +3800,19 @@ async function telaJurimetria(){
              valor_causa: p.valor_causa || c?.valor_causa || null };
   });
   JUR.casos = cs.data||[]; JUR.decisoes = dc.data||[];
+  const semRes = new Map((cs.data||[]).filter(c => !c.resultado).map(c => [c.id, c]));
+  const procDoCaso = new Map((pr.data||[]).map(p => [p.id, p]));
+  const vistos = new Set();
+  SUGRES = [];
+  for (const m of (mvs.data||[])) {
+    const p = procDoCaso.get(m.processo_id); if (!p || !p.caso_id) continue;
+    if (vistos.has(p.caso_id)) continue;
+    const c = semRes.get(p.caso_id); if (!c) continue;
+    const res = lerResultado(m); if (!res) continue;
+    vistos.add(p.caso_id);
+    SUGRES.push({ caso_id: p.caso_id, titulo: c.titulo, numero: p.numero_formatado || p.numero_cnj,
+      mov: m.descricao, data: String(m.data).slice(0,10), res });
+  }
   PENDENTES = (pend.data||[]).filter(p => p.caso && !p.caso.cliente_lado)
     .map(p => ({ ...p, encerrado_em: p.caso?.encerrado_em || null, jaTem: p.caso?.cliente_id || null }));
   const P = JUR.procs;
@@ -3767,6 +3865,12 @@ async function telaJurimetria(){
      agrupa(P.filter(p=>p.assunto), p=>p.assunto), 'Assunto')}
   ${bloco('Por área','Visão mais larga, por área de atuação.',
      agrupa(P.filter(p=>p.area), p=>p.area), 'Área')}
+
+  <div class="card"><h2>Resultado sugerido pelas movimentações</h2>
+    <p class="nota">O robô do DataJud lê o que o juízo registrou — procedência, improcedência, homologação de acordo,
+      arquivamento — e propõe o desfecho de cada caso. Confira e grave: é isto que faz a taxa de êxito
+      por vara e por reclamada passar a valer alguma coisa. <span id="jsugc"></span></p>
+    <div id="jsugres" style="padding:0 18px 18px"></div></div>
 
   <div class="card"><h2>Quem é o cliente nestes processos</h2>
     <p class="nota">Processos do acervo antigo esperando você dizer de que lado está o seu cliente.
@@ -3831,6 +3935,7 @@ async function telaJurimetria(){
     </form></div>
   </main>` + rodape();
   pintarAnalogos();
+  pintarSugRes();
   pintarPendentes();
 }
 
@@ -5371,6 +5476,53 @@ async function telaAndamento(){
 }
 
 /* ------------------------------------------- documentos pedidos em um caso */
+let PROVAS = [];
+window.buscarProva = async () => {
+  const q = (document.getElementById('pvq')?.value || '').trim();
+  const alvo = document.getElementById('pvres');
+  if (!q) return alvo.innerHTML = '<div class="vazio">Escreva a afirmação e eu procuro nos documentos deste caso.</div>';
+  alvo.innerHTML = '<div class="vazio">procurando…</div>';
+  const palavras = q.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .replace(/[^\wçãáéíóúâêô\s-]/g,' ').split(/\s+/)
+    .filter(w => w.length > 3 && !['para','como','pelo','pela','que','dos','das','com','sem','nos','nas','uma','este','esta','isso'].includes(w));
+  if (!palavras.length) return alvo.innerHTML = '<div class="vazio">Escreva pelo menos uma palavra com mais de três letras.</div>';
+  const { data, error } = await sb.from('doc_texto').select('arquivo,tipo,texto').eq('caso_id', CASO.id);
+  if (error) return alvo.innerHTML = '<div class="vazio">erro: ' + esc(error.message) + '</div>';
+  if (!data?.length) return alvo.innerHTML =
+    '<div class="vazio">Nenhum documento lido neste caso ainda. Use "Ler um documento" acima: o texto fica guardado e passa a ser pesquisável aqui.</div>';
+  const achados = [];
+  for (const d of data) {
+    const bruto = d.texto || '';
+    const plano = bruto.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+    for (const w of palavras) {
+      let i = plano.indexOf(w);
+      while (i >= 0 && achados.length < 40) {
+        achados.push({ arquivo: d.arquivo, tipo: d.tipo,
+          trecho: bruto.slice(Math.max(0, i-160), i+220).replace(/\s+/g,' ').trim(), palavra: w });
+        i = plano.indexOf(w, i + 400);
+      }
+    }
+  }
+  const vistos = new Set();
+  const unicos = achados.filter(a => { const k = a.arquivo+'|'+a.trecho.slice(0,60); if (vistos.has(k)) return false; vistos.add(k); return true; });
+  PROVAS = unicos;
+  alvo.innerHTML = unicos.length ? `<p class="nota" style="padding:0 0 8px">${unicos.length} trecho(s) em ${new Set(unicos.map(u=>u.arquivo)).size} documento(s). Confira antes de citar.</p>` +
+    unicos.slice(0,20).map((a,i)=>`<div class="tl"><div class="tldata"><b>${esc(a.arquivo)}</b>
+      <span class="sub">${esc(a.tipo||'')}</span></div><div class="tlponto"></div>
+      <div class="tlcorpo"><span class="pill cin">${esc(a.palavra)}</span>
+      <span class="sub" style="margin:2px 0 0">…${esc(a.trecho)}…</span>
+      <div style="margin-top:5px"><button class="btn" onclick="virarFato(${i})">Virar fato com esta prova</button></div>
+      </div></div>`).join('')
+    : '<div class="vazio">Não achei essas palavras nos documentos lidos deste caso.</div>';
+};
+window.virarFato = async (i) => {
+  const a = PROVAS[i]; if (!a) return;
+  const desc = (document.getElementById('pvq')?.value || '').trim();
+  const { error } = await sb.from('fato').insert({ escritorio_id: await escId(), caso_id: CASO.id,
+    descricao: desc, prova: a.arquivo, trecho: a.trecho.slice(0,400), ordem: CASOFATOS.length, origem: 'busca na prova' });
+  if (error) return alert('Não foi possível: ' + error.message);
+  telaCaso(CASO.id);
+};
 let LIDO = null;
 window.lerDocumento = async (input) => {
   const f = input.files?.[0]; if (!f) return;
@@ -5434,6 +5586,11 @@ window.gravarLeitura = async () => {
       prova: LIDO.arquivo || 'documento lido', trecho: x.trecho || null,
       pagina: x.pagina || null, ordem: CASOFATOS.length + novos.length, origem: LIDO.tipo || 'documento' });
   });
+  if (LIDO.transcricao && String(LIDO.transcricao).trim().length > 40) {
+    await sb.from('doc_texto').insert({ escritorio_id: eid, caso_id: CASO.id,
+      arquivo: LIDO.arquivo || 'documento', tipo: LIDO.tipo || null,
+      texto: String(LIDO.transcricao).slice(0, 200000) });
+  }
   const e1 = (await sb.from('caso').update({ dados }).eq('id', CASO.id)).error;
   const e2 = novos.length ? (await sb.from('fato').insert(novos)).error : null;
   if (e1 || e2) { st.style.color='var(--crit)'; st.textContent = 'erro: ' + (e1||e2).message; return; }
