@@ -773,13 +773,24 @@ async function chamarMinutar(payload){
     body: JSON.stringify(payload) });
   return r.json();
 }
+function relogio(alvo, texto){
+  let seg = 0;
+  const tick = () => { seg++; if (alvo.isConnected) alvo.innerHTML =
+    `<p class="meta">${texto} <b>${seg}s</b> — pode deixar a aba aberta.</p>`; };
+  tick();
+  const id = setInterval(tick, 1000);
+  return () => clearInterval(id);
+}
 window.sugerirTeses = async () => {
   const alvo = document.getElementById('minres');
   const caso_id = document.getElementById('mincaso').value;
   const fatos = document.getElementById('minfatos').value.trim();
   if (!caso_id) return alvo.innerHTML = '<p class="meta">Escolha o caso.</p>';
-  alvo.innerHTML = '<p class="meta">Lendo os fatos e comparando com o banco de teses…</p>';
-  const j = await chamarMinutar({ caso_id, fatos, etapa:'triagem' });
+  const parar = relogio(alvo, 'Lendo os fatos e comparando com o banco de teses…');
+  let j;
+  try { j = await chamarMinutar({ caso_id, fatos, etapa:'triagem' }); }
+  catch (e) { parar(); return alvo.innerHTML = `<p class="meta">A conexão caiu no meio (${esc(e.message)}). Tente de novo.</p>`; }
+  parar();
   if (!j.teses?.length) return alvo.innerHTML = `<p class="meta">Não consegui fechar a triagem${j.erro?' ('+esc(j.erro)+')':''}. Marque as teses na mão abaixo e gere a minuta.</p>`;
   for (const t of j.teses) { const el = document.getElementById('t_'+t.codigo); if (el) el.checked = true; }
   alvo.innerHTML = `<div class="aviso"><b>Teses sugeridas</b><ul>` +
@@ -793,8 +804,11 @@ window.gerarMinuta = async () => {
   const teses = [...document.querySelectorAll('.tese:checked')].map(e=>e.value);
   if (!caso_id) return alvo.innerHTML = '<p class="meta">Escolha o caso.</p>';
   if (!teses.length) return alvo.innerHTML = '<p class="meta">Marque ao menos uma tese (ou peça a sugestão).</p>';
-  alvo.innerHTML = '<p class="meta">Redigindo a peça — leva de 40 a 90 segundos. Pode deixar a aba aberta.</p>';
-  const j = await chamarMinutar({ caso_id, fatos, teses });
+  const parar = relogio(alvo, 'Redigindo a peça — costuma levar de 40 a 90 segundos.');
+  let j;
+  try { j = await chamarMinutar({ caso_id, fatos, teses }); }
+  catch (e) { parar(); return alvo.innerHTML = `<p class="meta">A conexão caiu no meio (${esc(e.message)}). Tente de novo.</p>`; }
+  parar();
   if (!j.corpo) return alvo.innerHTML = `<p class="meta">Não saiu minuta${j.erro?': '+esc(j.erro):''}.</p>`;
   alvo.innerHTML = `<div class="aviso"><b>Minuta gerada.</b> Revise antes de protocolar. Os marcadores
     <code>[CONFERIR: ...]</code> são pontos que o sistema não tinha como saber.</div>
@@ -6440,6 +6454,15 @@ async function rota(){
   return telaInicio();
 }
 window.addEventListener('hashchange', rota);
-sb.auth.onAuthStateChange(()=>rota());
+/* Só redesenha quando o usuário muda de fato. A renovação silenciosa do token
+   disparava um redesenho no meio de operações longas e apagava o resultado da tela. */
+let USER_ATUAL = null;
+sb.auth.onAuthStateChange((evento, sessao) => {
+  if (evento === 'TOKEN_REFRESHED' || evento === 'USER_UPDATED') return;
+  const uid = sessao?.user?.id ?? null;
+  if (uid === USER_ATUAL && evento !== 'SIGNED_OUT') return;
+  USER_ATUAL = uid;
+  rota();
+});
 rota();
 </script></body></html>
