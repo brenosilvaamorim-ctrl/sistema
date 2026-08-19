@@ -2075,11 +2075,12 @@ function periodo(){
   return { de, ate, rot: br(de) + ' a ' + br(ate) };
 }
 async function dadosProducao(de, ate){
-  const [cs, pz, ev, mn] = await Promise.all([
+  const [cs, pz, ev, mn, dg] = await Promise.all([
     sb.from('caso').select('id,titulo,area,polo,criado_em,encerrado_em,resultado,cliente:cliente_id(nome),responsavel:responsavel_id(nome)'),
-    sb.from('prazo').select('descricao,data_fatal,situacao,cumprido_em,caso:caso_id(titulo)'),
-    sb.from('evento').select('tipo,titulo,inicio,situacao,caso:caso_id(titulo)'),
-    sb.from('minuta').select('tipo,criado_em,status,caso:caso_id(titulo)'),
+    sb.from('prazo').select('descricao,data_fatal,situacao,cumprido_em,providencia,caso:caso_id(titulo,area,cliente:cliente_id(nome))'),
+    sb.from('evento').select('tipo,titulo,inicio,situacao,local,caso:caso_id(titulo,area),cliente:cliente_id(nome)'),
+    sb.from('minuta').select('tipo,criado_em,status,caso:caso_id(titulo,area)'),
+    sb.from('delegacao').select('tipo,titulo,criado_em,entregue_em,situacao,honorario_valor,parceiro:parceiro_id(nome),caso:caso_id(titulo,area)'),
   ]);
   const dentro = d => d && String(d).slice(0,10) >= de && String(d).slice(0,10) <= ate;
   return {
@@ -2088,8 +2089,29 @@ async function dadosProducao(de, ate){
     prazos: (pz.data||[]).filter(p=>dentro(p.data_fatal)),
     eventos: (ev.data||[]).filter(e=>dentro(e.inicio)),
     pecas: (mn.data||[]).filter(m=>dentro(m.criado_em)),
+    delegacoes: (dg.data||[]).filter(g=>dentro(g.criado_em)),
     todos: cs.data||[],
   };
+}
+/* área de um registro, caindo para um rótulo honesto quando não há caso */
+const areaDe = x => x?.caso?.area || (x?.caso ? 'sem área informada' : 'sem caso vinculado');
+const evtFeito  = e => e.situacao === 'concluida';
+const evtDesmarcado = e => e.situacao === 'cancelada';
+/* cruza qualquer lista por área, aplicando contadores nomeados */
+function porArea(itens, contadores){
+  const m = {};
+  for (const it of itens) {
+    const a = areaDe(it);
+    m[a] ||= Object.fromEntries(Object.keys(contadores).map(k => [k, 0]));
+    for (const [k, f] of Object.entries(contadores)) if (f(it)) m[a][k]++;
+  }
+  return Object.entries(m).sort((x,y)=>x[0].localeCompare(y[0]))
+    .map(([area, v]) => ({ area, ...v }));
+}
+function somaLinhas(linhas, chaves){
+  const t = { area: 'TOTAL' };
+  for (const k of chaves) t[k] = linhas.reduce((s,l)=>s+(l[k]||0), 0);
+  return t;
 }
 window.relatorioProducaoPdf = async () => {
   const { de, ate, rot } = periodo();
@@ -2097,8 +2119,28 @@ window.relatorioProducaoPdf = async () => {
   const cumpridos = d.prazos.filter(p=>p.situacao==='cumprido').length;
   const perdidos = d.prazos.filter(p=>p.situacao==='perdido').length;
   const abertos = d.prazos.filter(p=>['sugerido','confirmado'].includes(p.situacao));
-  const porArea = {};
-  for (const c of d.novos) porArea[c.area||'sem área'] = (porArea[c.area||'sem área']||0) + 1;
+  const aud = d.eventos.filter(e=>e.tipo==='audiencia');
+  const audFeitas = aud.filter(evtFeito).length;
+  const audDesm = aud.filter(evtDesmarcado).length;
+  const casosArea = {};
+  for (const c of d.novos) casosArea[c.area||'sem área informada'] = (casosArea[c.area||'sem área informada']||0) + 1;
+
+  const chavesAtos = ['aud_feitas','aud_marcadas','aud_desmarcadas','pericias','reunioes','tarefas'];
+  const atosArea = porArea(d.eventos, {
+    aud_feitas:      e => e.tipo==='audiencia' && evtFeito(e),
+    aud_marcadas:    e => e.tipo==='audiencia' && !evtFeito(e) && !evtDesmarcado(e),
+    aud_desmarcadas: e => e.tipo==='audiencia' && evtDesmarcado(e),
+    pericias:        e => e.tipo==='pericia',
+    reunioes:        e => e.tipo==='reuniao',
+    tarefas:         e => ['tarefa','outro'].includes(e.tipo),
+  });
+  const chavesPz = ['total','cumpridos','perdidos','abertos'];
+  const pzArea = porArea(d.prazos, {
+    total:     () => true,
+    cumpridos: p => p.situacao==='cumprido',
+    perdidos:  p => p.situacao==='perdido',
+    abertos:   p => ['sugerido','confirmado'].includes(p.situacao),
+  });
   const corpo = `
   <div class="cab"><h1>Produção do escritório</h1><div class="sub">Período de ${esc(rot)}</div></div>
   <h2>Resumo</h2>
@@ -2110,12 +2152,52 @@ window.relatorioProducaoPdf = async () => {
     {item:'Prazos cumpridos', n:cumpridos},
     {item:'Prazos perdidos', n:perdidos},
     {item:'Prazos ainda em aberto', n:abertos.length},
-    {item:'Audiências', n:d.eventos.filter(e=>e.tipo==='audiencia').length},
+    {item:'Audiências realizadas', n:audFeitas},
+    {item:'Audiências marcadas e não baixadas', n:aud.length - audFeitas - audDesm},
+    {item:'Audiências desmarcadas', n:audDesm},
     {item:'Perícias', n:d.eventos.filter(e=>e.tipo==='pericia').length},
-    {item:'Reuniões e tarefas', n:d.eventos.filter(e=>['reuniao','tarefa','outro'].includes(e.tipo)).length},
+    {item:'Reuniões', n:d.eventos.filter(e=>e.tipo==='reuniao').length},
+    {item:'Tarefas', n:d.eventos.filter(e=>['tarefa','outro'].includes(e.tipo)).length},
+    {item:'Serviços delegados a parceiros', n:d.delegacoes.length},
   ])}
+  <p class="sub">“Realizada” é a audiência marcada como concluída na Agenda. O que ainda está aberto
+     aparece como marcada e não baixada — se o ato já aconteceu, basta dar o check na Agenda.</p>
+
+  <h2>Atos por área</h2>
+  ${tabelaHtml([['area','Área'],['aud_feitas','Audiências feitas'],['aud_marcadas','Marcadas'],
+      ['aud_desmarcadas','Desmarcadas'],['pericias','Perícias'],['reunioes','Reuniões'],['tarefas','Tarefas']],
+    [...atosArea, somaLinhas(atosArea, chavesAtos)])}
+
+  <h2>Prazos por área</h2>
+  ${tabelaHtml([['area','Área'],['total','No período'],['cumpridos','Cumpridos'],
+      ['perdidos','Perdidos'],['abertos','Em aberto']],
+    [...pzArea, somaLinhas(pzArea, chavesPz)])}
+
+  <h2>Audiências do período, uma a uma</h2>
+  ${tabelaHtml([['data','Quando',1],['cliente','Cliente'],['titulo','Audiência'],
+      ['area','Área'],['local','Onde'],['sit','Situação']],
+    aud.sort((a,b)=>String(a.inicio).localeCompare(String(b.inicio))).map(e=>({
+      data: br(String(e.inicio).slice(0,10)) + ' ' + String(e.inicio).slice(11,16),
+      cliente: e.cliente?.nome || e.caso?.titulo || '—', titulo: e.titulo,
+      area: areaDe(e), local: e.local || '—',
+      sit: evtFeito(e) ? 'realizada' : (evtDesmarcado(e) ? 'desmarcada' : 'em aberto') })))}
+
+  <h2>Prazos do período, um a um</h2>
+  ${tabelaHtml([['data','Vencimento',1],['cliente','Cliente'],['desc','Prazo'],
+      ['area','Área'],['sit','Situação']],
+    d.prazos.sort((a,b)=>String(a.data_fatal).localeCompare(String(b.data_fatal))).map(p=>({
+      data: br(p.data_fatal), cliente: p.caso?.cliente?.nome || p.caso?.titulo || '—',
+      desc: p.descricao, area: areaDe(p), sit: p.situacao || '—' })))}
+
+  ${d.delegacoes.length ? `<h2>Delegado a parceiros</h2>
+  ${tabelaHtml([['data','Combinado em',1],['parceiro','Parceiro'],['titulo','Serviço'],
+      ['area','Área'],['sit','Situação']],
+    d.delegacoes.map(g=>({ data: br(String(g.criado_em).slice(0,10)),
+      parceiro: g.parceiro?.nome || '—', titulo: g.titulo, area: areaDe(g),
+      sit: (SITDEL[g.situacao]||[g.situacao])[0] })))}` : ''}
+
   <h2>Casos que entraram, por área</h2>
-  ${tabelaHtml([['area','Área'],['n','Casos']], Object.entries(porArea).map(([area,n])=>({area,n})))}
+  ${tabelaHtml([['area','Área'],['n','Casos']], Object.entries(casosArea).map(([area,n])=>({area,n})))}
   <h2>Casos que entraram</h2>
   ${tabelaHtml([['data','Entrou',1],['cliente','Cliente'],['titulo','Caso'],['area','Área'],['resp','Responsável']],
     d.novos.map(c=>({ data:br(c.criado_em), cliente:c.cliente?.nome||'—', titulo:c.titulo,
@@ -2188,12 +2270,38 @@ window.relatorioProducaoXlsx = async () => {
       area:c.area||'', polo:c.polo||'', responsavel:c.responsavel?.nome||'' }))],
     ['Casos encerrados', d.encerrados.map(c=>({ encerrado:br(c.encerrado_em), cliente:c.cliente?.nome||'',
       caso:c.titulo, resultado:c.resultado||'' }))],
-    ['Prazos', d.prazos.map(p=>({ vence:br(p.data_fatal), caso:p.caso?.titulo||'',
-      providencia:p.descricao, situacao:p.situacao, cumprido_em:p.cumprido_em?br(p.cumprido_em):'' }))],
+    ['Prazos', d.prazos.map(p=>({ vence:br(p.data_fatal), cliente:p.caso?.cliente?.nome||'',
+      caso:p.caso?.titulo||'', area:areaDe(p), providencia:p.descricao, situacao:p.situacao,
+      cumprido_em:p.cumprido_em?br(p.cumprido_em):'' }))],
     ['Compromissos', d.eventos.map(e=>({ quando:br(String(e.inicio).slice(0,10)),
-      hora:String(e.inicio).slice(11,16), tipo:e.tipo, caso:e.caso?.titulo||'', descricao:e.titulo,
-      situacao:e.situacao||'' }))],
-    ['Peças', d.pecas.map(m=>({ data:br(m.criado_em), tipo:m.tipo||'', caso:m.caso?.titulo||'', status:m.status||'' }))],
+      hora:String(e.inicio).slice(11,16), tipo:e.tipo, cliente:e.cliente?.nome||'',
+      caso:e.caso?.titulo||'', area:areaDe(e), descricao:e.titulo, onde:e.local||'',
+      situacao:e.situacao||'', realizada: evtFeito(e) ? 'sim' : 'não' }))],
+    ['Audiências', d.eventos.filter(e=>e.tipo==='audiencia').map(e=>({
+      quando:br(String(e.inicio).slice(0,10)), hora:String(e.inicio).slice(11,16),
+      cliente:e.cliente?.nome||'', caso:e.caso?.titulo||'', area:areaDe(e),
+      audiencia:e.titulo, onde:e.local||'',
+      situacao: evtFeito(e) ? 'realizada' : (evtDesmarcado(e) ? 'desmarcada' : 'em aberto') }))],
+    ['Atos por área', porArea(d.eventos, {
+      audiencias_feitas:      e => e.tipo==='audiencia' && evtFeito(e),
+      audiencias_marcadas:    e => e.tipo==='audiencia' && !evtFeito(e) && !evtDesmarcado(e),
+      audiencias_desmarcadas: e => e.tipo==='audiencia' && evtDesmarcado(e),
+      pericias:  e => e.tipo==='pericia',
+      reunioes:  e => e.tipo==='reuniao',
+      tarefas:   e => ['tarefa','outro'].includes(e.tipo),
+    })],
+    ['Prazos por área', porArea(d.prazos, {
+      no_periodo: () => true,
+      cumpridos:  p => p.situacao==='cumprido',
+      perdidos:   p => p.situacao==='perdido',
+      em_aberto:  p => ['sugerido','confirmado'].includes(p.situacao),
+    })],
+    ['Peças', d.pecas.map(m=>({ data:br(m.criado_em), tipo:m.tipo||'', caso:m.caso?.titulo||'',
+      area:areaDe(m), status:m.status||'' }))],
+    ['Delegado a parceiros', d.delegacoes.map(g=>({ combinado:br(String(g.criado_em).slice(0,10)),
+      parceiro:g.parceiro?.nome||'', servico:g.titulo, tipo:TIPODEL[g.tipo]||g.tipo,
+      caso:g.caso?.titulo||'', area:areaDe(g), situacao:g.situacao,
+      entregue:g.entregue_em?br(g.entregue_em):'', valor:g.honorario_valor||'' }))],
   ], 'producao-' + de + '-a-' + ate + '.xlsx');
 };
 
