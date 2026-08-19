@@ -217,7 +217,7 @@ function telaLogin(msg){
 }
 
 let ESC_NOME = 'Breno S. Amorim Advocacia', ESC_LOGO = null, ESC_ID = null, ESC_TOKEN = null;
-const MENU_PADRAO = [['inicio','Início'],['prazos','Prazos e publicações'],['agenda','Agenda'],['captacao','Captação'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['clientes','Clientes'],['mensageria','Mensagens'],['metricas','Métricas'],['jurimetria','Jurimetria'],['financeiro','Financeiro'],['parceiros','Parceiros'],['minutas','Minutas'],['playbook','Playbook'],['aprender','Aprender'],['dicionario','Dicionário'],['documentos','Documentos'],['tutoriais','Tutoriais'],['regras','Regras'],['config','Configurações']];
+const MENU_PADRAO = [['inicio','Início'],['prazos','Prazos e publicações'],['agenda','Agenda'],['captacao','Captação'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['clientes','Clientes'],['mensageria','Mensagens'],['metricas','Métricas'],['jurimetria','Jurimetria'],['financeiro','Financeiro'],['parceiros','Parceiros'],['minutas','Minutas'],['playbook','Playbook'],['aprender','Aprender'],['dicionario','Dicionário'],['documentos','Documentos'],['tutoriais','Tutoriais'],['regras','Regras'],['importar','Importar antigos'],['config','Configurações']];
 let MENUCFG = MENU_PADRAO.map(([k,r]) => ({ k, r, v:true }));
 let ROTULOS = {};
 const PALAVRAS = {"Telas e seções": ["Prazos", "Triagem", "Triagem das publicações", "O que chegou", "Agenda", "Captação", "Casos", "Processos", "Andamento", "Clientes", "Mensagens", "Métricas", "Financeiro", "Parceiros", "Delegar um servi\u00e7o", "Acompanhamento", "Quem s\u00e3o os parceiros", "Delegado a parceiro", "Minutas", "Aprender", "Dicionário", "Documentos", "Tutoriais", "Configurações", "Calendário", "Pela frente", "Vencidos e ainda abertos", "Linha do tempo", "Todos os processos", "Andamento dos processos", "Os mais parados primeiro", "Precedentes", "Teses", "Fila de aprovação", "Minutas recentes", "Análise prévia", "Modo juiz", "Marcar prazo, audiência ou tarefa", "Levar tudo para o Google Agenda", "Equipe e acessos", "Dados do escritório", "Áreas de atuação", "Origens de captação", "Categorias financeiras", "Dicionário de movimentações", "Cor do dia de hoje", "Cópias automáticas", "Casos sem cliente", "Cliente do caso", "Amarrar cliente", "Documentos a pedir", "Documentos do cliente", "Assinatura de documentos", "Tutoriais para clientes", "Ensinar uma peça ao banco", "Mensagem para o cliente", "Novo contato", "Novo lançamento", "Resultado da leitura"], "Colunas das tabelas": ["Feito", "Em trâmite", "Parado há", "Fase", "Situação e providência", "Aguardando até", "Chegou", "Documento", "Onde consigo", "Recebido em", "Vence", "Quando", "Situação", "Providência", "Cliente / vara", "Cliente / caso", "Processo", "Trecho lido e memória", "Conf.", "Ação", "Tipo", "O quê", "Descrição", "Origem", "Valor", "Vencimento", "Tribunal", "Relator", "Tema", "Órgão", "Área", "Nome", "Pessoa", "Perfil", "Ativo", "E-mail", "Telefone", "Telefone / WhatsApp", "Última movimentação", "Última atualização", "Encerrado em", "Motivo", "Resultado", "Vezes", "Cód."], "Números do topo": ["em aberto", "vencem em até 5 dias", "já vencidos", "aguardando confirmação", "compromissos à frente", "nos próximos 7 dias", "audiências", "já passaram e seguem abertos", "casos abertos", "casos ativos", "clientes", "processos", "pedindo providência", "merecendo conferência", "execuções com o prazo correndo", "tempo médio em trâmite", "em trâmite", "parado há", "sem telefone", "sem contato há mais de 30 dias", "parados há mais de 90 dias", "prescrevem em até 180 dias", "com prazo em até 5 dias", "com novidade desde o último contato", "teses no banco", "esperando sua decisão", "precedentes a conferir", "teses novas", "refinamentos", "tempo de leitura", "a pagar", "a receber", "saldo do mês", "recebido neste mês", "projeção para o ano"]};
@@ -312,7 +312,7 @@ const GRUPOS = [
   ['Processos', ['casos','processos','andamento','minutas','playbook']],
   ['Pessoas',   ['clientes','captacao','parceiros']],
   ['Gestão',    ['metricas','jurimetria','financeiro']],
-  ['Sistema',   ['aprender','dicionario','documentos','tutoriais','regras','config']],
+  ['Sistema',   ['aprender','dicionario','documentos','tutoriais','regras','importar','config']],
 ];
 window.abrirGrupo = (ev, nome) => {
   ev.preventDefault();
@@ -2991,6 +2991,213 @@ async function telaRegras(){
   </main>` + rodape();
 }
 
+/* ------------------------------------------- importar processos antigos */
+let IMP = [];
+const COLS = [
+  ['numero',    'número do processo (CNJ)'],
+  ['cliente',   'cliente'],
+  ['area',      'área'],
+  ['tribunal',  'tribunal'],
+  ['vara',      'vara ou órgão'],
+  ['classe',    'classe'],
+  ['assunto',   'assunto'],
+  ['ajuizado',  'ajuizado em'],
+  ['encerrado', 'encerrado em'],
+  ['resultado', 'resultado'],
+  ['valor',     'valor da causa'],
+];
+const semAcento = t => String(t||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim();
+function acharCol(cab){
+  const idx = {};
+  cab.forEach((c, i) => {
+    const t = semAcento(c);
+    if (/numero|processo|cnj/.test(t) && idx.numero == null) idx.numero = i;
+    else if (/cliente|nome|parte|reclamante|autor/.test(t) && idx.cliente == null) idx.cliente = i;
+    else if (/area/.test(t) && idx.area == null) idx.area = i;
+    else if (/tribunal/.test(t) && idx.tribunal == null) idx.tribunal = i;
+    else if (/vara|orgao|juizo|comarca/.test(t) && idx.vara == null) idx.vara = i;
+    else if (/classe|acao|tipo/.test(t) && idx.classe == null) idx.classe = i;
+    else if (/assunto|objeto|pedido/.test(t) && idx.assunto == null) idx.assunto = i;
+    else if (/ajuiz|distrib|entrada|inicio/.test(t) && idx.ajuizado == null) idx.ajuizado = i;
+    else if (/encerr|baixa|arquiv|fim|termino/.test(t) && idx.encerrado == null) idx.encerrado = i;
+    else if (/resultado|desfecho|sentenca/.test(t) && idx.resultado == null) idx.resultado = i;
+    else if (/valor/.test(t) && idx.valor == null) idx.valor = i;
+  });
+  return idx;
+}
+function dataBr(v){
+  const t = String(v||'').trim(); if (!t) return null;
+  let m = t.match(/^(\d{2})[\/\-.](\d{2})[\/\-.](\d{4})$/);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  m = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  return null;
+}
+function numeroBr(v){
+  const t = String(v||'').replace(/[^\d,.-]/g,'').replace(/\./g,'').replace(',','.');
+  const n = Number(t); return isNaN(n) || !n ? null : n;
+}
+function lerLinhas(linhas){
+  if (!linhas.length) return [];
+  const idx = acharCol(linhas[0]);
+  const temCabecalho = Object.keys(idx).length >= 2;
+  const corpo = temCabecalho ? linhas.slice(1) : linhas;
+  const mapa = temCabecalho ? idx : { numero:0, cliente:1, area:2, tribunal:3, vara:4, classe:5,
+                                      assunto:6, ajuizado:7, encerrado:8, resultado:9, valor:10 };
+  return corpo.map(l => {
+    const g = k => mapa[k] != null ? String(l[mapa[k]] ?? '').trim() : '';
+    const dig = g('numero').replace(/\D/g,'');
+    return { numero: dig, formatado: dig.length===20 ? cnjFormata(dig) : g('numero'),
+      cliente: g('cliente'), area: g('area'), tribunal: g('tribunal'), vara: g('vara'),
+      classe: g('classe'), assunto: g('assunto'),
+      ajuizado: dataBr(g('ajuizado')), encerrado: dataBr(g('encerrado')),
+      resultado: g('resultado').toLowerCase(), valor: numeroBr(g('valor')),
+      erro: (dig && dig.length !== 20) ? 'número não tem 20 dígitos'
+          : (!dig && !g('cliente')) ? 'sem número e sem cliente' : null };
+  }).filter(r => r.numero || r.cliente);
+}
+window.colarAntigos = () => {
+  const t = document.getElementById('impcola').value;
+  const linhas = t.split(/\r?\n/).filter(l => l.trim())
+    .map(l => l.includes('\t') ? l.split('\t') : (l.includes(';') ? l.split(';') : l.split(',')));
+  IMP = lerLinhas(linhas);
+  pintarImp();
+};
+window.arquivoAntigos = async (input) => {
+  const f = input.files?.[0]; if (!f) return;
+  const st = document.getElementById('imp-st');
+  st.textContent = 'lendo a planilha…';
+  try {
+    const X = await carregarXlsx();
+    const buf = await f.arrayBuffer();
+    const wb = X.read(buf, { type:'array' });
+    const aba = wb.Sheets[wb.SheetNames[0]];
+    const linhas = X.utils.sheet_to_json(aba, { header:1, raw:false, defval:'' });
+    IMP = lerLinhas(linhas.filter(l => l.some(c => String(c).trim())));
+    st.textContent = '';
+    pintarImp();
+  } catch (e) { st.style.color='var(--crit)'; st.textContent = 'não consegui ler: ' + e.message; }
+  input.value = '';
+};
+window.modeloAntigos = () => {
+  const cab = COLS.map(([,r])=>r).join(';');
+  const ex = ['0000123-45.2019.5.06.0391;MARIA DE SOUZA;Trabalhista;TRT6;2ª Vara do Trabalho de Petrolina;Reclamação trabalhista;horas extras;10/03/2019;22/08/2021;acordo;25000',
+              ';JOÃO DA SILVA;Trabalhista;;1ª Vara do Trabalho de Juazeiro;;insalubridade;;15/05/2020;improcedente;'].join('\n');
+  const blob = new Blob(['﻿' + cab + '\n' + ex], { type:'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'modelo-processos-antigos.csv'; a.click();
+};
+function pintarImp(){
+  const alvo = document.getElementById('imprev'); if (!alvo) return;
+  if (!IMP.length) return alvo.innerHTML = '<div class="vazio">Nada lido ainda.</div>';
+  const bons = IMP.filter(r=>!r.erro);
+  alvo.innerHTML = `<div class="kpis" style="padding-top:0">
+    <div class="kpi"><div class="n">${IMP.length}</div><div class="l">linhas lidas</div></div>
+    <div class="kpi"><div class="n">${bons.length}</div><div class="l">prontas para importar</div></div>
+    <div class="kpi ${IMP.length-bons.length?'al':''}"><div class="n">${IMP.length-bons.length}</div><div class="l">com problema</div></div>
+    <div class="kpi"><div class="n">${bons.filter(r=>r.encerrado).length}</div><div class="l">já encerrados</div></div>
+  </div>
+  <table><thead><tr><th>Processo</th><th>Cliente</th><th>Vara</th><th>Classe / assunto</th>
+    <th>Ajuizado</th><th>Encerrado</th><th>Resultado</th><th>Valor</th></tr></thead><tbody>
+  ${IMP.slice(0,200).map(r=>`<tr>
+    <td class="proc">${esc(r.formatado||'—')}${r.erro?`<span class="sub" style="color:var(--crit)">${esc(r.erro)}</span>`:''}</td>
+    <td>${esc(r.cliente||'—')}</td><td>${esc(r.vara||'—')}<span class="sub">${esc(r.tribunal||'')}</span></td>
+    <td>${esc(r.classe||'—')}<span class="sub">${esc(r.assunto||'')}</span></td>
+    <td class="dt">${r.ajuizado?br(r.ajuizado):'—'}</td><td class="dt">${r.encerrado?br(r.encerrado):'—'}</td>
+    <td>${esc(r.resultado||'—')}</td><td>${r.valor?rs(r.valor):'—'}</td></tr>`).join('')}
+  </tbody></table>
+  ${IMP.length>200?`<p class="nota">Mostrando 200 de ${IMP.length}. Todas serão importadas.</p>`:''}
+  <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <button class="btn ok" onclick="gravarAntigos()">Importar ${bons.length} processo(s)</button>
+    <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="impdatajud">
+      <span class="sub" style="margin:0">mandar o robô do DataJud completar os dados que faltam</span></label>
+    <span class="sub" id="impg-st" style="margin:0"></span></div>`;
+}
+window.gravarAntigos = async () => {
+  const st = document.getElementById('impg-st');
+  const comRobo = document.getElementById('impdatajud')?.checked;
+  const bons = IMP.filter(r=>!r.erro);
+  if (!bons.length) return;
+  st.style.color='var(--i3)'; st.textContent = 'importando…';
+  const eid = await escId();
+  const col = (await sb.from('coluna_caso').select('id,nome,ordem,arquivo_final').order('ordem')).data || [];
+  const colFim = col.find(c=>c.arquivo_final)?.id || col[col.length-1]?.id || null;
+  const colIni = col[0]?.id || null;
+  const jaProc = new Set(((await sb.from('processo').select('numero_cnj')).data||[]).map(p=>p.numero_cnj));
+  const clientes = new Map(((await sb.from('cliente').select('id,nome')).data||[])
+    .map(c=>[semAcento(c.nome), c.id]));
+  let casos = 0, procs = 0, pulados = 0, erros = [];
+  for (const r of bons) {
+    if (r.numero && jaProc.has(r.numero)) { pulados++; continue; }
+    let clienteId = null;
+    if (r.cliente) {
+      clienteId = clientes.get(semAcento(r.cliente)) || null;
+      if (!clienteId) {
+        const { data, error } = await sb.from('cliente').insert({ escritorio_id: eid, nome: r.cliente,
+          tipo: 'fisica', anterior_ao_sistema: true }).select('id').single();
+        if (error) { erros.push(r.cliente + ': ' + error.message); continue; }
+        clienteId = data.id; clientes.set(semAcento(r.cliente), clienteId);
+      }
+    }
+    const titulo = r.cliente || r.formatado || 'processo antigo';
+    const { data: caso, error: e1 } = await sb.from('caso').insert({
+      escritorio_id: eid, cliente_id: clienteId, titulo, area: r.area || null,
+      coluna_id: r.encerrado ? colFim : colIni,
+      encerrado_em: r.encerrado, resultado: r.resultado || null,
+      valor_causa: r.valor, observacoes: 'importado do acervo antigo do escritório',
+    }).select('id').single();
+    if (e1) { erros.push(titulo + ': ' + e1.message); continue; }
+    casos++;
+    if (r.numero) {
+      const { error: e2 } = await sb.from('processo').insert({
+        escritorio_id: eid, caso_id: caso.id, numero_cnj: r.numero, numero_formatado: r.formatado,
+        tribunal_sigla: r.tribunal || null, orgao: r.vara || null, classe: r.classe || null,
+        assunto: r.assunto || null, data_ajuizamento: r.ajuizado, valor_causa: r.valor,
+        monitorar: !!comRobo,
+      });
+      if (e2) erros.push(r.formatado + ': ' + e2.message); else { procs++; jaProc.add(r.numero); }
+    }
+    st.textContent = `importando… ${casos} de ${bons.length}`;
+  }
+  await registrarAcao('importou', 'caso', `acervo antigo: ${casos} caso(s) e ${procs} processo(s)`);
+  st.style.color = erros.length ? 'var(--ser)' : 'var(--good)';
+  st.textContent = `${casos} caso(s) e ${procs} processo(s) importados`
+    + (pulados ? ` · ${pulados} já existiam` : '')
+    + (erros.length ? ` · ${erros.length} com erro: ${erros.slice(0,3).join(' | ')}` : '');
+  IMP = [];
+};
+async function telaImportar(){
+  app.innerHTML = menu('importar') + `
+  <main><h1>Importar processos antigos</h1>
+  <p class="meta">Para a jurimetria valer alguma coisa, ela precisa do acervo inteiro — inclusive o que já foi arquivado.
+    Aqui você joga a lista de uma vez, por planilha ou colando da tela do tribunal.
+    Tudo o que entra por aqui nasce marcado como anterior ao sistema: não conta como captação nem entra nas métricas do mês.</p>
+  <div class="card"><h2>Como fazer</h2>
+    <div style="padding:0 18px 16px">
+      <p class="nota" style="padding:0">Uma linha por processo. As colunas podem vir em qualquer ordem — o sistema
+        reconhece pelo nome do cabeçalho. O mínimo é <b>o número do processo</b> ou <b>o nome do cliente</b>.
+        O resto ajuda a jurimetria: quanto mais vara, classe, assunto, datas e resultado, melhor a estatística.</p>
+      <p class="nota" style="padding:6px 0 0">Colunas reconhecidas: ${COLS.map(([,r])=>'<b>'+r+'</b>').join(' · ')}.
+        Datas em 31/12/2020 ou 2020-12-31. Resultado: acordo, procedente, parcialmente procedente,
+        improcedente, arquivado, desistência.</p>
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button class="btn" onclick="modeloAntigos()">Baixar a planilha modelo</button>
+        <input type="file" accept=".csv,.xlsx,.xls" onchange="arquivoAntigos(this)">
+        <span class="sub" id="imp-st" style="margin:0"></span>
+      </div></div></div>
+  <div class="card"><h2>Ou cole aqui</h2>
+    <p class="nota">Copie da planilha ou da tela do PJe e cole. Serve separado por tabulação, ponto e vírgula ou vírgula.</p>
+    <div style="padding:0 18px 18px">
+      <textarea id="impcola" rows="8" placeholder="0000123-45.2019.5.06.0391;MARIA DE SOUZA;Trabalhista;TRT6;2ª Vara do Trabalho de Petrolina;Reclamação trabalhista;horas extras;10/03/2019;22/08/2021;acordo;25000"></textarea>
+      <div style="margin-top:8px"><button class="btn" onclick="colarAntigos()">Conferir o que colei</button></div>
+    </div></div>
+  <div class="card"><h2>Conferência antes de gravar</h2>
+    <p class="nota">Nada é gravado enquanto você não mandar. Processo cujo número já existe no sistema é pulado.</p>
+    <div id="imprev" style="padding:0 18px 18px"></div></div>
+  </main>` + rodape();
+  pintarImp();
+}
+
 /* ---------------------------------------------------------- jurimetria */
 let JUR = { procs: [], casos: [], decisoes: [], busca: '', aba: 'carteira' };
 const EXITO = ['acordo','procedente','parcialmente procedente'];
@@ -5411,6 +5618,7 @@ async function rota(){
   if(h.startsWith('#/jurimetria')) return telaJurimetria();
   if(h.startsWith('#/playbook'))   return telaPlaybook();
   if(h.startsWith('#/regras'))     return telaRegras();
+  if(h.startsWith('#/importar'))   return telaImportar();
   if(h.startsWith('#/financeiro')) return telaFinanceiro();
   if(h.startsWith('#/parceiros'))  return telaParceiros();
   if(h.startsWith('#/mensagens'))  return telaMensageria();
