@@ -3637,8 +3637,12 @@ const CODRES = {
   221:'parcialmente procedente', 238:'parcialmente procedente',
   220:'improcedente', 239:'improcedente',
   466:'acordo', 12649:'acordo', 11373:'acordo',
-  246:'arquivado', 848:'arquivado', 22:'arquivado',
   198:'desistência', 471:'desistência',
+};
+/* Movimentos que só dizem que o processo acabou, sem dizer como. Servem de último recurso. */
+const FIM = m => {
+  const t = semAcento(m.descricao);
+  return /transito em julgado|arquivamento definitivo|\bdefinitivo\b|baixa definitiva|extincao da execucao/.test(t);
 };
 function lerResultado(m){
   const c = Number(m.codigo);
@@ -3647,9 +3651,9 @@ function lerResultado(m){
   if (/homolog.*(acordo|transacao|conciliacao)|acordo homologado/.test(t)) return 'acordo';
   if (/procedencia em parte|parcialmente procedente|provimento em parte/.test(t)) return 'parcialmente procedente';
   if (/improcedenc|nao provimento|nego provimento/.test(t)) return 'improcedente';
-  if (/\bprocedencia\b|julgo procedente|provimento/.test(t)) return 'procedente';
+  if (/\bprocedencia\b|julgo procedente|\bprovimento\b/.test(t)) return 'procedente';
   if (/desistenc|renuncia/.test(t)) return 'desistência';
-  if (/extincao sem resolucao|arquivamento definitivo|arquivado definitivamente/.test(t)) return 'arquivado';
+  if (/extincao sem resolucao de merito|julgo extinto sem/.test(t)) return 'arquivado';
   return null;
 }
 window.aplicarResultado = async (casoId, res, el) => {
@@ -3663,9 +3667,10 @@ window.aplicarResultado = async (casoId, res, el) => {
 };
 window.aplicarTodosResultados = async () => {
   const st = document.getElementById('sr-todos');
-  const fila = [...SUGRES];
+  const fila = SUGRES.filter(x => x.certo);
   if (!fila.length) return;
-  if (!confirm(`Gravar o resultado sugerido em ${fila.length} caso(s)? Você pode corrigir qualquer um depois, na ficha.`)) return;
+  if (!fila.length) { st.textContent = 'nenhum com decisão de mérito clara — grave um a um'; return; }
+  if (!confirm(`Gravar o resultado sugerido em ${fila.length} caso(s) com decisão de mérito? Você pode corrigir qualquer um depois, na ficha.`)) return;
   st.style.color='var(--i3)';
   let n = 0;
   for (const x of fila) {
@@ -3685,14 +3690,15 @@ function pintarSugRes(){
   if (!SUGRES.length) return alvo.innerHTML =
     '<div class="vazio">Nada a sugerir agora. O robô do DataJud lê as movimentações de madrugada; conforme os processos sincronizam, as sugestões aparecem aqui.</div>';
   alvo.innerHTML = `<div style="margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-    <button class="btn ok" onclick="aplicarTodosResultados()">Gravar todos os ${SUGRES.length} de uma vez</button>
+    <button class="btn ok" onclick="aplicarTodosResultados()">Gravar de uma vez os ${SUGRES.filter(x=>x.certo).length} com decisão de mérito</button>
     <span class="sub" id="sr-todos" style="margin:0"></span></div>
   <table><thead><tr><th>Caso</th><th>O que o processo registrou</th><th>Resultado</th><th></th></tr></thead><tbody>
   ${SUGRES.slice(0,60).map(x=>`<tr>
     <td><a class="lnk" href="#/caso/${x.caso_id}"><b>${esc(x.titulo)}</b></a>
       <span class="sub">${esc(x.numero||'')}</span></td>
     <td>${esc(x.mov)}<span class="sub">${br(x.data)}</span></td>
-    <td><span class="pill ${EXITO.includes(x.res)?'good':'cin'}">${esc(x.res)}</span></td>
+    <td><span class="pill ${EXITO.includes(x.res)?'good':(x.certo?'cin':'warn')}">${esc(x.res)}</span>
+      ${x.certo?'' : '<span class="sub">o processo acabou, mas o mérito não aparece nas movimentações — confira</span>'}</td>
     <td><div class="acoes">
       <button class="btn ok" onclick="aplicarResultado('${x.caso_id}','${x.res}')">Gravar</button>
       <select onchange="aplicarResultado('${x.caso_id}', this.value)" style="font-size:11.6px">
@@ -3789,7 +3795,7 @@ async function telaJurimetria(){
     sb.from('decisao').select('*').order('data', { ascending:false }).limit(300),
     sb.from('processo').select('id,caso_id,numero_cnj,numero_formatado,tribunal_sigla,orgao,classe,parte_ativa,parte_passiva,caso:caso_id(id,cliente_id,cliente_lado,encerrado_em)')
       .not('parte_ativa','is',null).limit(1000),
-    sb.from('movimentacao').select('processo_id,codigo,descricao,data').order('data', { ascending:false }).limit(4000),
+    sb.from('movimentacao').select('processo_id,codigo,descricao,data').order('data', { ascending:false }).limit(20000),
   ]);
   if (pr.error) return erro(pr.error.message);
   const casos = new Map((cs.data||[]).map(c=>[c.id,c]));
@@ -3802,17 +3808,27 @@ async function telaJurimetria(){
   JUR.casos = cs.data||[]; JUR.decisoes = dc.data||[];
   const semRes = new Map((cs.data||[]).filter(c => !c.resultado).map(c => [c.id, c]));
   const procDoCaso = new Map((pr.data||[]).map(p => [p.id, p]));
-  const vistos = new Set();
-  SUGRES = [];
-  for (const m of (mvs.data||[])) {
+  const merito = new Map(), encerra = new Map();
+  for (const m of (mvs.data||[])) {                    // já vem do mais novo para o mais antigo
     const p = procDoCaso.get(m.processo_id); if (!p || !p.caso_id) continue;
-    if (vistos.has(p.caso_id)) continue;
-    const c = semRes.get(p.caso_id); if (!c) continue;
-    const res = lerResultado(m); if (!res) continue;
-    vistos.add(p.caso_id);
-    SUGRES.push({ caso_id: p.caso_id, titulo: c.titulo, numero: p.numero_formatado || p.numero_cnj,
-      mov: m.descricao, data: String(m.data).slice(0,10), res });
+    if (!semRes.has(p.caso_id)) continue;
+    const res = lerResultado(m);
+    if (res && !merito.has(p.caso_id)) merito.set(p.caso_id, { m, p, res });
+    else if (!res && FIM(m) && !encerra.has(p.caso_id)) encerra.set(p.caso_id, { m, p });
   }
+  SUGRES = [];
+  for (const [casoId, x] of merito) {
+    const c = semRes.get(casoId);
+    SUGRES.push({ caso_id: casoId, titulo: c.titulo, numero: x.p.numero_formatado || x.p.numero_cnj,
+      mov: x.m.descricao, data: String(x.m.data).slice(0,10), res: x.res, certo: true });
+  }
+  for (const [casoId, x] of encerra) {
+    if (merito.has(casoId)) continue;
+    const c = semRes.get(casoId);
+    SUGRES.push({ caso_id: casoId, titulo: c.titulo, numero: x.p.numero_formatado || x.p.numero_cnj,
+      mov: x.m.descricao, data: String(x.m.data).slice(0,10), res: 'arquivado', certo: false });
+  }
+  SUGRES.sort((a,b) => (b.certo?1:0)-(a.certo?1:0) || String(b.data).localeCompare(String(a.data)));
   PENDENTES = (pend.data||[]).filter(p => p.caso && !p.caso.cliente_lado)
     .map(p => ({ ...p, encerrado_em: p.caso?.encerrado_em || null, jaTem: p.caso?.cliente_id || null }));
   const P = JUR.procs;
