@@ -1015,15 +1015,23 @@ function revPalavras(txt){
     .split(/[^a-z0-9]+/).filter(p => p.length >= 5 && !REVSTOP.has(p)));
 }
 async function carregarRevisao(){
-  const [cs, ts, mn, rv] = await Promise.all([
+  const [cs, ts, mn, rv, pc, ft] = await Promise.all([
     sb.from('caso').select('id,titulo,area,descricao,observacoes,cliente:cliente_id(nome)')
       .is('encerrado_em', null).order('titulo').limit(2000),
     sb.from('tese').select('codigo,titulo,rubrica,gatilho,area,provas').eq('ativo', true)
       .not('codigo','like','\\_%'),
     sb.from('minuta').select('caso_id,teses').limit(2000),
     sb.from('carteira_revisao').select('caso_id,tese_codigo,situacao,anotacao'),
+    sb.from('processo').select('caso_id,classe,assunto').not('caso_id','is',null).limit(3000),
+    sb.from('fato').select('caso_id,descricao').limit(3000),
   ]);
-  REVDADOS = { casos: cs.data||[], teses: ts.data||[], minutas: mn.data||[], decid: rv.data||[] };
+  /* O título do caso é processual e não diz nada dos fatos. O que carrega tema é o
+     assunto do processo (classificação do CNJ) e os fatos que você já anotou. */
+  const extra = new Map();
+  (pc.data||[]).forEach(x => extra.set(x.caso_id, (extra.get(x.caso_id)||'') + ' ' + (x.assunto||'') + ' ' + (x.classe||'')));
+  (ft.data||[]).forEach(x => extra.set(x.caso_id, (extra.get(x.caso_id)||'') + ' ' + (x.descricao||'')));
+  const casos = (cs.data||[]).map(c => ({ ...c, _extra: extra.get(c.id) || '' }));
+  REVDADOS = { casos, teses: ts.data||[], minutas: mn.data||[], decid: rv.data||[] };
   return REVDADOS;
 }
 function varrerCarteira(){
@@ -1038,7 +1046,7 @@ function varrerCarteira(){
   const kwTese = D.teses.map(t => ({ t, kw: revPalavras([t.gatilho, t.titulo, t.rubrica].join(' ')) }));
   const achados = [];
   D.casos.forEach(c => {
-    const txt = revPalavras([c.titulo, c.descricao, c.observacoes].join(' '));
+    const txt = revPalavras([c.titulo, c.descricao, c.observacoes, c._extra].join(' '));
     if(txt.size < 3) return;             // caso sem descrição não dá para avaliar
     const usadas = jaNaMinuta.get(c.id) || new Set();
     kwTese.forEach(({t, kw}) => {
@@ -1058,7 +1066,7 @@ function blocoCarteira(){
   const cont = { pendente:0, aplicavel:0, descartado:0, feito:0 };
   todos.forEach(a => cont[a.situacao] = (cont[a.situacao]||0)+1);
   const lista = todos.filter(a => a.situacao === REVFILTRO).slice(0, 80);
-  const semDesc = REVDADOS ? REVDADOS.casos.filter(c => revPalavras([c.titulo,c.descricao,c.observacoes].join(' ')).size < 3).length : 0;
+  const semDesc = REVDADOS ? REVDADOS.casos.filter(c => revPalavras([c.titulo,c.descricao,c.observacoes,c._extra].join(' ')).size < 3).length : 0;
   return `<div class="card"><h2>Revisar a carteira</h2>
   <p class="meta">De tempos em tempos o sistema relê os casos abertos e confronta cada um com o banco de teses.
     Ele só compara palavras — quem decide se a tese cabe é você. O que você descartar não volta a aparecer.</p>
@@ -1126,7 +1134,7 @@ window.copiarBriefing = function(){
   const txt = 'REVISÃO DE CARTEIRA — casos para analisar\n\n' + alvos.map((a,i)=>
     `${i+1}) CASO: ${a.caso.titulo}${a.caso.cliente?.nome?' — cliente: '+a.caso.cliente.nome:''}\n`+
     `   Área: ${a.caso.area||'—'}\n`+
-    `   Resumo: ${(a.caso.descricao||a.caso.observacoes||'sem descrição').replace(/\s+/g,' ').slice(0,600)}\n`+
+    `   Resumo: ${(a.caso.descricao||a.caso.observacoes||a.caso._extra||'sem descrição').replace(/\s+/g,' ').slice(0,600)}\n`+
     `   Tese sugerida: ${a.tese.codigo} — ${a.tese.titulo||''}\n`+
     `   Aplica-se quando: ${a.tese.gatilho||'—'}\n`+
     `   Provas que a tese pede: ${a.tese.provas||'—'}`).join('\n\n');
