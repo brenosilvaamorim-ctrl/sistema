@@ -3481,6 +3481,21 @@ Uma entrada por peça. Terminou uma réplica que ficou boa? Antes de fechar, cad
 
 **Atenção ao campo Área:** uma tese cadastrada como Trabalhista não aparece em caso de área Administrativo. Deixando a área em branco, ela vale para todos.
 
+### Revisar a carteira
+
+No fim do menu **Aprender** há um bloco que faz uma pergunta que ninguém tem tempo de fazer manualmente: *dos casos que já estão abertos, quais se encaixam numa tese que eu não usei ali?*
+
+Funciona em duas camadas, de propósito.
+
+**A camada barata, dentro do sistema.** Ao clicar em *Rodar a varredura agora*, o sistema relê todos os casos abertos e compara, palavra por palavra, o texto de cada caso com o gatilho, o título e a rubrica de cada tese do banco. O texto do caso não é só o título — o título é processual e não diz nada dos fatos. Entram também o **assunto e a classe do processo** (a classificação do CNJ, que é justamente temática: "Adicional de Insalubridade", "Horas Extras") e os **fatos que você anotou** no caso. Onde houver duas ou mais palavras em comum, e a tese ainda não tiver sido usada numa minuta daquele caso, o par vira uma sugestão. Nada de inteligência artificial aqui: é filtro grosso, rápido e de graça.
+
+**A camada cara, na nossa conversa.** O filtro grosso erra para os dois lados — sugere o que não cabe e às vezes deixa passar o que cabe. Por isso cada achado tem três botões: *Vale analisar*, *Não se aplica* e *voltar para a fila*. O que você descartar não volta a aparecer nas próximas varreduras — a decisão fica gravada. Depois de marcar os que interessam, o botão **Copiar para análise** monta um resumo com o caso, o cliente, a área, o que se sabe dos fatos, a tese sugerida, o "quando usar" e as provas que ela pede. Cole esse resumo na nossa conversa e eu leio caso a caso, com o processo à vista, dizendo onde a tese realmente cabe e o que falta provar.
+
+**Quando rodar.** Uma vez por mês basta, ou sempre que você cadastrar uma tese nova no banco — é aí que a varredura rende mais, porque ela vai procurar essa tese nova em tudo que já está aberto.
+
+**O que melhora o resultado.** Casos sem descrição, sem observações, sem processo vinculado e sem fatos anotados ficam de fora, e o bloco avisa quantos são. Duas linhas de resumo em cada caso mudam completamente o que a varredura encontra.
+
+
 **Dicionário** — a tradução das movimentações processuais para o português que o cliente entende.
 
 ## 15. Documentos e Tutoriais
