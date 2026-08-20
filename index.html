@@ -996,6 +996,145 @@ function buscaPrec(p){
     jus: 'https://www.jusbrasil.com.br/busca?q=' + encodeURIComponent(termo),
   };
 }
+
+/* ---------- REVISÃO DA CARTEIRA ----------
+   Varredura barata, sem IA: cruza as palavras do gatilho de cada tese com o
+   texto de cada caso aberto. O que sobra é sugestão para o advogado olhar —
+   nunca conclusão. O que ele decide fica gravado e não volta a aparecer. */
+let REVCART = [], REVFILTRO = 'pendente', REVDADOS = null;
+const REVSTOP = new Set(('a o e de da do das dos em no na nos nas por para com sem sob ante apos ate '+
+  'que se ao aos as os um uma uns umas seu sua seus suas este esta esse essa isso isto aquele aquela '+
+  'como quando porque entre sendo desde estar forma todos todas outro outra outros outras pelos pelas '+
+  'maior menor muito depois antes mesmo cabe deve pode sera sido tais qual quais onde ainda sobre '+
+  'processo processos acao acoes autor autora reu ree parte partes caso casos cliente clientes '+
+  'reclamante reclamada reclamado empresa trabalho trabalhista direito juridico juridica art artigo '+
+  'artigos lei leis inciso paragrafo sumula tema teses tese pedido pedidos valor valores data datas'
+  ).split(' '));
+function revPalavras(txt){
+  return new Set(semAcento(String(txt||'')).toLowerCase()
+    .split(/[^a-z0-9]+/).filter(p => p.length >= 5 && !REVSTOP.has(p)));
+}
+async function carregarRevisao(){
+  const [cs, ts, mn, rv] = await Promise.all([
+    sb.from('caso').select('id,titulo,area,descricao,observacoes,cliente:cliente_id(nome)')
+      .is('encerrado_em', null).order('titulo').limit(2000),
+    sb.from('tese').select('codigo,titulo,rubrica,gatilho,area,provas').eq('ativo', true)
+      .not('codigo','like','\\_%'),
+    sb.from('minuta').select('caso_id,teses').limit(2000),
+    sb.from('carteira_revisao').select('caso_id,tese_codigo,situacao,anotacao'),
+  ]);
+  REVDADOS = { casos: cs.data||[], teses: ts.data||[], minutas: mn.data||[], decid: rv.data||[] };
+  return REVDADOS;
+}
+function varrerCarteira(){
+  const D = REVDADOS; if(!D) return [];
+  const jaNaMinuta = new Map();          // caso_id -> Set(codigos já usados)
+  D.minutas.forEach(m => {
+    if(!jaNaMinuta.has(m.caso_id)) jaNaMinuta.set(m.caso_id, new Set());
+    (m.teses||[]).forEach(c => jaNaMinuta.get(m.caso_id).add(c));
+  });
+  const decidido = new Map();
+  D.decid.forEach(d => decidido.set(d.caso_id+'|'+d.tese_codigo, d));
+  const kwTese = D.teses.map(t => ({ t, kw: revPalavras([t.gatilho, t.titulo, t.rubrica].join(' ')) }));
+  const achados = [];
+  D.casos.forEach(c => {
+    const txt = revPalavras([c.titulo, c.descricao, c.observacoes].join(' '));
+    if(txt.size < 3) return;             // caso sem descrição não dá para avaliar
+    const usadas = jaNaMinuta.get(c.id) || new Set();
+    kwTese.forEach(({t, kw}) => {
+      if(usadas.has(t.codigo)) return;
+      if(t.area && c.area && semAcento(t.area).toLowerCase() !== semAcento(c.area).toLowerCase()) return;
+      const bate = [...kw].filter(p => txt.has(p));
+      if(bate.length < 2) return;
+      const d = decidido.get(c.id+'|'+t.codigo);
+      achados.push({ caso: c, tese: t, bate, n: bate.length, situacao: d?.situacao || 'pendente', anotacao: d?.anotacao||'' });
+    });
+  });
+  achados.sort((a,b) => b.n - a.n);
+  return achados;
+}
+function blocoCarteira(){
+  const todos = REVCART;
+  const cont = { pendente:0, aplicavel:0, descartado:0, feito:0 };
+  todos.forEach(a => cont[a.situacao] = (cont[a.situacao]||0)+1);
+  const lista = todos.filter(a => a.situacao === REVFILTRO).slice(0, 80);
+  const semDesc = REVDADOS ? REVDADOS.casos.filter(c => revPalavras([c.titulo,c.descricao,c.observacoes].join(' ')).size < 3).length : 0;
+  return `<div class="card"><h2>Revisar a carteira</h2>
+  <p class="meta">De tempos em tempos o sistema relê os casos abertos e confronta cada um com o banco de teses.
+    Ele só compara palavras — quem decide se a tese cabe é você. O que você descartar não volta a aparecer.</p>
+  <div class="kpis">
+    <div class="kpi"><div class="n">${REVDADOS?REVDADOS.casos.length:0}</div><div class="l">casos abertos</div></div>
+    <div class="kpi ${cont.pendente?'al':''}"><div class="n">${cont.pendente||0}</div><div class="l">a olhar</div></div>
+    <div class="kpi"><div class="n">${cont.aplicavel||0}</div><div class="l">marcados como cabíveis</div></div>
+    <div class="kpi"><div class="n">${cont.descartado||0}</div><div class="l">descartados</div></div>
+  </div>
+  ${semDesc ? `<p class="nota">${semDesc} caso(s) ficaram de fora porque não têm descrição nem observações —
+    sem texto não há o que comparar. Vale preencher o resumo desses casos.</p>` : ''}
+  <div class="acoes" style="padding:0 18px 4px">
+    <button class="btn ok" onclick="rodarCarteira()">Rodar a varredura agora</button>
+    ${['pendente','aplicavel','descartado'].map(f=>`<button class="btn ${REVFILTRO===f?'ok':''}"
+      onclick="REVFILTRO='${f}';pintarCarteira()">${f==='pendente'?'A olhar':f==='aplicavel'?'Cabíveis':'Descartados'} (${cont[f]||0})</button>`).join('')}
+    <button class="btn" onclick="copiarBriefing()">Copiar para análise</button>
+  </div>
+  <p class="meta" style="padding:0 18px">Depois de rodar, o botão <b>Copiar para análise</b> monta um resumo dos
+    achados marcados como cabíveis. Cole esse resumo na nossa conversa e eu faço a leitura caso a caso —
+    a varredura aqui é só o filtro grosso.</p>
+  ${lista.length ? lista.map(a=>`<div style="padding:12px 18px;border-top:1px solid var(--ln)">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <b>${esc(a.caso.titulo)}</b>
+      ${a.caso.cliente?.nome?`<span class="sub" style="margin:0">${esc(a.caso.cliente.nome)}</span>`:''}
+      ${a.caso.area?`<span class="pill cin">${esc(a.caso.area)}</span>`:''}
+      <span class="pill ${a.n>=4?'good':'warn'}">${a.n} termos em comum</span>
+    </div>
+    <div class="sub" style="margin-top:3px"><b>Tese sugerida:</b> ${esc(a.tese.codigo)} — ${esc(a.tese.titulo||'')}</div>
+    ${a.tese.gatilho?`<div class="sub"><b>Aplica-se quando:</b> ${esc(a.tese.gatilho)}</div>`:''}
+    <div class="sub"><b>Bateu em:</b> ${a.bate.map(p=>esc(p)).join(', ')}</div>
+    <div class="acoes" style="padding-left:0">
+      <a class="btn" style="text-decoration:none" href="#/caso/${a.caso.id}">Abrir o caso</a>
+      ${a.situacao!=='aplicavel'?`<button class="btn ok" onclick="decidirRev('${a.caso.id}','${a.tese.codigo}','aplicavel')">Vale analisar</button>`:''}
+      ${a.situacao!=='descartado'?`<button class="btn" onclick="decidirRev('${a.caso.id}','${a.tese.codigo}','descartado')">Não se aplica</button>`:''}
+      ${a.situacao!=='pendente'?`<button class="btn" onclick="decidirRev('${a.caso.id}','${a.tese.codigo}','pendente')">voltar para a fila</button>`:''}
+    </div></div>`).join('')
+    : `<div class="vazio">${todos.length?'Nada neste filtro.':'Clique em “Rodar a varredura agora”.'}</div>`}
+  </div>`;
+}
+function pintarCarteira(){
+  const alvo = document.getElementById('revcart');
+  if(alvo) alvo.innerHTML = blocoCarteira();
+}
+window.rodarCarteira = async function(){
+  const alvo = document.getElementById('revcart');
+  if(alvo) alvo.innerHTML = '<div class="card"><p class="meta">Relendo os casos abertos…</p></div>';
+  await carregarRevisao();
+  REVCART = varrerCarteira();
+  pintarCarteira();
+};
+window.decidirRev = async function(casoId, codigo, situacao){
+  const esc_ = (await sb.from('caso').select('escritorio_id').eq('id', casoId).single()).data?.escritorio_id;
+  const { error } = await sb.from('carteira_revisao').upsert({
+    escritorio_id: esc_, caso_id: casoId, tese_codigo: codigo, situacao,
+    decidido_em: new Date().toISOString(),
+  }, { onConflict: 'caso_id,tese_codigo' });
+  if(error) return alert(error.message);
+  const a = REVCART.find(x => x.caso.id === casoId && x.tese.codigo === codigo);
+  if(a) a.situacao = situacao;
+  pintarCarteira();
+};
+window.copiarBriefing = function(){
+  const alvos = REVCART.filter(a => a.situacao === 'aplicavel');
+  if(!alvos.length) return alert('Marque antes, com “Vale analisar”, os achados que você quer que eu leia.');
+  const txt = 'REVISÃO DE CARTEIRA — casos para analisar\n\n' + alvos.map((a,i)=>
+    `${i+1}) CASO: ${a.caso.titulo}${a.caso.cliente?.nome?' — cliente: '+a.caso.cliente.nome:''}\n`+
+    `   Área: ${a.caso.area||'—'}\n`+
+    `   Resumo: ${(a.caso.descricao||a.caso.observacoes||'sem descrição').replace(/\s+/g,' ').slice(0,600)}\n`+
+    `   Tese sugerida: ${a.tese.codigo} — ${a.tese.titulo||''}\n`+
+    `   Aplica-se quando: ${a.tese.gatilho||'—'}\n`+
+    `   Provas que a tese pede: ${a.tese.provas||'—'}`).join('\n\n');
+  const ok = () => alert('Copiado. Cole na nossa conversa e peça a análise caso a caso.');
+  if(navigator.clipboard?.writeText) navigator.clipboard.writeText(txt).then(ok, ()=>prompt('Copie:', txt));
+  else prompt('Copie:', txt);
+};
+
 async function telaAprender(){
   const [cd, pr, ts] = await Promise.all([
     sb.from('tese_candidata').select('*').eq('status','pendente').order('criado_em'),
@@ -1003,6 +1142,7 @@ async function telaAprender(){
     sb.from('tese').select('codigo', {count:'exact', head:true}).not('codigo','like','\\_%'),
   ]);
   const C = cd.data||[], P = pr.data||[];
+  await carregarRevisao(); REVCART = varrerCarteira();
   app.innerHTML = menu('aprender') + `
   <main><h1>Aprender</h1>
   <p class="meta">O banco cresce com as peças que você de fato protocola. Nada entra sozinho:
@@ -1022,6 +1162,7 @@ async function telaAprender(){
     <div class="acoes"><button class="btn ok" onclick="absorverMinuta()">Ensinar ao banco</button></div>
   </div>
   <div id="apres">${resumoAbs()}</div>
+  <div id="revcart">${blocoCarteira()}</div>
   <div class="card"><h2>Fila de aprovação</h2>
     ${C.length ? C.map(c=>`<div class="chk" style="cursor:default;margin-bottom:8px">
       <b>${c.tipo==='refinamento'?'Refinar ':'Nova tese: '}${esc(c.tipo==='refinamento'? c.codigo_alvo : c.codigo)}</b>
