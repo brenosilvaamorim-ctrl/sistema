@@ -6359,6 +6359,119 @@ async function telaTutoriais(){
   aplicarRotulos(app);
 }
 
+
+/* ---------- CRÉDITO DA API ----------
+   A Anthropic não expõe saldo por API — só o gasto. Então o saldo aqui é a
+   soma do que você registrou de recarga menos o gasto real do período. */
+let CREDITO = { recargas: [], piso: 5, gasto: null, erro: null, desde: null };
+function moedaUsd(n){ return 'US$ ' + Number(n||0).toFixed(2).replace('.', ','); }
+async function carregarCredito(){
+  const [rc, cf] = await Promise.all([
+    sb.from('credito_api').select('*').order('data', {ascending:false}),
+    sb.from('config_api').select('*').maybeSingle(),
+  ]);
+  CREDITO.recargas = rc.data||[];
+  CREDITO.piso = Number(cf.data?.piso_usd ?? 5);
+}
+function blocoCredito(){
+  const r = CREDITO.recargas;
+  const carregado = r.reduce((a,x)=>a + Number(x.valor_usd||0), 0);
+  const primeira = r.length ? r[r.length-1].data : null;
+  const gasto = CREDITO.gasto;
+  const saldo = gasto === null ? null : carregado - gasto;
+  const baixo = saldo !== null && saldo < CREDITO.piso;
+  return `<div class="card"><h2>Crédito da API</h2>
+  <p class="meta">O que o sistema gasta para gerar minuta, sugerir teses, ler documento e aprender uma peça
+    sai do crédito pré-pago da sua conta na Anthropic — não desta conversa. A Anthropic não informa o saldo
+    por programa, só o gasto; por isso registre aqui cada recarga e o sistema faz a conta.</p>
+  <div class="kpis">
+    <div class="kpi"><div class="n">${moedaUsd(carregado)}</div><div class="l">carregado</div></div>
+    <div class="kpi"><div class="n">${gasto===null?'—':moedaUsd(gasto)}</div><div class="l">gasto desde a 1ª recarga</div></div>
+    <div class="kpi ${baixo?'al':''}"><div class="n">${saldo===null?'—':moedaUsd(saldo)}</div><div class="l">saldo estimado</div></div>
+    <div class="kpi"><div class="n">${moedaUsd(CREDITO.piso)}</div><div class="l">piso do alerta</div></div>
+  </div>
+  ${CREDITO.erro ? `<p class="nota" style="color:var(--crit)">${esc(CREDITO.erro)}</p>` : ''}
+  ${baixo ? `<p class="nota" style="color:var(--crit)"><b>Saldo abaixo do piso.</b> Recarregue em
+    platform.claude.com, no menu Billing, antes que as minutas parem.</p>` : ''}
+  <div class="acoes" style="padding:0 18px 4px">
+    <button class="btn ok" onclick="conferirGasto()">Conferir o gasto agora</button>
+    <span class="sub" id="cred-st" style="margin:0"></span>
+  </div>
+  <div style="padding:0 18px 16px">
+    <label class="sub" style="margin:0">Registrar uma recarga</label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:5px">
+      <input type="date" id="cr-data" value="${new Date().toISOString().slice(0,10)}">
+      <input type="number" id="cr-valor" step="0.01" min="0" placeholder="valor em US$" style="width:150px">
+      <input type="text" id="cr-obs" placeholder="observação (opcional)" style="min-width:220px">
+      <button class="btn ok" onclick="novaRecarga()">Guardar</button>
+      <span style="flex:1"></span>
+      <label class="sub" style="margin:0">Avisar quando o saldo cair abaixo de US$</label>
+      <input type="number" id="cr-piso" step="0.5" min="0" value="${CREDITO.piso}" style="width:90px">
+      <button class="btn" onclick="salvarPiso()">Salvar piso</button>
+    </div>
+  </div>
+  ${r.length ? `<table><thead><tr><th>Data</th><th>Valor</th><th>Observação</th><th></th></tr></thead><tbody>
+    ${r.map(x=>`<tr><td>${br(x.data)}</td><td>${moedaUsd(x.valor_usd)}</td>
+      <td>${esc(x.obs||'')}</td>
+      <td><button class="btn" onclick="tirarRecarga('${x.id}')">tirar</button></td></tr>`).join('')}
+    </tbody></table>`
+   : '<div class="vazio">Nenhuma recarga registrada. Sem isso o sistema mostra só o gasto, não o saldo.</div>'}
+  ${primeira ? `<p class="meta" style="padding:0 18px 14px">O gasto é contado desde ${br(primeira)},
+    data da sua primeira recarga registrada.</p>` : ''}
+  </div>`;
+}
+function pintarCredito(){
+  const alvo = document.getElementById('credapi');
+  if(alvo) alvo.innerHTML = blocoCredito();
+}
+window.conferirGasto = async function(){
+  const st = document.getElementById('cred-st');
+  if(st) st.textContent = 'consultando a Anthropic…';
+  const primeira = CREDITO.recargas.length
+    ? CREDITO.recargas[CREDITO.recargas.length-1].data
+    : new Date(Date.now()-30*86400000).toISOString().slice(0,10);
+  try{
+    const { data: { session } } = await sb.auth.getSession();
+    const r = await fetch(SB_URL + '/functions/v1/custo-api', {
+      method:'POST',
+      headers:{ 'content-type':'application/json', apikey: SB_KEY,
+                Authorization: 'Bearer ' + session.access_token },
+      body: JSON.stringify({ desde: primeira }),
+    });
+    const j = await r.json();
+    if(j.erro){ CREDITO.erro = j.erro; CREDITO.gasto = null; }
+    else { CREDITO.gasto = Number(j.gasto_usd||0); CREDITO.desde = j.desde; CREDITO.erro = null; }
+  }catch(e){ CREDITO.erro = 'Não consegui falar com a função de custo: ' + String(e); }
+  pintarCredito();
+};
+window.novaRecarga = async function(){
+  const valor = Number(document.getElementById('cr-valor').value);
+  if(!valor || valor <= 0) return alert('Informe o valor da recarga, em dólares.');
+  const { data: e } = await sb.from('escritorio').select('id').limit(1).single();
+  const { error } = await sb.from('credito_api').insert({
+    escritorio_id: e.id,
+    data: document.getElementById('cr-data').value || new Date().toISOString().slice(0,10),
+    valor_usd: valor,
+    obs: document.getElementById('cr-obs').value || null,
+  });
+  if(error) return alert(error.message);
+  await carregarCredito(); pintarCredito();
+};
+window.tirarRecarga = async function(id){
+  const { error } = await sb.from('credito_api').delete().eq('id', id);
+  if(error) return alert(error.message);
+  await carregarCredito(); pintarCredito();
+};
+window.salvarPiso = async function(){
+  const piso = Number(document.getElementById('cr-piso').value);
+  const { data: e } = await sb.from('escritorio').select('id').limit(1).single();
+  const { error } = await sb.from('config_api').upsert(
+    { escritorio_id: e.id, piso_usd: piso, atualizado_em: new Date().toISOString() },
+    { onConflict: 'escritorio_id' });
+  if(error) return alert(error.message);
+  CREDITO.piso = piso; pintarCredito();
+};
+
 async function telaConfig(){
   const [us, es, ar, og, ct] = await Promise.all([
     sb.from('usuario').select('*').order('criado_em'),
@@ -6370,6 +6483,7 @@ async function telaConfig(){
   if (us.error) return erro(us.error.message);
   AREAS = ar.data||[]; ORIGENS = og.data||[]; CATS = ct.data||[];
   const e = es.data || {};
+  await carregarCredito().catch(()=>{});
   app.innerHTML = menu('config') + `
   <main><h1>Configurações</h1><p class="meta">Escritório, equipe e as listas que alimentam o resto do sistema.</p>
 
@@ -6403,6 +6517,7 @@ async function telaConfig(){
       <td><button class="btn" onclick="salvarUsuario('${u.id}')">Salvar</button><span class="sub" id="us${u.id}"></span></td>
     </tr>`).join('')}</tbody></table></div>
 
+  <div id="credapi">${blocoCredito()}</div>
   <div class="card"><h2>Dados do escritório</h2>
     <p class="nota">Usados nos documentos e nos e-mails de aviso.</p>
     <form onsubmit="salvarEscritorio(event)" style="display:flex;gap:10px;flex-wrap:wrap;padding:0 18px 18px;align-items:flex-end">
