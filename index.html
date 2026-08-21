@@ -6590,7 +6590,8 @@ async function rota(){
   if(h.startsWith('#/processo/')) return telaProcesso(h.slice('#/processo/'.length));
   if(h.startsWith('#/caso/'))      return telaCaso(h.slice('#/caso/'.length));
   if(h.startsWith('#/semcliente'))return telaSemCliente();
-  if(h.startsWith('#/triagem'))    return telaPrazos();
+  if(h.startsWith('#/prazos'))     return telaPrazos();
+  if(h.startsWith('#/triagem'))    return telaPrazos();   // endereço antigo, mantido
   if(h.startsWith('#/agenda'))     return telaAgenda();
   if(h.startsWith('#/captacao'))   return telaCaptacao();
   if(h.startsWith('#/casos'))      return telaCasos();
