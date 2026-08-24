@@ -217,7 +217,7 @@ function telaLogin(msg){
 }
 
 let ESC_NOME = 'Breno S. Amorim Advocacia', ESC_LOGO = null, ESC_ID = null, ESC_TOKEN = null;
-const MENU_PADRAO = [['inicio','Início'],['prazos','Prazos e publicações'],['agenda','Agenda'],['captacao','Captação'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['clientes','Clientes'],['mensageria','Mensagens'],['metricas','Métricas'],['jurimetria','Jurimetria'],['financeiro','Financeiro'],['parceiros','Parceiros'],['minutas','Minutas'],['playbook','Playbook'],['aprender','Aprender'],['dicionario','Dicionário'],['documentos','Documentos'],['tutoriais','Tutoriais'],['regras','Regras'],['importar','Importar antigos'],['manual','Manual'],['pessoal','Meu financeiro'],['config','Configurações']];
+const MENU_PADRAO = [['inicio','Início'],['prazos','Prazos e publicações'],['agenda','Agenda'],['captacao','Captação'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['clientes','Clientes'],['mensageria','Mensagens'],['metricas','Métricas'],['jurimetria','Jurimetria'],['financeiro','Financeiro'],['parceiros','Parceiros'],['minutas','Minutas'],['playbook','Playbook'],['aprender','Aprender'],['dicionario','Dicionário'],['documentos','Documentos'],['tutoriais','Tutoriais'],['regras','Regras'],['importar','Importar antigos'],['manual','Manual'],['investir','Investir'],['pessoal','Meu financeiro'],['config','Configurações']];
 let MENUCFG = MENU_PADRAO.map(([k,r]) => ({ k, r, v:true }));
 let ROTULOS = {};
 const PALAVRAS = {"Telas e seções": ["Prazos", "Triagem", "Triagem das publicações", "O que chegou", "Agenda", "Captação", "Casos", "Processos", "Andamento", "Clientes", "Mensagens", "Métricas", "Financeiro", "Parceiros", "Delegar um servi\u00e7o", "Acompanhamento", "Quem s\u00e3o os parceiros", "Delegado a parceiro", "Minutas", "Aprender", "Dicionário", "Documentos", "Tutoriais", "Configurações", "Calendário", "Pela frente", "Vencidos e ainda abertos", "Linha do tempo", "Todos os processos", "Andamento dos processos", "Os mais parados primeiro", "Precedentes", "Teses", "Fila de aprovação", "Minutas recentes", "Análise prévia", "Modo juiz", "Marcar prazo, audiência ou tarefa", "Levar tudo para o Google Agenda", "Equipe e acessos", "Dados do escritório", "Áreas de atuação", "Origens de captação", "Categorias financeiras", "Dicionário de movimentações", "Cor do dia de hoje", "Cópias automáticas", "Casos sem cliente", "Cliente do caso", "Amarrar cliente", "Documentos a pedir", "Documentos do cliente", "Assinatura de documentos", "Tutoriais para clientes", "Ensinar uma peça ao banco", "Mensagem para o cliente", "Novo contato", "Novo lançamento", "Resultado da leitura"], "Colunas das tabelas": ["Feito", "Em trâmite", "Parado há", "Fase", "Situação e providência", "Aguardando até", "Chegou", "Documento", "Onde consigo", "Recebido em", "Vence", "Quando", "Situação", "Providência", "Cliente / vara", "Cliente / caso", "Processo", "Trecho lido e memória", "Conf.", "Ação", "Tipo", "O quê", "Descrição", "Origem", "Valor", "Vencimento", "Tribunal", "Relator", "Tema", "Órgão", "Área", "Nome", "Pessoa", "Perfil", "Ativo", "E-mail", "Telefone", "Telefone / WhatsApp", "Última movimentação", "Última atualização", "Encerrado em", "Motivo", "Resultado", "Vezes", "Cód."], "Números do topo": ["em aberto", "vencem em até 5 dias", "já vencidos", "aguardando confirmação", "compromissos à frente", "nos próximos 7 dias", "audiências", "já passaram e seguem abertos", "casos abertos", "casos ativos", "clientes", "processos", "pedindo providência", "merecendo conferência", "execuções com o prazo correndo", "tempo médio em trâmite", "em trâmite", "parado há", "sem telefone", "sem contato há mais de 30 dias", "parados há mais de 90 dias", "prescrevem em até 180 dias", "com prazo em até 5 dias", "com novidade desde o último contato", "teses no banco", "esperando sua decisão", "precedentes a conferir", "teses novas", "refinamentos", "tempo de leitura", "a pagar", "a receber", "saldo do mês", "recebido neste mês", "projeção para o ano"]};
@@ -311,7 +311,7 @@ const GRUPOS = [
   ['Rotina',    ['inicio','prazos','agenda','mensageria']],
   ['Processos', ['casos','processos','andamento','minutas','playbook']],
   ['Pessoas',   ['clientes','captacao','parceiros']],
-  ['Gestão',    ['metricas','jurimetria','financeiro','pessoal']],
+  ['Gestão',    ['metricas','jurimetria','financeiro','investir','pessoal']],
   ['Sistema',   ['manual','aprender','dicionario','documentos','tutoriais','regras','importar','config']],
 ];
 window.abrirGrupo = (ev, nome) => {
@@ -6924,6 +6924,140 @@ window.tirarLancamentoPessoal = async function(id){
   await sb.from('pessoal_lancamento').delete().eq('id', id); telaPessoal();
 };
 
+
+/* ---------- CAPACIDADE DE INVESTIMENTO ----------
+   Antes de existir histórico, a pergunta não é "qual o retorno" — é "quanto posso
+   arriscar sem furar o caixa". Retorno é medição; capacidade é decisão. */
+let INV = null;
+async function carregarInvestir(){
+  const { data: e } = await sb.from('escritorio').select('id').limit(1).single();
+  const { data } = await sb.from('plano_investimento').select('*').maybeSingle();
+  INV = data || { escritorio_id: e.id, caixa_atual:0, entrada_media:0, saida_media:0,
+    reserva_minima:0, investimento_mes:0, meses_teste:6, ticket_medio:0,
+    meses_ate_receber:12, cen_baixo:1, cen_medio:2, cen_alto:4 };
+  INV.escritorio_id = e.id;
+  return INV;
+}
+/* Projeta 24 meses. O detalhe cruel da advocacia: o cliente entra hoje e o
+   honorário cai um ou dois anos depois — o teste consome caixa antes de devolver. */
+function projetar(clientesMes){
+  const p = INV, meses = 24, linhas = [];
+  let caixa = Number(p.caixa_atual);
+  const entradas = [];
+  for (let m = 1; m <= meses; m++){
+    const investe = m <= Number(p.meses_teste) ? Number(p.investimento_mes) : 0;
+    if (investe) entradas[m] = clientesMes;
+    const recebeDe = m - Number(p.meses_ate_receber);
+    const recebimento = (entradas[recebeDe] || 0) * Number(p.ticket_medio);
+    caixa += Number(p.entrada_media) - Number(p.saida_media) - investe + recebimento;
+    linhas.push({ m, investe, recebimento, caixa });
+  }
+  const fundo = linhas.reduce((a,b) => b.caixa < a.caixa ? b : a, linhas[0]);
+  const total = Number(p.investimento_mes) * Number(p.meses_teste);
+  let acum = 0, payback = null;
+  for (const l of linhas){ acum += l.recebimento; if (payback === null && acum >= total) payback = l.m; }
+  return { linhas, fundo, total, payback, recebido: acum };
+}
+async function telaInvestir(){
+  await carregarInvestir();
+  const p = INV;
+  const sobra = Number(p.entrada_media) - Number(p.saida_media);
+  const colchao = Number(p.caixa_atual) - Number(p.reserva_minima);
+  const tetoMes = sobra + (Number(p.meses_teste) > 0 ? colchao/Number(p.meses_teste) : 0);
+  const equilibrio = Number(p.ticket_medio) > 0 ? Number(p.investimento_mes)/Number(p.ticket_medio) : 0;
+  const cen = [['pessimista', Number(p.cen_baixo)], ['realista', Number(p.cen_medio)], ['otimista', Number(p.cen_alto)]]
+    .map(([nome, q]) => ({ nome, q, r: projetar(q) }));
+  const campo = (id, rot, val, passo) => `<label style="display:flex;flex-direction:column;gap:3px">
+      <span class="sub" style="margin:0">${rot}</span>
+      <input type="number" step="${passo||'0.01'}" id="${id}" value="${val}" style="width:150px"></label>`;
+
+  app.innerHTML = menu('investir') + `
+  <main><h1>Capacidade de investimento</h1>
+  <p class="meta">Sem histórico de anúncio não dá para prometer retorno — e quem promete está chutando.
+    O que dá para calcular com precisão é outra coisa: quanto o caixa aguenta perder, por quantos meses,
+    e quantos clientes o investimento precisa trazer só para empatar.</p>
+
+  <div class="card"><h2>Os números do escritório</h2>
+  <p class="meta">Só isto. Não precisa de histórico de tráfego nenhum.</p>
+  <div style="padding:0 18px 16px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+    ${campo('iv-caixa','Caixa hoje', p.caixa_atual)}
+    ${campo('iv-ent','Entrada média por mês', p.entrada_media)}
+    ${campo('iv-sai','Saída média por mês', p.saida_media)}
+    ${campo('iv-res','Reserva que não posso furar', p.reserva_minima)}
+    ${campo('iv-tic','Honorário médio por caso', p.ticket_medio)}
+    ${campo('iv-rec','Meses até o honorário cair', p.meses_ate_receber, '1')}
+    ${campo('iv-inv','Quanto investir por mês', p.investimento_mes)}
+    ${campo('iv-mes','Por quantos meses testar', p.meses_teste, '1')}
+    <button class="btn ok" onclick="salvarInvestir()">Calcular</button>
+  </div>
+  <div style="padding:0 18px 16px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+    <span class="sub" style="margin:0 6px 8px 0">Clientes novos por mês em cada cenário:</span>
+    ${campo('iv-b','pessimista', p.cen_baixo, '0.5')}
+    ${campo('iv-m','realista', p.cen_medio, '0.5')}
+    ${campo('iv-a','otimista', p.cen_alto, '0.5')}
+  </div></div>
+
+  <div class="kpis">
+    <div class="kpi ${sobra<0?'al':''}"><div class="n">${rs(sobra)}</div><div class="l">sobra por mês hoje</div></div>
+    <div class="kpi"><div class="n">${rs(Math.max(0,colchao))}</div><div class="l">acima da reserva</div></div>
+    <div class="kpi"><div class="n">${rs(Math.max(0,tetoMes))}</div><div class="l">teto por mês de teste</div></div>
+    <div class="kpi ${equilibrio>Number(p.cen_medio)?'al':''}"><div class="n">${equilibrio.toFixed(1)}</div>
+      <div class="l">clientes/mês para empatar</div></div>
+  </div>
+
+  ${Number(p.investimento_mes) > tetoMes && tetoMes >= 0 ? `<div class="card"><p class="nota" style="color:var(--crit)">
+    <b>O investimento pretendido passa do que o caixa aguenta.</b> Investindo ${rs(p.investimento_mes)} por mês
+    durante ${p.meses_teste} meses, você fura a reserva de ${rs(p.reserva_minima)} antes do fim do teste.
+    O teto, com esses números, é ${rs(Math.max(0,tetoMes))} por mês.</p></div>` : ''}
+
+  <div class="card"><h2>O que precisa acontecer para empatar</h2>
+  <p class="meta">Investindo ${rs(p.investimento_mes)} por mês com honorário médio de ${rs(p.ticket_medio)},
+    o anúncio precisa trazer <b>${equilibrio.toFixed(1)} cliente(s) por mês</b> só para devolver o que custou.
+    Essa é a conta inteira — o resto é opinião sobre se esse número é plausível no seu mercado.</p>
+  ${Number(p.meses_ate_receber) > 0 ? `<p class="nota">E há a defasagem: o cliente que o anúncio trouxer neste mês
+    só vira dinheiro daqui a ${p.meses_ate_receber} meses. Até lá, o teste é só despesa.</p>` : ''}
+  </div>
+
+  ${cen.map(c => {
+    const fundo = c.r.fundo, furou = fundo.caixa < Number(p.reserva_minima);
+    const max = Math.max(...c.r.linhas.map(l=>Math.abs(l.caixa)), 1);
+    return `<div class="card"><h2>Cenário ${c.nome} — ${c.q} cliente(s) por mês</h2>
+    <div class="kpis">
+      <div class="kpi ${furou?'al':''}"><div class="n">${rs(fundo.caixa)}</div><div class="l">fundo do poço (mês ${fundo.m})</div></div>
+      <div class="kpi"><div class="n">${rs(c.r.total)}</div><div class="l">total investido</div></div>
+      <div class="kpi"><div class="n">${c.r.payback ? 'mês '+c.r.payback : 'não volta em 24m'}</div><div class="l">quando se paga</div></div>
+      <div class="kpi"><div class="n">${rs(c.r.recebido)}</div><div class="l">retorno em 24 meses</div></div>
+    </div>
+    ${furou ? `<p class="nota" style="color:var(--crit)">Neste cenário o caixa cai abaixo da sua reserva
+      no mês ${fundo.m}. É o mês que quebra o plano — não o mês 1, que sempre parece confortável.</p>` : ''}
+    <div class="bars">${c.r.linhas.filter((l,idx)=>idx%2===0).map(l=>`<div class="bar">
+      <div class="rot">mês ${l.m}</div>
+      <div class="trilho"><div class="barra" style="width:${Math.round(Math.abs(l.caixa)/max*100)}%;background:${l.caixa<Number(p.reserva_minima)?'var(--crit)':'var(--serie)'}"></div></div>
+      <div class="val">${rs(l.caixa)}</div></div>`).join('')}</div>
+    </div>`;
+  }).join('')}
+
+  <div class="card"><h2>Quando isso deixa de ser projeção</h2>
+  <p class="meta">A partir do primeiro anúncio no ar, marque a origem de captação de cada caso novo —
+    Meta Ads, Google Ads, Instagram, Indicação. Em três ou quatro meses o sistema passa a saber quanto
+    custou cada cliente por canal e quanto cada canal rendeu. Aí esta tela para de projetar e começa a medir,
+    e a decisão de manter, aumentar ou cortar deixa de depender de palpite.</p>
+  </div>
+  </main>` + rodape();
+}
+window.salvarInvestir = async function(){
+  const n = id => Number(document.getElementById(id).value || 0);
+  const dados = { escritorio_id: INV.escritorio_id,
+    caixa_atual: n('iv-caixa'), entrada_media: n('iv-ent'), saida_media: n('iv-sai'),
+    reserva_minima: n('iv-res'), ticket_medio: n('iv-tic'), meses_ate_receber: n('iv-rec'),
+    investimento_mes: n('iv-inv'), meses_teste: Math.max(1, n('iv-mes')),
+    cen_baixo: n('iv-b'), cen_medio: n('iv-m'), cen_alto: n('iv-a'),
+    atualizado_em: new Date().toISOString() };
+  const { error } = await sb.from('plano_investimento').upsert(dados, { onConflict:'escritorio_id' });
+  if(error) return alert(error.message);
+  telaInvestir();
+};
+
 async function telaConfig(){
   const [us, es, ar, og, ct] = await Promise.all([
     sb.from('usuario').select('*').order('criado_em'),
@@ -7182,6 +7316,7 @@ async function rota(){
   if(h.startsWith('#/documentos')) return telaDocumentos();
   if(h.startsWith('#/tutoriais'))  return telaTutoriais();
   if(h.startsWith('#/auditoria'))  return telaAuditoria();
+  if(h.startsWith('#/investir'))   return telaInvestir();
   if(h.startsWith('#/pessoal'))    return telaPessoal();
   if(h.startsWith('#/config'))     return telaConfig();
   return telaInicio();
