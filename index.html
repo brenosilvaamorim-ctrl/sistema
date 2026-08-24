@@ -4,8 +4,8 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{color-scheme:light;--s0:#f4f3f0;--s1:#fcfcfb;--ln:#e3e1dc;--ink:#0b0b0b;--i2:#52514e;--i3:#78766f;
---good:#0ca30c;--warn:#fab219;--ser:#ec835a;--crit:#d03b3b;--serie:#2a78d6;--hoje:#2a78d6}
-@media(prefers-color-scheme:dark){:root{color-scheme:dark;--s0:#111110;--s1:#1a1a19;--ln:#33332f;--ink:#fff;--i2:#c3c2b7;--i3:#8f8e85;--serie:#3987e5}}
+--good:#0ca30c;--warn:#fab219;--ser:#ec835a;--crit:#d03b3b;--serie:#2a78d6;--hoje:#2a78d6;--presc:#7b3fb0;--taref:#2f8f7f}
+@media(prefers-color-scheme:dark){:root{color-scheme:dark;--s0:#111110;--s1:#1a1a19;--ln:#33332f;--ink:#fff;--i2:#c3c2b7;--i3:#8f8e85;--serie:#3987e5;--presc:#a973dd;--taref:#45b39e}}
 *{box-sizing:border-box}body{margin:0;background:var(--s0);color:var(--ink);font:15px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
 a{color:inherit}
 nav{display:flex;gap:2px;align-items:center;padding:0 20px;background:var(--s1);border-bottom:1px solid var(--ln);
@@ -56,6 +56,8 @@ td{padding:10px 11px;border-bottom:1px solid var(--ln);vertical-align:top}tr:las
 .warn{color:var(--warn);border-color:var(--warn)}.good{color:var(--good);border-color:var(--good)}
 .cin{color:var(--i3);border-color:var(--ln)}
 .serie{color:var(--serie);border-color:var(--serie)}
+.presc{color:var(--presc);border-color:var(--presc)}
+.taref{color:var(--taref);border-color:var(--taref)}
 button,input,select,textarea{font:inherit}
 .btn{font-size:12.3px;font-weight:600;padding:5px 11px;border-radius:8px;border:1px solid var(--ln);background:var(--s0);color:var(--ink);cursor:pointer;white-space:nowrap}
 .btn:hover{border-color:var(--i3)}.btn.ok{border-color:var(--good);color:var(--good)}
@@ -115,8 +117,8 @@ textarea{width:100%;resize:vertical;line-height:1.45}
 .pontos{display:flex;gap:3px;justify-content:center;flex-wrap:wrap;min-height:7px}
 .pt{width:6px;height:6px;border-radius:99px;background:var(--i3)}
 .pt.prazo{background:var(--ser)}.pt.audiencia{background:var(--crit)}
-.pt.prescricao{background:var(--crit)}.pt.pericia{background:var(--warn)}
-.pt.reuniao{background:var(--serie)}.pt.tarefa{background:var(--i3)}
+.pt.prescricao{background:var(--presc)}.pt.pericia{background:var(--warn)}
+.pt.reuniao{background:var(--serie)}.pt.tarefa{background:var(--taref)}
 .dia .qtd{font-size:9.5px;color:var(--i3);text-align:center;margin-top:2px}
 .legenda{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:11.4px;color:var(--i3)}
 .legenda span{display:flex;gap:5px;align-items:center}
@@ -126,8 +128,9 @@ textarea{width:100%;resize:vertical;line-height:1.45}
 .diadet .quando{font-size:11.6px;color:var(--i3);margin-bottom:12px}
 .item{border-left:3px solid var(--i3);padding:2px 0 2px 11px;margin-bottom:13px}
 .item.prazo{border-color:var(--ser)}.item.audiencia{border-color:var(--crit)}
-.item.prescricao{border-color:var(--crit)}.item.pericia{border-color:var(--warn)}
-.item.reuniao{border-color:var(--serie)}
+.item.prescricao{border-color:var(--presc)}.item.pericia{border-color:var(--warn)}
+.item.reuniao{border-color:var(--serie)}.item.tarefa{border-color:var(--taref)}
+.item.outro{border-color:var(--ln)}
 .item .tt{font-size:13.2px;line-height:1.4;color:var(--ink)}
 .item .mt{font-size:11.4px;color:var(--i3);margin-top:3px}
 .item a{font-size:11.4px;color:var(--i2);text-decoration:none;border-bottom:1px solid var(--ln)}
@@ -136,8 +139,8 @@ textarea{width:100%;resize:vertical;line-height:1.45}
 .prox{flex:0 0 190px;background:var(--s1);border:1px solid var(--ln);border-top-width:3px;
   border-radius:9px;padding:11px 13px}
 .prox.prazo{border-top-color:var(--ser)}.prox.audiencia{border-top-color:var(--crit)}
-.prox.prescricao{border-top-color:var(--crit)}.prox.pericia{border-top-color:var(--warn)}
-.prox.reuniao{border-top-color:var(--serie)}
+.prox.prescricao{border-top-color:var(--presc)}.prox.pericia{border-top-color:var(--warn)}
+.prox.reuniao{border-top-color:var(--serie)}.prox.tarefa{border-top-color:var(--taref)}
 .prox .qd{font-size:10.6px;color:var(--i3);text-transform:uppercase;letter-spacing:.05em}
 .prox .dd{font:600 15px/1.2 ui-sans-serif,sans-serif;color:var(--ink);margin:3px 0 5px;
   font-variant-numeric:tabular-nums}
@@ -1608,7 +1611,9 @@ async function telaAgenda(){
 
   const futuros = AGE.filter(i => dias(String(i.data).slice(0,10)) >= 0);
   const passados = AGE.filter(i => dias(String(i.data).slice(0,10)) < 0);
-  const cor = { prazo:'ser', audiencia:'crit', prescricao:'crit', reuniao:'cin', pericia:'warn', tarefa:'cin', outro:'cin' };
+  /* Uma cor por tipo, e a mesma cor na tabela, no calendário e na faixa. */
+  const cor = { prazo:'ser', audiencia:'crit', prescricao:'presc', pericia:'warn',
+                reuniao:'serie', tarefa:'taref', outro:'cin' };
   const linha = it => {
     const d = dias(String(it.data).slice(0,10));
     return `<tr>
@@ -1639,6 +1644,11 @@ async function telaAgenda(){
   <p class="meta">Prazos, audiências, tarefas e prescrições no mesmo lugar. <b>Dar baixa</b> é o clique que você
     dá <i>depois</i> de protocolar ou realizar: o item some da agenda e entra no histórico. Enquanto o botão
     estiver ali, o compromisso continua em aberto. Prescrição não tem baixa — ela vive no cadastro do caso.</p>
+  <div style="display:flex;gap:7px;flex-wrap:wrap;margin:-4px 0 14px">
+    ${[['prazo','ser'],['audiência','crit'],['perícia','warn'],['prescrição','presc'],
+       ['reunião','serie'],['tarefa','taref']].map(([r,c])=>
+      `<span class="pill ${c}">${r}</span>`).join('')}
+  </div>
   <div class="kpis">
     <div class="kpi"><div class="n">${futuros.length}</div><div class="l">compromissos à frente</div></div>
     <div class="kpi"><div class="n">${futuros.filter(i=>dias(String(i.data).slice(0,10))<=7).length}</div><div class="l">nos próximos 7 dias</div></div>
