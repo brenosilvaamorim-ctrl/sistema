@@ -1318,7 +1318,10 @@ function detalheDia(){
         <div class="tt">${it.hora?`<b>${it.hora}</b> · `:''}${esc(it.titulo)}</div>
         ${it.local?`<div class="mt">${esc(it.local)}</div>`:''}
         ${it.detalhe?`<div class="mt">${esc(String(it.detalhe).replace(/\n/g,' · '))}</div>`:''}
-        <div class="mt"><a href="${linkGoogle(it)}" target="_blank" rel="noreferrer">enviar para o Google Agenda</a></div>
+        <div class="mt" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px">
+          ${it.ref ? `<button class="btn ok" style="font-size:11.6px;padding:4px 9px;white-space:nowrap"
+            onclick="riscar('${it.qual}','${it.ref}',this)">✓ ${it.qual==='prazo'?'Cumprido':'Concluído'}</button>` : ''}
+          <a href="${linkGoogle(it)}" target="_blank" rel="noreferrer">enviar para o Google Agenda</a></div>
       </div>`).join('') : '<p class="quando">Dia livre.</p>'}
   </div>`;
 }
@@ -1491,9 +1494,16 @@ window.riscar = async (qual, id, el) => {
     if (eraTexto !== null) el.textContent = eraTexto; else el.checked = false;
     return alert('Não foi possível: ' + error.message);
   }
-  const tr = el.closest('tr');
-  if (tr){ tr.style.opacity = '.45'; tr.style.textDecoration = 'line-through'; }
-  setTimeout(() => { if (location.hash.startsWith('#/agenda')) telaAgenda(); else rota(); }, 700);
+  const bloco = el.closest('tr') || el.closest('.item');
+  if (bloco){ bloco.style.opacity = '.45'; bloco.style.textDecoration = 'line-through'; }
+  const diaAberto = CAL?.sel;
+  setTimeout(() => {
+    if (location.hash.startsWith('#/agenda')) telaAgenda().then(() => {
+      /* volta para o mesmo dia que estava aberto, para a baixa não jogar você no mês */
+      if (diaAberto) { CAL.sel = diaAberto; pintaCalendario(); }
+    });
+    else rota();
+  }, 700);
 };
 window.concluirEvento = async (id) => {
   await sb.from('evento').update({ situacao:'concluida', concluido_em: new Date().toISOString() }).eq('id', id);
