@@ -1479,12 +1479,18 @@ window.salvarEvento = async (ev) => {
   telaAgenda();
 };
 window.riscar = async (qual, id, el) => {
+  const eraTexto = el.tagName === 'BUTTON' ? el.textContent : null;
   el.disabled = true;
+  if (eraTexto !== null) el.textContent = 'dando baixa…';
   const agora = new Date().toISOString();
   const { error } = qual === 'prazo'
     ? await sb.from('prazo').update({ situacao:'cumprido', cumprido_em: agora }).eq('id', id)
     : await sb.from('evento').update({ situacao:'concluida', concluido_em: agora }).eq('id', id);
-  if (error){ el.disabled = false; el.checked = false; return alert('Não foi possível: ' + error.message); }
+  if (error){
+    el.disabled = false;
+    if (eraTexto !== null) el.textContent = eraTexto; else el.checked = false;
+    return alert('Não foi possível: ' + error.message);
+  }
   const tr = el.closest('tr');
   if (tr){ tr.style.opacity = '.45'; tr.style.textDecoration = 'line-through'; }
   setTimeout(() => { if (location.hash.startsWith('#/agenda')) telaAgenda(); else rota(); }, 700);
@@ -1591,9 +1597,10 @@ async function telaAgenda(){
   const linha = it => {
     const d = dias(String(it.data).slice(0,10));
     return `<tr>
-      <td style="text-align:center">${it.ref
-        ? `<input type="checkbox" title="marcar como concluído" onchange="riscar('${it.qual}','${it.ref}',this)">`
-        : ''}</td>
+      <td>${it.ref
+        ? `<button class="btn ok" style="font-size:11.6px;padding:4px 9px;white-space:nowrap"
+             onclick="riscar('${it.qual}','${it.ref}',this)">✓ ${it.qual==='prazo'?'Cumprido':'Concluído'}</button>`
+        : '<span class="sub" style="margin:0">—</span>'}</td>
       <td class="dt"><b>${br(it.data)}</b>${it.hora?' '+it.hora:''}
         <span class="sub">${d===0?'hoje':(d<0?'há '+(-d)+'d':'em '+d+' dias')}</span></td>
       <td><span class="pill ${cor[it.tipo]||'cin'}">${it.tipo}</span></td>
@@ -1607,7 +1614,9 @@ async function telaAgenda(){
   };
   app.innerHTML = menu('agenda') + `
   <main><h1>Agenda</h1>
-  <p class="meta">Prazos, audiências e prescrições no mesmo lugar. Cada item vai para o Google Agenda com um clique.</p>
+  <p class="meta">Prazos, audiências, tarefas e prescrições no mesmo lugar. O botão <b>✓ Cumprido</b> dá baixa
+    no prazo protocolado; <b>✓ Concluído</b> faz o mesmo com audiência e tarefa. O item sai da agenda e entra
+    no histórico. Prescrição não tem baixa — ela vive no cadastro do caso.</p>
   <div class="kpis">
     <div class="kpi"><div class="n">${futuros.length}</div><div class="l">compromissos à frente</div></div>
     <div class="kpi"><div class="n">${futuros.filter(i=>dias(String(i.data).slice(0,10))<=7).length}</div><div class="l">nos próximos 7 dias</div></div>
@@ -1632,10 +1641,13 @@ async function telaAgenda(){
     : `<p class="nota">Baixe o arquivo e importe uma vez em <b>Google Agenda → Configurações → Importar e exportar</b>.</p>
     <div style="padding:0 18px 18px"><button class="btn ok" onclick="baixarIcs()">Baixar agenda (.ics)</button></div>`}</div>
   <div class="card"><h2>Pela frente</h2>
-    <table><thead><tr><th style="width:44px">Feito</th><th>Quando</th><th>Tipo</th><th>O quê</th><th></th></tr></thead>
+    <table><thead><tr><th style="width:118px">Dar baixa</th><th>Quando</th><th>Tipo</th><th>O quê</th><th></th></tr></thead>
     <tbody>${futuros.map(linha).join('') || '<tr><td colspan="5" class="vazio">Nada agendado.</td></tr>'}</tbody></table></div>
   ${passados.length?`<div class="card"><h2>Vencidos e ainda abertos</h2>
-    <table><tbody>${passados.map(linha).join('')}</tbody></table></div>`:''}
+    <p class="meta">Já passou da data e continua aberto. Se foi protocolado ou realizado, dê baixa aqui —
+      é esse clique que alimenta a Métrica e a Jurimetria.</p>
+    <table><thead><tr><th style="width:118px">Dar baixa</th><th>Quando</th><th>Tipo</th><th>O quê</th><th></th></tr></thead>
+    <tbody>${passados.map(linha).join('')}</tbody></table></div>`:''}
   </main>` + rodape();
   const hj = new Date();
   CAL = { ano: hj.getUTCFullYear(), mes: hj.getUTCMonth(), sel: hoje() };
