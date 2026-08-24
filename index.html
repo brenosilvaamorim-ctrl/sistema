@@ -217,7 +217,7 @@ function telaLogin(msg){
 }
 
 let ESC_NOME = 'Breno S. Amorim Advocacia', ESC_LOGO = null, ESC_ID = null, ESC_TOKEN = null;
-const MENU_PADRAO = [['inicio','Início'],['prazos','Prazos e publicações'],['agenda','Agenda'],['captacao','Captação'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['clientes','Clientes'],['mensageria','Mensagens'],['metricas','Métricas'],['jurimetria','Jurimetria'],['financeiro','Financeiro'],['parceiros','Parceiros'],['minutas','Minutas'],['playbook','Playbook'],['aprender','Aprender'],['dicionario','Dicionário'],['documentos','Documentos'],['tutoriais','Tutoriais'],['regras','Regras'],['importar','Importar antigos'],['manual','Manual'],['config','Configurações']];
+const MENU_PADRAO = [['inicio','Início'],['prazos','Prazos e publicações'],['agenda','Agenda'],['captacao','Captação'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['clientes','Clientes'],['mensageria','Mensagens'],['metricas','Métricas'],['jurimetria','Jurimetria'],['financeiro','Financeiro'],['parceiros','Parceiros'],['minutas','Minutas'],['playbook','Playbook'],['aprender','Aprender'],['dicionario','Dicionário'],['documentos','Documentos'],['tutoriais','Tutoriais'],['regras','Regras'],['importar','Importar antigos'],['manual','Manual'],['pessoal','Meu financeiro'],['config','Configurações']];
 let MENUCFG = MENU_PADRAO.map(([k,r]) => ({ k, r, v:true }));
 let ROTULOS = {};
 const PALAVRAS = {"Telas e seções": ["Prazos", "Triagem", "Triagem das publicações", "O que chegou", "Agenda", "Captação", "Casos", "Processos", "Andamento", "Clientes", "Mensagens", "Métricas", "Financeiro", "Parceiros", "Delegar um servi\u00e7o", "Acompanhamento", "Quem s\u00e3o os parceiros", "Delegado a parceiro", "Minutas", "Aprender", "Dicionário", "Documentos", "Tutoriais", "Configurações", "Calendário", "Pela frente", "Vencidos e ainda abertos", "Linha do tempo", "Todos os processos", "Andamento dos processos", "Os mais parados primeiro", "Precedentes", "Teses", "Fila de aprovação", "Minutas recentes", "Análise prévia", "Modo juiz", "Marcar prazo, audiência ou tarefa", "Levar tudo para o Google Agenda", "Equipe e acessos", "Dados do escritório", "Áreas de atuação", "Origens de captação", "Categorias financeiras", "Dicionário de movimentações", "Cor do dia de hoje", "Cópias automáticas", "Casos sem cliente", "Cliente do caso", "Amarrar cliente", "Documentos a pedir", "Documentos do cliente", "Assinatura de documentos", "Tutoriais para clientes", "Ensinar uma peça ao banco", "Mensagem para o cliente", "Novo contato", "Novo lançamento", "Resultado da leitura"], "Colunas das tabelas": ["Feito", "Em trâmite", "Parado há", "Fase", "Situação e providência", "Aguardando até", "Chegou", "Documento", "Onde consigo", "Recebido em", "Vence", "Quando", "Situação", "Providência", "Cliente / vara", "Cliente / caso", "Processo", "Trecho lido e memória", "Conf.", "Ação", "Tipo", "O quê", "Descrição", "Origem", "Valor", "Vencimento", "Tribunal", "Relator", "Tema", "Órgão", "Área", "Nome", "Pessoa", "Perfil", "Ativo", "E-mail", "Telefone", "Telefone / WhatsApp", "Última movimentação", "Última atualização", "Encerrado em", "Motivo", "Resultado", "Vezes", "Cód."], "Números do topo": ["em aberto", "vencem em até 5 dias", "já vencidos", "aguardando confirmação", "compromissos à frente", "nos próximos 7 dias", "audiências", "já passaram e seguem abertos", "casos abertos", "casos ativos", "clientes", "processos", "pedindo providência", "merecendo conferência", "execuções com o prazo correndo", "tempo médio em trâmite", "em trâmite", "parado há", "sem telefone", "sem contato há mais de 30 dias", "parados há mais de 90 dias", "prescrevem em até 180 dias", "com prazo em até 5 dias", "com novidade desde o último contato", "teses no banco", "esperando sua decisão", "precedentes a conferir", "teses novas", "refinamentos", "tempo de leitura", "a pagar", "a receber", "saldo do mês", "recebido neste mês", "projeção para o ano"]};
@@ -311,7 +311,7 @@ const GRUPOS = [
   ['Rotina',    ['inicio','prazos','agenda','mensageria']],
   ['Processos', ['casos','processos','andamento','minutas','playbook']],
   ['Pessoas',   ['clientes','captacao','parceiros']],
-  ['Gestão',    ['metricas','jurimetria','financeiro']],
+  ['Gestão',    ['metricas','jurimetria','financeiro','pessoal']],
   ['Sistema',   ['manual','aprender','dicionario','documentos','tutoriais','regras','importar','config']],
 ];
 window.abrirGrupo = (ev, nome) => {
@@ -6472,6 +6472,425 @@ window.salvarPiso = async function(){
   CREDITO.piso = piso; pintarCredito();
 };
 
+
+/* ---------- FINANCEIRO PESSOAL DO SÓCIO ----------
+   Aba privada. A trava não é o menu: é a regra do banco (dono_id = auth.uid()).
+   Ninguém mais do escritório lê estas tabelas. O que atravessa a fronteira é só
+   a distribuição — um lançamento de saída do escritório marcado com o seu nome. */
+let PESMES = new Date().toISOString().slice(0,7);
+let PES = null;
+const mesBr = m => { const [a,b]=m.split('-'); return ['','janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'][+b] + ' de ' + a; };
+const mesMais = (m,n) => { const [a,b]=m.split('-').map(Number); const d=new Date(a, b-1+n, 1); return d.toISOString().slice(0,7); };
+const pct = (a,b) => b>0 ? Math.min(100, Math.round(a/b*100)) : 0;
+
+/* Tabela de amortização. PRICE tem parcela fixa; SAC amortiza sempre igual e a
+   parcela cai com o tempo. O saldo devedor é o que sobra depois de cada parcela. */
+function tabelaFin(f, aporteExtra){
+  const i = Number(f.taxa_mes||0)/100, n = Number(f.parcelas), P = Number(f.valor_financiado);
+  const seg = Number(f.seguro_mes||0), extra = Number(aporteExtra||0);
+  const linhas = []; let saldo = P;
+  const parcPrice = i > 0 ? P*i/(1-Math.pow(1+i,-n)) : P/n;
+  for (let k = 1; k <= n && saldo > 0.005; k++){
+    const juros = saldo*i;
+    let amort = f.sistema === 'SAC' ? P/n : parcPrice - juros;
+    if (amort + extra > saldo) amort = saldo - extra > 0 ? saldo - extra : saldo;
+    const abate = Math.min(saldo, amort + extra);
+    linhas.push({ k, parcela: amort + juros + seg, juros, amort, extra: abate - amort, saldo: saldo - abate });
+    saldo -= abate;
+  }
+  return linhas;
+}
+function parcelasPagas(f, ate){
+  const [ay,am] = f.primeira.slice(0,7).split('-').map(Number);
+  const [by,bm] = ate.split('-').map(Number);
+  return Math.max(0, Math.min(Number(f.parcelas), (by-ay)*12 + (bm-am) + 1));
+}
+
+async function carregarPessoal(){
+  const { data:{ user } } = await sb.auth.getUser();
+  const uid = user.id;
+  const ini = PESMES + '-01';
+  const fim = mesMais(PESMES,1) + '-01';
+  const [ct, cg, fi, pj, rc, mt, lc, ds] = await Promise.all([
+    sb.from('pessoal_conta').select('*').eq('ativo',true).order('nome'),
+    sb.from('pessoal_categoria').select('*').eq('ativo',true).order('grupo').order('ordem').order('nome'),
+    sb.from('pessoal_financiamento').select('*').eq('ativo',true).order('nome'),
+    sb.from('pessoal_projeto').select('*').order('situacao').order('nome'),
+    sb.from('pessoal_recorrente').select('*').eq('ativo',true).order('dia'),
+    sb.from('pessoal_meta').select('*').order('tipo').order('nome'),
+    sb.from('pessoal_lancamento').select('*').gte('data',ini).lt('data',fim).order('data',{ascending:false}),
+    sb.from('lancamento').select('id,descricao,valor,vencimento,pagamento,situacao')
+      .eq('distribuicao_para', uid).gte('vencimento', ini).lt('vencimento', fim),
+  ]);
+  /* Saídas do escritório ainda não marcadas: é daqui que a distribuição vira receita sua. */
+  const { data: cand } = await sb.from('lancamento')
+    .select('id,descricao,valor,vencimento,contraparte,situacao')
+    .eq('tipo','saida').is('distribuicao_para', null)
+    .gte('vencimento', ini).lt('vencimento', fim).order('vencimento');
+  /* Projeto não cabe num mês: o realizado é a soma de tudo, desde o começo. */
+  const { data: tp } = await sb.from('pessoal_lancamento').select('projeto_id,valor')
+    .not('projeto_id','is',null).limit(5000);
+  const projTot = {};
+  (tp||[]).forEach(l => { projTot[l.projeto_id] = (projTot[l.projeto_id]||0) + Number(l.valor); });
+  PES = { uid, contas: ct.data||[], cats: cg.data||[], fins: fi.data||[], projs: pj.data||[],
+          recs: rc.data||[], metas: mt.data||[], lancs: lc.data||[], distrib: ds.data||[],
+          candidatos: cand||[], __projTot: projTot };
+  return PES;
+}
+
+function contasPessoal(){
+  const L = PES.lancs;
+  const distribuicao = PES.distrib.filter(d=>d.situacao!=='cancelado').reduce((a,d)=>a+Number(d.valor),0)
+    + L.filter(l=>l.tipo==='entrada').reduce((a,l)=>a+Number(l.valor),0);
+  const mesRef = PESMES;
+  const parcelasMes = PES.fins.map(f => {
+    const k = parcelasPagas(f, mesRef);
+    if (k < 1 || k > f.parcelas) return null;
+    const t = tabelaFin(f);
+    return { f, k, linha: t[k-1] };
+  }).filter(Boolean);
+  const dividas = parcelasMes.reduce((a,x)=>a+x.linha.parcela,0);
+  const fixas = PES.recs.filter(r => r.inicio <= mesRef+'-28' && (!r.fim || r.fim >= mesRef+'-01'))
+                        .reduce((a,r)=>a+Number(r.valor),0);
+  const catDe = id => PES.cats.find(c=>c.id===id);
+  const saidas = L.filter(l=>l.tipo==='saida');
+  const variaveis = saidas.filter(l => { const c = catDe(l.categoria_id); return !l.projeto_id && !l.financiamento_id && (!c || c.grupo==='variavel'); })
+                          .reduce((a,l)=>a+Number(l.valor),0);
+  const emProjeto = saidas.filter(l=>l.projeto_id).reduce((a,l)=>a+Number(l.valor),0);
+  const guardado = saidas.filter(l=>l.meta_id).reduce((a,l)=>a+Number(l.valor),0);
+  const comprometido = dividas + fixas;
+  const gastoTotal = saidas.reduce((a,l)=>a+Number(l.valor),0);
+  return { distribuicao, dividas, fixas, comprometido, variaveis, emProjeto, guardado, gastoTotal,
+           sobra: distribuicao - comprometido - variaveis - emProjeto - guardado, parcelasMes };
+}
+
+async function telaPessoal(){
+  await carregarPessoal();
+  const c = contasPessoal();
+  const compPct = pct(c.comprometido, c.distribuicao);
+  const catDe = id => PES.cats.find(x=>x.id===id);
+  const gastoCat = id => PES.lancs.filter(l=>l.tipo==='saida'&&l.categoria_id===id).reduce((a,l)=>a+Number(l.valor),0);
+  const gastoProj = id => PES.lancs.filter(l=>l.projeto_id===id).reduce((a,l)=>a+Number(l.valor),0);
+  const vars = PES.cats.filter(x=>x.grupo==='variavel');
+
+  app.innerHTML = menu('pessoal') + `
+  <main><h1>Meu financeiro</h1>
+  <p class="meta">Sua aba. O banco só devolve estas linhas para você — nem o administrativo, nem o backup do
+    escritório enxergam. Tudo parte da distribuição: o que a sociedade lhe repassa é o teto de tudo o mais.</p>
+
+  <div class="calnav">
+    <button class="btn" onclick="PESMES='${mesMais(PESMES,-1)}';telaPessoal()">◀</button>
+    <b style="font-size:17px">${mesBr(PESMES)}</b>
+    <button class="btn" onclick="PESMES='${mesMais(PESMES,1)}';telaPessoal()">▶</button>
+    ${PESMES !== new Date().toISOString().slice(0,7) ? `<button class="btn" onclick="PESMES='${new Date().toISOString().slice(0,7)}';telaPessoal()">hoje</button>` : ''}
+  </div>
+
+  <div class="kpis">
+    <div class="kpi"><div class="n">${rs(c.distribuicao)}</div><div class="l">distribuição no mês</div></div>
+    <div class="kpi ${compPct>70?'al':''}"><div class="n">${compPct}%</div><div class="l">já comprometido</div></div>
+    <div class="kpi"><div class="n">${rs(c.variaveis)}</div><div class="l">variáveis do mês</div></div>
+    <div class="kpi ${c.sobra<0?'al':''}"><div class="n">${rs(c.sobra)}</div><div class="l">sobra</div></div>
+  </div>
+
+  <div class="card"><h2>Para onde vai a distribuição</h2>
+  <p class="meta">Dívida e despesa fixa vencem quer você queira ou não — é o que nasce comprometido.
+    O que estiver abaixo disso é onde você ainda decide.</p>
+  <div class="bars">
+    ${[['Parcelas de financiamento',c.dividas],['Despesas fixas',c.fixas],['Variáveis',c.variaveis],
+       ['Reforma e projetos',c.emProjeto],['Guardado',c.guardado],['Sobra',Math.max(0,c.sobra)]]
+      .map(([r,v])=>`<div class="bar"><div class="rot">${r}</div>
+        <div class="trilho"><div class="barra" style="width:${pct(v, Math.max(c.distribuicao,1))}%"></div></div>
+        <div class="val">${rs(v)}</div></div>`).join('')}
+  </div>
+  ${c.distribuicao === 0 ? `<p class="nota">Nenhuma distribuição registrada neste mês. No financeiro do escritório,
+     marque o lançamento de saída como distribuição para você — ele aparece aqui sozinho.</p>` : ''}
+  ${c.sobra < 0 ? `<p class="nota" style="color:var(--crit)"><b>O mês fechou no vermelho em ${rs(-c.sobra)}.</b>
+     Ou entrou menos do que o previsto, ou os variáveis passaram do que a distribuição comporta.</p>` : ''}
+  </div>
+
+  <div class="card"><h2>Financiamentos</h2>
+  <p class="meta">Parcela do mês, quanto já foi pago e quanto ainda se deve. O saldo devedor é o número que
+    interessa quando você pensa em amortizar.</p>
+  ${PES.fins.length ? PES.fins.map(f=>{
+    const t = tabelaFin(f), k = parcelasPagas(f, PESMES);
+    const atual = t[Math.min(Math.max(k,1),t.length)-1];
+    const pagas = Math.max(0, Math.min(k, t.length));
+    const saldo = pagas>0 ? t[pagas-1].saldo : Number(f.valor_financiado);
+    const jurosPagos = t.slice(0,pagas).reduce((a,x)=>a+x.juros,0);
+    const jurosTotal = t.reduce((a,x)=>a+x.juros,0);
+    return `<div style="padding:12px 18px;border-top:1px solid var(--ln)">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <b>${esc(f.nome)}</b>${f.credor?`<span class="sub" style="margin:0">${esc(f.credor)}</span>`:''}
+        <span class="pill cin">${esc(f.sistema)} · ${Number(f.taxa_mes)}% a.m.</span>
+        <span class="pill ${pagas>=f.parcelas?'good':'cin'}">${pagas} de ${f.parcelas} parcelas</span>
+      </div>
+      <div class="kpis" style="margin:10px 0 6px">
+        <div class="kpi"><div class="n">${rs(atual?atual.parcela:0)}</div><div class="l">parcela deste mês</div></div>
+        <div class="kpi"><div class="n">${rs(saldo)}</div><div class="l">saldo devedor</div></div>
+        <div class="kpi"><div class="n">${rs(jurosPagos)}</div><div class="l">juros já pagos</div></div>
+        <div class="kpi"><div class="n">${rs(jurosTotal)}</div><div class="l">juros até o fim</div></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:6px">
+        <label style="display:flex;flex-direction:column;gap:3px">
+          <span class="sub" style="margin:0">E se eu amortizar por mês</span>
+          <input type="number" id="ap-${f.id}" step="50" min="0" placeholder="R$ extra" style="width:140px"></label>
+        <button class="btn" onclick="simularAmortizacao('${f.id}')">Simular</button>
+        <button class="btn" onclick="tirarFinanciamento('${f.id}')">arquivar</button>
+        <span class="sub" id="sim-${f.id}" style="margin:0"></span>
+      </div></div>`;
+  }).join('') : '<div class="vazio">Nenhum financiamento cadastrado.</div>'}
+  <div style="padding:12px 18px;border-top:1px solid var(--ln)">
+    <label class="sub" style="margin:0">Cadastrar financiamento</label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:5px">
+      <input id="fn-nome" placeholder="ex.: Casa — Caixa" style="min-width:180px">
+      <input id="fn-credor" placeholder="credor" style="width:130px">
+      <input id="fn-valor" type="number" step="0.01" placeholder="valor financiado" style="width:160px">
+      <input id="fn-taxa" type="number" step="0.001" placeholder="% ao mês" style="width:110px">
+      <input id="fn-parc" type="number" placeholder="parcelas" style="width:100px">
+      <input id="fn-seg" type="number" step="0.01" placeholder="seguro/taxa" style="width:120px">
+      <input id="fn-1a" type="date" title="mês da primeira parcela">
+      <select id="fn-sis"><option value="PRICE">PRICE (parcela fixa)</option><option value="SAC">SAC (parcela cai)</option></select>
+      <button class="btn ok" onclick="novoFinanciamento()">Guardar</button>
+    </div>
+  </div></div>
+
+  <div class="duas">
+  <div class="card"><h2>Reforma, mobília e outros projetos</h2>
+  <p class="meta">Orçamento definido e gasto realizado. Serve para qualquer coisa com começo e fim.</p>
+  ${PES.projs.length ? PES.projs.map(p=>{
+    const g = PES.lancs.filter(l=>l.projeto_id===p.id).reduce((a,l)=>a+Number(l.valor),0);
+    const tot = gastoProjTotal(p.id);
+    return `<div style="padding:10px 18px;border-top:1px solid var(--ln)">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <b>${esc(p.nome)}</b>
+        <span class="pill ${p.situacao==='concluido'?'good':'cin'}">${esc(p.situacao)}</span>
+        ${tot>Number(p.orcamento)&&Number(p.orcamento)>0?'<span class="pill crit">passou do orçamento</span>':''}
+      </div>
+      <div class="bar" style="margin-top:6px"><div class="rot">${rs(tot)} de ${rs(p.orcamento)}</div>
+        <div class="trilho"><div class="barra" style="width:${pct(tot,Number(p.orcamento)||1)}%;background:${tot>Number(p.orcamento)?'var(--crit)':'var(--serie)'}"></div></div>
+        <div class="val">${pct(tot,Number(p.orcamento)||1)}%</div></div>
+      <div class="sub">${g>0?`${rs(g)} neste mês · `:''}resta ${rs(Math.max(0,Number(p.orcamento)-tot))}</div>
+      <div class="acoes" style="padding-left:0">
+        ${p.situacao!=='concluido'?`<button class="btn" onclick="fecharProjeto('${p.id}')">marcar concluído</button>`:''}
+      </div></div>`;
+  }).join('') : '<div class="vazio">Nenhum projeto.</div>'}
+  <div style="padding:10px 18px;border-top:1px solid var(--ln);display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+    <input id="pj-nome" placeholder="ex.: Reforma da cozinha" style="min-width:170px">
+    <input id="pj-orc" type="number" step="0.01" placeholder="orçamento" style="width:130px">
+    <input id="pj-prev" type="date" title="previsão de término">
+    <button class="btn ok" onclick="novoProjeto()">Criar</button>
+  </div></div>
+
+  <div class="card"><h2>Reserva e metas</h2>
+  <p class="meta">Quanto você já tem guardado e quantos meses isso cobre dos seus custos fixos —
+    o número que diz se dá para respirar num mês ruim.</p>
+  ${(() => { const fixoMes = c.comprometido + c.variaveis;
+     const reserva = PES.metas.filter(m=>m.tipo==='reserva').reduce((a,m)=>a+Number(m.guardado),0);
+     return fixoMes>0 ? `<p class="nota">Com ${rs(reserva)} guardados e um custo de ${rs(fixoMes)} por mês,
+       sua reserva cobre <b>${(reserva/fixoMes).toFixed(1)} meses</b>.</p>` : ''; })()}
+  ${PES.metas.length ? PES.metas.map(m=>`<div style="padding:10px 18px;border-top:1px solid var(--ln)">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <b>${esc(m.nome)}</b><span class="pill cin">${m.tipo==='reserva'?'reserva':'meta'}</span>
+        ${m.prazo?`<span class="sub" style="margin:0">até ${br(m.prazo)}</span>`:''}</div>
+      <div class="bar" style="margin-top:6px"><div class="rot">${rs(m.guardado)} de ${rs(m.alvo)}</div>
+        <div class="trilho"><div class="barra" style="width:${pct(Number(m.guardado),Number(m.alvo)||1)}%"></div></div>
+        <div class="val">${pct(Number(m.guardado),Number(m.alvo)||1)}%</div></div>
+      <div style="display:flex;gap:6px;margin-top:5px;align-items:flex-end">
+        <input type="number" step="0.01" id="mt-${m.id}" placeholder="guardar agora" style="width:130px">
+        <button class="btn" onclick="guardarNaMeta('${m.id}')">Guardar</button></div>
+    </div>`).join('') : '<div class="vazio">Nenhuma meta.</div>'}
+  <div style="padding:10px 18px;border-top:1px solid var(--ln);display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+    <input id="mt-nome" placeholder="ex.: Reserva de emergência" style="min-width:170px">
+    <input id="mt-alvo" type="number" step="0.01" placeholder="alvo" style="width:120px">
+    <select id="mt-tipo"><option value="reserva">reserva</option><option value="meta">meta</option></select>
+    <button class="btn ok" onclick="novaMeta()">Criar</button>
+  </div></div>
+  </div>
+
+  <div class="card"><h2>Despesas fixas do mês</h2>
+  <p class="meta">O que se repete todo mês, com dia de vencimento. Marcando como pago, entra no extrato.</p>
+  ${PES.recs.length ? `<table><thead><tr><th>Dia</th><th>Descrição</th><th>Categoria</th><th>Valor</th><th></th></tr></thead><tbody>
+    ${PES.recs.map(r=>{
+      const jaPago = PES.lancs.some(l=>l.origem==='recorrente' && l.descricao===r.descricao);
+      return `<tr><td>${r.dia}</td><td>${esc(r.descricao)}</td>
+      <td class="sub">${esc(catDe(r.categoria_id)?.nome||'—')}</td>
+      <td>${rs(r.valor)}</td>
+      <td>${jaPago?'<span class="pill good">pago</span>'
+        :`<button class="btn" onclick="pagarRecorrente('${r.id}')">registrar pago</button>`}
+        <button class="btn" onclick="tirarRecorrente('${r.id}')">tirar</button></td></tr>`;
+    }).join('')}
+    <tr><td></td><td><b>Total</b></td><td></td><td><b>${rs(c.fixas)}</b></td><td></td></tr>
+    </tbody></table>` : '<div class="vazio">Nenhuma despesa fixa cadastrada.</div>'}
+  <div style="padding:10px 18px;border-top:1px solid var(--ln);display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+    <input id="rc-desc" placeholder="ex.: Condomínio" style="min-width:170px">
+    <input id="rc-valor" type="number" step="0.01" placeholder="valor" style="width:120px">
+    <input id="rc-dia" type="number" min="1" max="28" placeholder="dia" style="width:80px">
+    <select id="rc-cat">${PES.cats.filter(x=>x.tipo==='saida').map(x=>`<option value="${x.id}">${esc(x.nome)}</option>`).join('')}</select>
+    <button class="btn ok" onclick="novaRecorrente()">Guardar</button>
+  </div></div>
+
+  <div class="card"><h2>Variáveis do mês</h2>
+  <p class="meta">Mercado, combustível, o que muda todo mês. O teto é um limite que você mesmo se dá —
+    o sistema não impede nada, só mostra quando passou.</p>
+  ${vars.length ? `<div class="bars">${vars.map(x=>{
+      const g = gastoCat(x.id), teto = Number(x.teto_mensal||0);
+      return `<div class="bar"><div class="rot">${esc(x.nome)}${teto?` · teto ${rs(teto)}`:''}</div>
+        <div class="trilho"><div class="barra" style="width:${teto?pct(g,teto):pct(g,Math.max(c.variaveis,1))}%;background:${teto&&g>teto?'var(--crit)':'var(--serie)'}"></div></div>
+        <div class="val">${rs(g)}</div></div>`;
+    }).join('')}</div>` : '<div class="vazio">Nenhuma categoria variável ainda.</div>'}
+  <div style="padding:10px 18px;border-top:1px solid var(--ln);display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+    <input id="cat-nome" placeholder="ex.: Mercado" style="min-width:150px">
+    <input id="cat-teto" type="number" step="0.01" placeholder="teto mensal (opcional)" style="width:180px">
+    <select id="cat-grupo"><option value="variavel">variável</option><option value="fixa">fixa</option></select>
+    <button class="btn ok" onclick="novaCategoriaPessoal()">Criar categoria</button>
+  </div></div>
+
+  <div class="card"><h2>Lançar</h2>
+  <div style="padding:10px 18px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+    <input id="lc-data" type="date" value="${new Date().toISOString().slice(0,10)}">
+    <select id="lc-tipo"><option value="saida">saída</option><option value="entrada">entrada</option></select>
+    <input id="lc-valor" type="number" step="0.01" placeholder="valor" style="width:120px">
+    <input id="lc-desc" placeholder="descrição" style="min-width:180px">
+    <select id="lc-cat"><option value="">— categoria —</option>${PES.cats.map(x=>`<option value="${x.id}">${esc(x.nome)}</option>`).join('')}</select>
+    <select id="lc-proj"><option value="">— projeto —</option>${PES.projs.filter(p=>p.situacao!=='concluido').map(p=>`<option value="${p.id}">${esc(p.nome)}</option>`).join('')}</select>
+    <button class="btn ok" onclick="novoLancamentoPessoal()">Lançar</button>
+  </div></div>
+
+  ${PES.candidatos.length ? `<div class="card"><h2>Saídas do escritório neste mês</h2>
+  <p class="meta">Marque aqui o que foi repasse para você. O lançamento continua sendo despesa do escritório —
+    a marca só faz ele aparecer como receita na sua aba, sem digitar duas vezes.</p>
+  ${PES.candidatos.map(x=>`<div style="padding:8px 18px;border-top:1px solid var(--ln);display:flex;gap:10px;justify-content:space-between;align-items:center">
+    <div><b>${esc(x.descricao||'sem descrição')}</b><span class="sub">${br(x.vencimento)}${x.contraparte?' · '+esc(x.contraparte):''}</span></div>
+    <div style="display:flex;gap:10px;align-items:center">${rs(x.valor)}
+      <button class="btn" onclick="marcarDistribuicao('${x.id}')">é minha distribuição</button></div></div>`).join('')}
+  </div>` : ''}
+
+  <div class="card"><h2>Extrato de ${mesBr(PESMES)}</h2>
+  ${PES.distrib.length ? PES.distrib.map(d=>`<div style="padding:8px 18px;border-top:1px solid var(--ln);display:flex;gap:10px;justify-content:space-between">
+      <div><b>${esc(d.descricao||'Distribuição')}</b><span class="sub">do escritório · ${br(d.vencimento)}</span></div>
+      <div style="display:flex;gap:10px;align-items:center"><span style="color:var(--good);font-weight:600">${rs(d.valor)}</span>
+        <button class="btn" onclick="desmarcarDistribuicao('${d.id}')">desmarcar</button></div></div>`).join('') : ''}
+  ${PES.lancs.length ? PES.lancs.map(l=>`<div style="padding:8px 18px;border-top:1px solid var(--ln);display:flex;gap:10px;justify-content:space-between;align-items:center">
+      <div><b>${esc(l.descricao||'—')}</b><span class="sub">${br(l.data)}
+        ${catDe(l.categoria_id)?' · '+esc(catDe(l.categoria_id).nome):''}
+        ${l.projeto_id?' · projeto':''}${l.origem==='recorrente'?' · fixa':''}</span></div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <span style="font-weight:600;color:${l.tipo==='entrada'?'var(--good)':'var(--ink)'}">${l.tipo==='entrada'?'+':'−'} ${rs(l.valor)}</span>
+        <button class="btn" onclick="tirarLancamentoPessoal('${l.id}')">tirar</button></div></div>`).join('')
+    : (PES.distrib.length?'':'<div class="vazio">Nada lançado neste mês.</div>')}
+  </div>
+  </main>` + rodape();
+}
+function gastoProjTotal(id){ return PES.__projTot?.[id] ?? 0; }
+
+window.simularAmortizacao = function(id){
+  const f = PES.fins.find(x=>x.id===id);
+  const extra = Number(document.getElementById('ap-'+id).value||0);
+  const st = document.getElementById('sim-'+id);
+  if (!extra) { st.textContent = 'informe o valor extra'; return; }
+  const semExtra = tabelaFin(f), comExtra = tabelaFin(f, extra);
+  const jurosA = semExtra.reduce((a,x)=>a+x.juros,0), jurosB = comExtra.reduce((a,x)=>a+x.juros,0);
+  st.innerHTML = `<b>${semExtra.length - comExtra.length} parcelas a menos</b> — quita em
+    ${comExtra.length} em vez de ${semExtra.length}, e economiza ${rs(jurosA-jurosB)} de juros.`;
+};
+window.novoFinanciamento = async function(){
+  const v = id => document.getElementById(id).value;
+  if(!v('fn-nome') || !v('fn-valor') || !v('fn-parc') || !v('fn-1a'))
+    return alert('Nome, valor financiado, número de parcelas e data da primeira parcela são obrigatórios.');
+  const { error } = await sb.from('pessoal_financiamento').insert({
+    dono_id: PES.uid, nome: v('fn-nome'), credor: v('fn-credor')||null,
+    valor_financiado: Number(v('fn-valor')), taxa_mes: Number(v('fn-taxa')||0),
+    parcelas: Number(v('fn-parc')), seguro_mes: Number(v('fn-seg')||0),
+    primeira: v('fn-1a'), sistema: v('fn-sis'),
+  });
+  if(error) return alert(error.message);
+  telaPessoal();
+};
+window.tirarFinanciamento = async function(id){
+  await sb.from('pessoal_financiamento').update({ ativo:false }).eq('id', id); telaPessoal();
+};
+window.novoProjeto = async function(){
+  const v = id => document.getElementById(id).value;
+  if(!v('pj-nome')) return alert('Dê um nome ao projeto.');
+  const { error } = await sb.from('pessoal_projeto').insert({
+    dono_id: PES.uid, nome: v('pj-nome'), orcamento: Number(v('pj-orc')||0),
+    inicio: new Date().toISOString().slice(0,10), previsao: v('pj-prev')||null });
+  if(error) return alert(error.message);
+  telaPessoal();
+};
+window.fecharProjeto = async function(id){
+  await sb.from('pessoal_projeto').update({ situacao:'concluido' }).eq('id', id); telaPessoal();
+};
+window.novaMeta = async function(){
+  const v = id => document.getElementById(id).value;
+  if(!v('mt-nome')) return alert('Dê um nome à meta.');
+  const { error } = await sb.from('pessoal_meta').insert({
+    dono_id: PES.uid, nome: v('mt-nome'), alvo: Number(v('mt-alvo')||0), tipo: v('mt-tipo') });
+  if(error) return alert(error.message);
+  telaPessoal();
+};
+window.guardarNaMeta = async function(id){
+  const val = Number(document.getElementById('mt-'+id).value||0);
+  if(!val) return alert('Informe quanto guardar.');
+  const m = PES.metas.find(x=>x.id===id);
+  await sb.from('pessoal_meta').update({ guardado: Number(m.guardado)+val }).eq('id', id);
+  await sb.from('pessoal_lancamento').insert({ dono_id: PES.uid, tipo:'saida', valor: val,
+    descricao: 'Guardado — ' + m.nome, meta_id: id, origem:'manual',
+    data: new Date().toISOString().slice(0,10) });
+  telaPessoal();
+};
+window.novaRecorrente = async function(){
+  const v = id => document.getElementById(id).value;
+  if(!v('rc-desc') || !v('rc-valor')) return alert('Descrição e valor são obrigatórios.');
+  const { error } = await sb.from('pessoal_recorrente').insert({
+    dono_id: PES.uid, descricao: v('rc-desc'), valor: Number(v('rc-valor')),
+    dia: Number(v('rc-dia')||10), categoria_id: v('rc-cat')||null });
+  if(error) return alert(error.message);
+  telaPessoal();
+};
+window.tirarRecorrente = async function(id){
+  await sb.from('pessoal_recorrente').update({ ativo:false }).eq('id', id); telaPessoal();
+};
+window.pagarRecorrente = async function(id){
+  const r = PES.recs.find(x=>x.id===id);
+  const dia = String(Math.min(28, r.dia)).padStart(2,'0');
+  const { error } = await sb.from('pessoal_lancamento').insert({
+    dono_id: PES.uid, tipo:'saida', valor: r.valor, descricao: r.descricao,
+    categoria_id: r.categoria_id, data: `${PESMES}-${dia}`, origem:'recorrente' });
+  if(error) return alert(error.message);
+  telaPessoal();
+};
+window.novaCategoriaPessoal = async function(){
+  const v = id => document.getElementById(id).value;
+  if(!v('cat-nome')) return alert('Dê um nome à categoria.');
+  const { error } = await sb.from('pessoal_categoria').insert({
+    dono_id: PES.uid, nome: v('cat-nome'), grupo: v('cat-grupo'), tipo:'saida',
+    teto_mensal: v('cat-teto') ? Number(v('cat-teto')) : null });
+  if(error) return alert(error.message);
+  telaPessoal();
+};
+window.novoLancamentoPessoal = async function(){
+  const v = id => document.getElementById(id).value;
+  if(!v('lc-valor')) return alert('Informe o valor.');
+  const { error } = await sb.from('pessoal_lancamento').insert({
+    dono_id: PES.uid, data: v('lc-data'), tipo: v('lc-tipo'), valor: Number(v('lc-valor')),
+    descricao: v('lc-desc')||null, categoria_id: v('lc-cat')||null,
+    projeto_id: v('lc-proj')||null, origem:'manual' });
+  if(error) return alert(error.message);
+  telaPessoal();
+};
+window.marcarDistribuicao = async function(id){
+  const { error } = await sb.from('lancamento').update({ distribuicao_para: PES.uid }).eq('id', id);
+  if(error) return alert(error.message);
+  telaPessoal();
+};
+window.desmarcarDistribuicao = async function(id){
+  await sb.from('lancamento').update({ distribuicao_para: null }).eq('id', id); telaPessoal();
+};
+window.tirarLancamentoPessoal = async function(id){
+  await sb.from('pessoal_lancamento').delete().eq('id', id); telaPessoal();
+};
+
 async function telaConfig(){
   const [us, es, ar, og, ct] = await Promise.all([
     sb.from('usuario').select('*').order('criado_em'),
@@ -6730,6 +7149,7 @@ async function rota(){
   if(h.startsWith('#/documentos')) return telaDocumentos();
   if(h.startsWith('#/tutoriais'))  return telaTutoriais();
   if(h.startsWith('#/auditoria'))  return telaAuditoria();
+  if(h.startsWith('#/pessoal'))    return telaPessoal();
   if(h.startsWith('#/config'))     return telaConfig();
   return telaInicio();
 }
