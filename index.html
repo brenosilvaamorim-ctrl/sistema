@@ -148,6 +148,11 @@ textarea{width:100%;resize:vertical;line-height:1.45}
 .cabcol{font-size:12.4px;font-weight:600;padding:8px 4px 10px;margin:-10px -10px 8px;
   border-bottom:1px solid var(--ln);padding-left:12px;border-radius:12px 12px 0 0}
 .cartao{background:var(--s0);border:1px solid var(--ln);border-radius:9px;padding:9px 10px;margin-bottom:8px}
+.quadro .cartao{cursor:grab}
+.quadro .cartao:active{cursor:grabbing}
+.cartao.arrastando{opacity:.45;border-style:dashed}
+.coluna.alvo{background:var(--ln)}
+.cartao .pega{float:right;color:var(--i3);font-size:13px;letter-spacing:1px;user-select:none;cursor:grab}
 .cartao .tit{font-size:13px;font-weight:600;line-height:1.25}
 .cartao .pill{margin:0 4px 3px 0}
 
@@ -1988,7 +1993,8 @@ function cartao(c){
   const k = d === null ? '' : (d < 0 ? 'crit' : (d <= 5 ? 'ser' : (d <= 15 ? 'warn' : 'good')));
   const parado = c.ultima_movimentacao
     ? Math.round((Date.now() - Date.parse(c.ultima_movimentacao))/864e5) : null;
-  return `<div class="cartao">
+  return `<div class="cartao" data-caso="${c.id}" data-col="${c.coluna_id||''}">
+    <span class="pega" title="arraste para reordenar">⠿</span>
     <div class="tit"><a class="lnk" href="#/caso/${c.id}">${esc(c.cliente_nome || c.titulo || 'Sem cliente')}</a></div>
     <div class="sub" style="margin:2px 0 7px">${esc(c.area_nome || c.area || 'sem área')}${
       c.polo ? ' · ' + esc(c.polo) : ''} · ${c.processos} processo(s)</div>
@@ -2001,6 +2007,10 @@ function cartao(c){
       </select>
       <button class="btn" style="font-size:11.4px;padding:4px 8px" onclick="verCaso('${c.id}')">Abrir</button>
       <button class="btn" style="font-size:11.4px;padding:4px 8px" onclick="abrirEncerramento('${c.id}')">Encerrar</button>
+      <button class="btn" style="font-size:11.4px;padding:4px 7px" title="subir na coluna"
+        onclick="subirCaso('${c.id}',-1)">▲</button>
+      <button class="btn" style="font-size:11.4px;padding:4px 7px" title="descer na coluna"
+        onclick="subirCaso('${c.id}',1)">▼</button>
     </div>
     <div id="enc${c.id}" style="display:none;margin-top:8px;border-top:1px solid var(--ln);padding-top:8px">
       <div class="sub" style="margin:0 0 5px">Checklist antes de encerrar: prazo pendente resolvido, cliente avisado,
@@ -2014,15 +2024,17 @@ function cartao(c){
   </div>`;
 }
 async function telaCasos(){
-  const [q, co] = await Promise.all([
+  const [q, co, od] = await Promise.all([
     sb.from('caso_quadro').select('*'),
     sb.from('coluna_caso').select('*').order('ordem'),
+    sb.from('caso').select('id,ordem'),          /* a ordem manual mora em caso, não na view */
   ]);
   if (q.error) return erro(q.error.message);
   QUADRO = q.data||[]; COLUNAS = co.data||[];
+  CASOORD = {}; (od.data||[]).forEach(x => { CASOORD[x.id] = x.ordem; });
   await carregarTags().catch(()=>{});
   if (TAGFILTRO && !TAGS.some(t=>t.id===TAGFILTRO)) TAGFILTRO = null;
-  let abertos = QUADRO.filter(c=>!c.encerrado_em);
+  let abertos = QUADRO.filter(c=>!c.encerrado_em).sort(porOrdemCaso);
   if (TAGFILTRO) abertos = abertos.filter(c => tagsDoCaso(c.id).some(t => t.id === TAGFILTRO));
   const encerrados = QUADRO.filter(c=>c.encerrado_em)
     .sort((a,b)=>String(b.encerrado_em).localeCompare(String(a.encerrado_em)));
@@ -2032,7 +2044,8 @@ async function telaCasos(){
 
   app.innerHTML = menu('casos') + `
   <main><h1>Casos</h1>
-  <p class="meta">Cada caso numa etapa. Mova pelo seletor do cartão; encerre com resultado registrado.</p>
+  <p class="meta">Cada caso numa etapa. Arraste o cartão para subir, descer ou mudar de etapa —
+    a ordem fica gravada. As setas ▲▼ fazem o mesmo sem arrastar. Encerre com resultado registrado.</p>
   <div class="kpis">
     <div class="kpi"><div class="n">${abertos.length}</div><div class="l">casos abertos</div></div>
     <div class="kpi ${comPrazo?'al':''}"><div class="n">${comPrazo}</div><div class="l">com prazo em até 5 dias</div></div>
@@ -2064,7 +2077,7 @@ async function telaCasos(){
   <div class="quadro">
     ${COLUNAS.map(col=>{
       const meus = abertos.filter(c=>c.coluna_id===col.id);
-      return `<div class="coluna">
+      return `<div class="coluna" data-col="${col.id}">
         <div class="cabcol" style="border-top:3px solid ${col.cor||'var(--i3)'}">
           ${esc(col.nome)} <span class="sub" style="display:inline;margin:0">${meus.length}</span></div>
         ${meus.map(cartao).join('') || '<div class="sub" style="padding:10px 2px">vazio</div>'}
@@ -2079,7 +2092,94 @@ async function telaCasos(){
       <td><button class="btn" onclick="reabrirCaso('${c.id}')">Reabrir</button></td></tr>`).join('')}
     </tbody></table></div>`:''}
   </main>` + rodape();
+  if (CASOVISTA !== 'lista') ligarArrastoCasos();
 }
+
+/* ------------------------------------------- arrastar cartão no quadro ---
+   A ordem manual vive em caso.ordem. Quem nunca foi arrastado fica com ordem
+   nula e vai para o fim da coluna, em ordem de entrada — nada muda de lugar
+   sozinho só porque o recurso passou a existir. */
+let CASOORD = {}, ARRASTA = null;
+function porOrdemCaso(a, b){
+  const oa = CASOORD[a.id], ob = CASOORD[b.id];
+  const va = (oa === null || oa === undefined) ? Infinity : Number(oa);
+  const vb = (ob === null || ob === undefined) ? Infinity : Number(ob);
+  if (va !== vb) return va - vb;
+  return String(a.criado_em).localeCompare(String(b.criado_em));
+}
+function cartaoDepoisDe(col, y){
+  const outros = [...col.querySelectorAll('.cartao:not(.arrastando)')];
+  return outros.find(el => { const r = el.getBoundingClientRect(); return y < r.top + r.height/2; }) || null;
+}
+function ligarArrastoCasos(){
+  document.querySelectorAll('.quadro .cartao').forEach(el => {
+    el.draggable = true;
+    el.addEventListener('dragstart', e => {
+      ARRASTA = el; el.classList.add('arrastando');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', el.dataset.caso);
+    });
+    el.addEventListener('dragend', () => {
+      el.classList.remove('arrastando'); ARRASTA = null;
+      document.querySelectorAll('.coluna.alvo').forEach(c=>c.classList.remove('alvo'));
+    });
+  });
+  document.querySelectorAll('.quadro .coluna').forEach(col => {
+    col.addEventListener('dragover', e => {
+      if (!ARRASTA) return;
+      e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+      col.classList.add('alvo');
+      const depois = cartaoDepoisDe(col, e.clientY);
+      if (depois) col.insertBefore(ARRASTA, depois); else col.appendChild(ARRASTA);
+    });
+    col.addEventListener('dragleave', e => {
+      if (!col.contains(e.relatedTarget)) col.classList.remove('alvo');
+    });
+    col.addEventListener('drop', async e => {
+      e.preventDefault(); col.classList.remove('alvo');
+      const el = ARRASTA; ARRASTA = null;
+      if (el) el.classList.remove('arrastando');
+      await gravarOrdemColuna(col);
+    });
+  });
+}
+/* Renumera a coluna de 10 em 10 e grava só o que realmente mudou. */
+async function gravarOrdemColuna(col){
+  const colId = col.dataset.col;
+  const ids = [...col.querySelectorAll('.cartao')].map(el => el.dataset.caso);
+  const mudancas = [];
+  ids.forEach((id, i) => {
+    const nova = (i + 1) * 10;
+    const atual = CASOORD[id];
+    const trocouColuna = (QUADRO.find(c => c.id === id)?.coluna_id || '') !== colId;
+    if (Number(atual) !== nova || trocouColuna) {
+      const campos = { ordem: nova };
+      if (trocouColuna) campos.coluna_id = colId;
+      mudancas.push({ id, campos });
+    }
+  });
+  if (!mudancas.length) return;
+  const res = await Promise.all(mudancas.map(m => sb.from('caso').update(m.campos).eq('id', m.id)));
+  const falha = res.find(r => r.error);
+  if (falha) { alert('Não deu para gravar a nova ordem: ' + falha.error.message); }
+  telaCasos();
+}
+/* As setas fazem o mesmo caminho, para quem não quer arrastar (ou está no celular). */
+window.subirCaso = async function(id, passo){
+  const caso = QUADRO.find(c => c.id === id);
+  if (!caso) return;
+  const fila = QUADRO.filter(c => !c.encerrado_em && c.coluna_id === caso.coluna_id).sort(porOrdemCaso);
+  const i = fila.findIndex(c => c.id === id), j = i + passo;
+  if (i < 0 || j < 0 || j >= fila.length) return;
+  const nova = fila.slice(); nova.splice(j, 0, nova.splice(i, 1)[0]);
+  const res = await Promise.all(nova.map((c, k) => {
+    const ord = (k + 1) * 10;
+    return Number(CASOORD[c.id]) === ord ? null : sb.from('caso').update({ ordem: ord }).eq('id', c.id);
+  }).filter(Boolean));
+  const falha = res.find(r => r.error);
+  if (falha) { alert('Não deu para mover: ' + falha.error.message); return; }
+  telaCasos();
+};
 
 /* ------------------------------------------------------------------ caso */
 let CASO = null, CASOPROC = [], CASOLINHA = [], CASOFILTRO = new Set(), CASOMOV = {};
