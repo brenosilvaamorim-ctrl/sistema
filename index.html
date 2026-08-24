@@ -6478,6 +6478,7 @@ window.salvarPiso = async function(){
    Ninguém mais do escritório lê estas tabelas. O que atravessa a fronteira é só
    a distribuição — um lançamento de saída do escritório marcado com o seu nome. */
 let PESMES = new Date().toISOString().slice(0,7);
+let PESEDIT = null;   /* id do lançamento aberto para edição */
 let PES = null;
 const mesBr = m => { const [a,b]=m.split('-'); return ['','janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'][+b] + ' de ' + a; };
 const mesMais = (m,n) => { const [a,b]=m.split('-').map(Number); const d=new Date(a, b-1+n, 1); return d.toISOString().slice(0,7); };
@@ -6818,18 +6819,45 @@ async function telaPessoal(){
       <div><b>${esc(d.descricao||'Distribuição')}</b><span class="sub">do escritório · ${br(d.vencimento)}</span></div>
       <div style="display:flex;gap:10px;align-items:center"><span style="color:var(--good);font-weight:600">${rs(d.valor)}</span>
         <button class="btn" onclick="desmarcarDistribuicao('${d.id}')">desmarcar</button></div></div>`).join('') : ''}
-  ${PES.lancs.length ? PES.lancs.map(l=>`<div style="padding:8px 18px;border-top:1px solid var(--ln);display:flex;gap:10px;justify-content:space-between;align-items:center">
+  ${PES.lancs.length ? PES.lancs.map(l=> l.id===PESEDIT ? `
+    <div style="padding:10px 18px;border-top:1px solid var(--ln);background:var(--s1)">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+        <label style="display:flex;flex-direction:column;gap:3px"><span class="sub" style="margin:0">data</span>
+          <input id="ed-data" type="date" value="${l.data||''}"></label>
+        <label style="display:flex;flex-direction:column;gap:3px"><span class="sub" style="margin:0">tipo</span>
+          <select id="ed-tipo">
+            <option value="saida"${l.tipo==='saida'?' selected':''}>saída</option>
+            <option value="entrada"${l.tipo==='entrada'?' selected':''}>entrada</option></select></label>
+        <label style="display:flex;flex-direction:column;gap:3px"><span class="sub" style="margin:0">valor</span>
+          <input id="ed-valor" type="number" step="0.01" value="${Number(l.valor)}" style="width:120px"></label>
+        <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:180px"><span class="sub" style="margin:0">descrição</span>
+          <input id="ed-desc" value="${esc(l.descricao||'')}"></label>
+        <label style="display:flex;flex-direction:column;gap:3px"><span class="sub" style="margin:0">categoria</span>
+          <select id="ed-cat"><option value="">— nenhuma —</option>
+            ${PES.cats.map(x=>`<option value="${x.id}"${x.id===l.categoria_id?' selected':''}>${esc(x.nome)}${x.tipo==='entrada'?' (entrada)':''}</option>`).join('')}
+          </select></label>
+        <label style="display:flex;flex-direction:column;gap:3px"><span class="sub" style="margin:0">projeto</span>
+          <select id="ed-proj"><option value="">— nenhum —</option>
+            ${PES.projs.map(x=>`<option value="${x.id}"${x.id===l.projeto_id?' selected':''}>${esc(x.nome)}</option>`).join('')}
+          </select></label>
+        <button class="btn ok" onclick="salvarLancamentoPessoal('${l.id}')">Guardar</button>
+        <button class="btn" onclick="cancelarEdicaoPessoal()">cancelar</button>
+      </div>
+      <p class="sub" style="margin:6px 0 0">Trocar o tipo de saída para entrada muda o sinal no extrato e no resumo do mês.</p>
+    </div>` : `
+    <div style="padding:8px 18px;border-top:1px solid var(--ln);display:flex;gap:10px;justify-content:space-between;align-items:center">
       <div><b>${esc(l.descricao||'—')}</b><span class="sub">${br(l.data)}
         ${l.projeto_id?' · projeto':''}${l.origem==='recorrente'?' · fixa':''}</span></div>
       <div style="display:flex;gap:10px;align-items:center">
         <select onchange="atribuirCategoriaPessoal('${l.id}', this.value)"
           title="categoria deste lançamento"
-          style="max-width:170px;font-size:12px;padding:3px 6px;${l.categoria_id?'':'border-color:var(--aten)'}">
+          style="max-width:170px;font-size:12px;padding:3px 6px;${l.categoria_id?'':'border-color:var(--warn)'}">
           <option value=""${l.categoria_id?'':' selected'}>— sem categoria —</option>
           ${PES.cats.filter(x=>x.tipo===l.tipo||!x.tipo).map(x=>
             `<option value="${x.id}"${x.id===l.categoria_id?' selected':''}>${esc(x.nome)}</option>`).join('')}
         </select>
         <span style="font-weight:600;color:${l.tipo==='entrada'?'var(--good)':'var(--ink)'}">${l.tipo==='entrada'?'+':'−'} ${rs(l.valor)}</span>
+        <button class="btn" onclick="editarLancamentoPessoal('${l.id}')">editar</button>
         <button class="btn" onclick="tirarLancamentoPessoal('${l.id}')">tirar</button></div></div>`).join('')
     : (PES.distrib.length?'':'<div class="vazio">Nada lançado neste mês.</div>')}
   </div>
@@ -6941,6 +6969,24 @@ window.marcarDistribuicao = async function(id){
 };
 window.desmarcarDistribuicao = async function(id){
   await sb.from('lancamento').update({ distribuicao_para: null }).eq('id', id); telaPessoal();
+};
+window.editarLancamentoPessoal = function(id){ PESEDIT = id; telaPessoal(); };
+window.cancelarEdicaoPessoal = function(){ PESEDIT = null; telaPessoal(); };
+window.salvarLancamentoPessoal = async function(id){
+  const v = k => document.getElementById(k).value;
+  const valor = Number(v('ed-valor'));
+  if (!v('ed-data')) return alert('A data não pode ficar vazia.');
+  if (!(valor > 0))  return alert('O valor precisa ser maior que zero.');
+  const { error } = await sb.from('pessoal_lancamento').update({
+    data: v('ed-data'), tipo: v('ed-tipo'), valor,
+    descricao: v('ed-desc') || null,
+    categoria_id: v('ed-cat') || null,
+    projeto_id: v('ed-proj') || null
+  }).eq('id', id);
+  if (error) { alert('Não deu para guardar: ' + error.message); return; }
+  PESEDIT = null;
+  PESMES = v('ed-data').slice(0,7);   /* se a data mudou de mês, vai junto */
+  telaPessoal();
 };
 window.atribuirCategoriaPessoal = async function(id, cat){
   const { error } = await sb.from('pessoal_lancamento')
