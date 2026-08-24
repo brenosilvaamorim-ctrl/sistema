@@ -1319,8 +1319,9 @@ function detalheDia(){
         ${it.local?`<div class="mt">${esc(it.local)}</div>`:''}
         ${it.detalhe?`<div class="mt">${esc(String(it.detalhe).replace(/\n/g,' · '))}</div>`:''}
         <div class="mt" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px">
-          ${it.ref ? `<button class="btn ok" style="font-size:11.6px;padding:4px 9px;white-space:nowrap"
-            onclick="riscar('${it.qual}','${it.ref}',this)">✓ ${it.qual==='prazo'?'Cumprido':'Concluído'}</button>` : ''}
+          ${it.ref ? `<button class="btn" style="font-size:11.6px;padding:4px 9px;white-space:nowrap"
+            title="${it.qual==='prazo'?'marcar este prazo como cumprido':'marcar como realizado'} — sai da agenda"
+            onclick="riscar('${it.qual}','${it.ref}',this)">Dar baixa</button>` : ''}
           <a href="${linkGoogle(it)}" target="_blank" rel="noreferrer">enviar para o Google Agenda</a></div>
       </div>`).join('') : '<p class="quando">Dia livre.</p>'}
   </div>`;
@@ -1608,8 +1609,9 @@ async function telaAgenda(){
     const d = dias(String(it.data).slice(0,10));
     return `<tr>
       <td>${it.ref
-        ? `<button class="btn ok" style="font-size:11.6px;padding:4px 9px;white-space:nowrap"
-             onclick="riscar('${it.qual}','${it.ref}',this)">✓ ${it.qual==='prazo'?'Cumprido':'Concluído'}</button>`
+        ? `<button class="btn" style="font-size:11.6px;padding:4px 9px;white-space:nowrap"
+             title="${it.qual==='prazo'?'marcar este prazo como cumprido':'marcar como realizado'} — sai da agenda"
+             onclick="riscar('${it.qual}','${it.ref}',this)">Dar baixa</button>`
         : '<span class="sub" style="margin:0">—</span>'}</td>
       <td class="dt"><b>${br(it.data)}</b>${it.hora?' '+it.hora:''}
         <span class="sub">${d===0?'hoje':(d<0?'há '+(-d)+'d':'em '+d+' dias')}</span></td>
@@ -1624,9 +1626,9 @@ async function telaAgenda(){
   };
   app.innerHTML = menu('agenda') + `
   <main><h1>Agenda</h1>
-  <p class="meta">Prazos, audiências, tarefas e prescrições no mesmo lugar. O botão <b>✓ Cumprido</b> dá baixa
-    no prazo protocolado; <b>✓ Concluído</b> faz o mesmo com audiência e tarefa. O item sai da agenda e entra
-    no histórico. Prescrição não tem baixa — ela vive no cadastro do caso.</p>
+  <p class="meta">Prazos, audiências, tarefas e prescrições no mesmo lugar. <b>Dar baixa</b> é o clique que você
+    dá <i>depois</i> de protocolar ou realizar: o item some da agenda e entra no histórico. Enquanto o botão
+    estiver ali, o compromisso continua em aberto. Prescrição não tem baixa — ela vive no cadastro do caso.</p>
   <div class="kpis">
     <div class="kpi"><div class="n">${futuros.length}</div><div class="l">compromissos à frente</div></div>
     <div class="kpi"><div class="n">${futuros.filter(i=>dias(String(i.data).slice(0,10))<=7).length}</div><div class="l">nos próximos 7 dias</div></div>
