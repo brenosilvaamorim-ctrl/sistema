@@ -82,11 +82,11 @@ textarea{width:100%;resize:vertical;line-height:1.45}
 .tl .t{font-size:13.6px;margin-top:1px}.tl .o{font-size:11.8px;color:var(--i3);margin-top:2px}
 .tl li.esc{opacity:.55}
 .bars{padding:6px 18px 18px}
-.bar{display:grid;grid-template-columns:minmax(110px,200px) 1fr 46px;gap:10px;align-items:center;padding:3.5px 0;font-size:12.9px}
+.bar{display:grid;grid-template-columns:minmax(96px,180px) 1fr minmax(86px,auto);gap:10px;align-items:center;padding:3.5px 0;font-size:12.9px}
 .bar .rot{color:var(--i2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bar .trilho{background:var(--ln);height:13px;border-radius:4px;overflow:hidden}
 .bar .barra{height:100%;background:var(--serie);border-radius:4px}
-.bar .val{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink);font-weight:600}
+.bar .val{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink);font-weight:600;white-space:nowrap}
 .duas{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px}
 .duas .card{margin-bottom:0}
 .calnav{display:flex;gap:10px;align-items:baseline;margin-bottom:14px}
@@ -6503,7 +6503,12 @@ function tabelaFin(f, aporteExtra){
 }
 /* Enquanto a obra corre, o banco libera aos poucos e você paga só juros sobre o
    que já saiu, mais seguro e taxa. Nada disso abate o saldo: é custo puro. */
-function emObra(f, mes){ return !!f.obra_ate && (mes+'-01') < f.obra_ate; }
+function emObra(f, mes){
+  if (f.obra_ate) return (mes+'-01') < f.obra_ate;
+  /* Sem data de entrega informada: continua em obra enquanto o extrato só trouxer
+     parcelas de fase "obra". Melhor assumir o que o banco disse do que inventar prazo. */
+  return (PES?.parcelasFin || []).some(x => x.financiamento_id === f.id && x.fase === 'obra');
+}
 function parcelaLida(f, mes){
   const L = (PES?.parcelasFin || []).filter(x => x.financiamento_id === f.id);
   if (!L.length) return null;
@@ -6583,18 +6588,48 @@ function contasPessoal(){
     return { f, k, linha: t[k-1] };
   }).filter(Boolean);
   const dividas = parcelasMes.reduce((a,x)=>a+x.linha.parcela,0);
-  const fixas = PES.recs.filter(r => r.inicio <= mesRef+'-28' && (!r.fim || r.fim >= mesRef+'-01'))
-                        .reduce((a,r)=>a+Number(r.valor),0);
   const catDe = id => PES.cats.find(c=>c.id===id);
   const saidas = L.filter(l=>l.tipo==='saida');
-  const variaveis = saidas.filter(l => { const c = catDe(l.categoria_id); return !l.projeto_id && !l.financiamento_id && (!c || c.grupo==='variavel'); })
-                          .reduce((a,l)=>a+Number(l.valor),0);
-  const emProjeto = saidas.filter(l=>l.projeto_id).reduce((a,l)=>a+Number(l.valor),0);
-  const guardado = saidas.filter(l=>l.meta_id).reduce((a,l)=>a+Number(l.valor),0);
+
+  /* Uma saída pertence a UM balde só, nesta ordem. Antes, o que não tinha categoria
+     caía em "variáveis" — e uma despesa fixa lançada sem categoria aparecia como
+     variável que não existia em lugar nenhum. Agora sem categoria é balde próprio. */
+  const balde = l => {
+    if (l.meta_id)        return 'guardado';
+    if (l.projeto_id)     return 'projeto';
+    if (l.financiamento_id) return 'divida';
+    const c = catDe(l.categoria_id);
+    if (c && c.grupo === 'fixa')     return 'fixa';
+    if (c && c.grupo === 'variavel') return 'variavel';
+    if (l.origem === 'recorrente')   return 'fixa';
+    return 'sem';
+  };
+  const soma = nome => saidas.filter(l=>balde(l)===nome).reduce((a,l)=>a+Number(l.valor),0);
+
+  /* Fixa do mês = o que já foi lançado + as recorrentes ativas ainda não lançadas.
+     Assim, editar o lançamento muda o total; e nada é contado duas vezes. */
+  const fixasLancadas = soma('fixa');
+  const pendentes = recorrentesDoMes(mesRef).filter(r => !lancamentoDaRecorrente(r));
+  const fixas = fixasLancadas + pendentes.reduce((a,r)=>a+Number(r.valor),0);
+
+  const variaveis = soma('variavel');
+  const semCategoria = soma('sem');
+  const emProjeto = soma('projeto');
+  const guardado = soma('guardado');
   const comprometido = dividas + fixas;
   const gastoTotal = saidas.reduce((a,l)=>a+Number(l.valor),0);
-  return { distribuicao, dividas, fixas, comprometido, variaveis, emProjeto, guardado, gastoTotal,
-           sobra: distribuicao - comprometido - variaveis - emProjeto - guardado, parcelasMes };
+  return { distribuicao, dividas, fixas, fixasLancadas, pendentes, comprometido, variaveis,
+           semCategoria, emProjeto, guardado, gastoTotal,
+           sobra: distribuicao - comprometido - variaveis - semCategoria - emProjeto - guardado,
+           parcelasMes };
+}
+/* Recorrentes que valem no mês: ativas e dentro da janela de início/fim. */
+function recorrentesDoMes(mes){
+  return PES.recs.filter(r => r.ativo !== false && r.inicio <= mes+'-28' && (!r.fim || r.fim >= mes+'-01'));
+}
+/* O lançamento gerado por uma recorrente neste mês, se existir. */
+function lancamentoDaRecorrente(r){
+  return PES.lancs.find(l => l.origem === 'recorrente' && l.descricao === r.descricao);
 }
 
 async function telaPessoal(){
@@ -6630,13 +6665,18 @@ async function telaPessoal(){
     O que estiver abaixo disso é onde você ainda decide.</p>
   <div class="bars">
     ${[['Parcelas de financiamento',c.dividas],['Despesas fixas',c.fixas],['Variáveis',c.variaveis],
+       ['Sem categoria',c.semCategoria],
        ['Reforma e projetos',c.emProjeto],['Guardado',c.guardado],['Sobra',Math.max(0,c.sobra)]]
+      .filter(([r,v]) => v > 0 || r === 'Sobra')
       .map(([r,v])=>`<div class="bar"><div class="rot">${r}</div>
         <div class="trilho"><div class="barra" style="width:${pct(v, Math.max(c.distribuicao,1))}%"></div></div>
         <div class="val">${rs(v)}</div></div>`).join('')}
   </div>
   ${c.distribuicao === 0 ? `<p class="nota">Nenhuma distribuição registrada neste mês. No financeiro do escritório,
      marque o lançamento de saída como distribuição para você — ele aparece aqui sozinho.</p>` : ''}
+  ${c.semCategoria > 0 ? `<p class="nota"><b>${rs(c.semCategoria)} sem categoria.</b>
+     No extrato, use o seletor ao lado do valor. Enquanto não tiver categoria, esse dinheiro
+     não entra em nenhum teto e não aparece em fixas nem em variáveis.</p>` : ''}
   ${c.sobra < 0 ? `<p class="nota" style="color:var(--crit)"><b>O mês fechou no vermelho em ${rs(-c.sobra)}.</b>
      Ou entrou menos do que o previsto, ou os variáveis passaram do que a distribuição comporta.</p>` : ''}
   </div>
@@ -6662,8 +6702,16 @@ async function telaPessoal(){
                : `<span class="pill ${pagas>=f.parcelas?'good':'cin'}">${pagas} de ${f.parcelas} parcelas</span>`}
       </div>
       ${obra ? `<p class="nota">Na fase de obra você paga juros sobre o que já foi liberado, mais seguro e taxa.
-        <b>Isso não abate nada do saldo</b> — é custo puro. A amortização começa em ${br(f.obra_ate)},
-        e é dali que as ${f.parcelas} parcelas passam a correr.</p>` : ''}
+        <b>Isso não abate nada do saldo</b> — é custo puro. ${f.obra_ate
+          ? `A amortização começa em ${br(f.obra_ate)}, e é dali que as ${f.parcelas} parcelas passam a correr.`
+          : `A data de entrega ainda não foi informada, então o sistema não anuncia quando a parcela cheia começa.`}</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin:8px 0 2px">
+        <label style="display:flex;flex-direction:column;gap:3px">
+          <span class="sub" style="margin:0">Entrega da casa (deixe vazio enquanto não souber)</span>
+          <input type="date" id="ob-${f.id}" value="${f.obra_ate||''}"></label>
+        <button class="btn" onclick="salvarEntrega('${f.id}')">Guardar a data</button>
+        <span class="sub" id="obst-${f.id}" style="margin:0"></span>
+      </div>` : ''}
       <div class="kpis" style="margin:10px 0 6px">
         <div class="kpi"><div class="n">${rs(obra ? jurosDeObra(f, PESMES) : (atual?atual.parcela:0))}</div>
           <div class="l">${obra ? (parcelaLida(f, PESMES) ? 'pago no mês (do extrato)'
@@ -6757,18 +6805,34 @@ async function telaPessoal(){
 
   <div class="card"><h2>Despesas fixas do mês</h2>
   <p class="meta">O que se repete todo mês, com dia de vencimento. Marcando como pago, entra no extrato.</p>
-  ${PES.recs.length ? `<table><thead><tr><th>Dia</th><th>Descrição</th><th>Categoria</th><th>Valor</th><th></th></tr></thead><tbody>
-    ${PES.recs.map(r=>{
-      const jaPago = PES.lancs.some(l=>l.origem==='recorrente' && l.descricao===r.descricao);
+  ${(()=>{
+    const ativas = recorrentesDoMes(PESMES);
+    /* Fixas lançadas que não vieram de recorrente nenhuma — categoria de grupo "fixa"
+       lançada à mão. Sem isto, editar uma despesa e marcá-la como fixa não mudava nada aqui. */
+    const avulsas = PES.lancs.filter(l => l.tipo==='saida' && !l.projeto_id && !l.meta_id
+      && catDe(l.categoria_id)?.grupo === 'fixa'
+      && !ativas.some(r => lancamentoDaRecorrente(r)?.id === l.id));
+    if (!ativas.length && !avulsas.length) return '<div class="vazio">Nenhuma despesa fixa neste mês.</div>';
+    const linhaLanc = (l, dia, rid) => `<tr><td>${dia}</td><td>${esc(l.descricao||'—')}</td>
+      <td class="sub">${esc(catDe(l.categoria_id)?.nome || '—')}</td>
+      <td>${rs(l.valor)}</td>
+      <td><span class="pill good">lançado</span>
+        <button class="btn" onclick="editarLancamentoPessoal('${l.id}')">editar</button>
+        ${rid?`<button class="btn" onclick="tirarRecorrente('${rid}')">tirar a fixa</button>`:''}</td></tr>`;
+    return `<table><thead><tr><th>Dia</th><th>Descrição</th><th>Categoria</th><th>Valor</th><th></th></tr></thead><tbody>
+    ${ativas.map(r=>{
+      const l = lancamentoDaRecorrente(r);
+      if (l) return linhaLanc(l, r.dia, r.id);
       return `<tr><td>${r.dia}</td><td>${esc(r.descricao)}</td>
       <td class="sub">${esc(catDe(r.categoria_id)?.nome||'—')}</td>
       <td>${rs(r.valor)}</td>
-      <td>${jaPago?'<span class="pill good">pago</span>'
-        :`<button class="btn" onclick="pagarRecorrente('${r.id}')">registrar pago</button>`}
+      <td><button class="btn" onclick="pagarRecorrente('${r.id}')">registrar pago</button>
         <button class="btn" onclick="tirarRecorrente('${r.id}')">tirar</button></td></tr>`;
     }).join('')}
+    ${avulsas.map(l => linhaLanc(l, br(l.data).slice(0,2), null)).join('')}
     <tr><td></td><td><b>Total</b></td><td></td><td><b>${rs(c.fixas)}</b></td><td></td></tr>
-    </tbody></table>` : '<div class="vazio">Nenhuma despesa fixa cadastrada.</div>'}
+    </tbody></table>`;
+  })()}
   <div style="padding:10px 18px;border-top:1px solid var(--ln);display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
     <input id="rc-desc" placeholder="ex.: Condomínio" style="min-width:170px">
     <input id="rc-valor" type="number" step="0.01" placeholder="valor" style="width:120px">
@@ -6865,6 +6929,12 @@ async function telaPessoal(){
 }
 function gastoProjTotal(id){ return PES.__projTot?.[id] ?? 0; }
 
+window.salvarEntrega = async function(id){
+  const v = document.getElementById('ob-'+id).value || null;
+  const { error } = await sb.from('pessoal_financiamento').update({ obra_ate: v }).eq('id', id);
+  if (error) { alert('Não deu para guardar: ' + error.message); return; }
+  telaPessoal();
+};
 window.simularAmortizacao = function(id){
   const f = PES.fins.find(x=>x.id===id);
   const extra = Number(document.getElementById('ap-'+id).value||0);
