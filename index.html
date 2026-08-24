@@ -6503,10 +6503,23 @@ function tabelaFin(f, aporteExtra){
 /* Enquanto a obra corre, o banco libera aos poucos e você paga só juros sobre o
    que já saiu, mais seguro e taxa. Nada disso abate o saldo: é custo puro. */
 function emObra(f, mes){ return !!f.obra_ate && (mes+'-01') < f.obra_ate; }
-function jurosDeObra(f){
+function parcelaLida(f, mes){
+  const L = (PES?.parcelasFin || []).filter(x => x.financiamento_id === f.id);
+  if (!L.length) return null;
+  if (mes) { const exata = L.find(x => String(x.competencia||'').slice(0,7) === mes); if (exata) return exata; }
+  return L.slice().sort((a,b) => String(a.competencia).localeCompare(String(b.competencia))).pop();
+}
+/* O extrato manda. A conta abaixo é só estimativa para o mês que ainda não chegou:
+   ela não sabe a correção monetária, que em agosto sozinha valeu R$ 424,23. */
+function jurosDeObraEstimado(f){
   const i = Number(f.taxa_mes||0)/100;
   const liberado = Number(f.liberado||0);
   return liberado * i + Number(f.seguro_mes||0) + Number(f.taxa_adm||0);
+}
+function jurosDeObra(f, mes){
+  const lida = parcelaLida(f, mes);
+  if (lida && Number(lida.valor_pago)) return Number(lida.valor_pago);
+  return jurosDeObraEstimado(f);
 }
 function mesesDeObra(f, mes){
   if (!f.obra_ate) return 0;
@@ -6560,7 +6573,7 @@ function contasPessoal(){
   const mesRef = PESMES;
   const parcelasMes = PES.fins.map(f => {
     if (emObra(f, mesRef)) {
-      const j = jurosDeObra(f);
+      const j = jurosDeObra(f, mesRef);
       return j > 0 ? { f, k: mesesDeObra(f, mesRef), obra: true, linha: { parcela: j, juros: j, amort: 0 } } : null;
     }
     const k = parcelasPagas(f, mesRef);
@@ -6651,8 +6664,10 @@ async function telaPessoal(){
         <b>Isso não abate nada do saldo</b> — é custo puro. A amortização começa em ${br(f.obra_ate)},
         e é dali que as ${f.parcelas} parcelas passam a correr.</p>` : ''}
       <div class="kpis" style="margin:10px 0 6px">
-        <div class="kpi"><div class="n">${rs(obra ? jurosDeObra(f) : (atual?atual.parcela:0))}</div>
-          <div class="l">${obra?'juros de obra no mês':'parcela deste mês'}</div></div>
+        <div class="kpi"><div class="n">${rs(obra ? jurosDeObra(f, PESMES) : (atual?atual.parcela:0))}</div>
+          <div class="l">${obra ? (parcelaLida(f, PESMES) ? 'pago no mês (do extrato)'
+                : (parcelaLida(f) ? 'estimado — último extrato lido: '+br(parcelaLida(f).competencia) : 'juros de obra estimados'))
+              : 'parcela deste mês'}</div></div>
         <div class="kpi"><div class="n">${rs(saldo)}</div><div class="l">${obra?'liberado até agora':'saldo devedor'}</div></div>
         <div class="kpi ${obra?'al':''}"><div class="n">${rs(jurosPagos)}</div>
           <div class="l">${obra?'já pago sem abater':'juros já pagos'}</div></div>
