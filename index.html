@@ -1384,7 +1384,7 @@ window.irHoje = () => {
   pintaCalendario();
 };
 
-let AGE = [];
+let AGE = [], AGDIV = 0;
 const ymd = d => String(d).slice(0,10).replace(/-/g,'');
 function linkGoogle(it){
   const ini = ymd(it.data);
@@ -1584,6 +1584,10 @@ async function telaAgenda(){
   } else if (TEMCONV === null && !pz.error) TEMCONV = true;
   if (pz.error) return erro(pz.error.message);
   AGCLI = cl.data || []; AGCASO = ca.data || [];
+  try {
+    const dv = await sb.from('google_link').select('id', { count:'exact', head:true }).not('divergencia','is',null);
+    AGDIV = dv.count || 0;
+  } catch { AGDIV = 0; }
   AGE = [];
   for (const p of (pz.data||[])) AGE.push({
     id:'prazo-'+p.id, ref:p.id, qual:'prazo', tipo:'prazo', data:p.data_fatal, urgencia:p.urgencia,
@@ -1626,6 +1630,12 @@ async function telaAgenda(){
   };
   app.innerHTML = menu('agenda') + `
   <main><h1>Agenda</h1>
+  ${AGDIV ? `<div class="card" style="border-left:3px solid var(--crit)"><div style="padding:12px 18px">
+    <b>${AGDIV} divergência${AGDIV>1?'s':''} com o Google Agenda.</b>
+    <span class="sub" style="margin:4px 0 0">Alguém mudou ou apagou no Google um item que o sistema não deixa o
+    Google mandar. Aqui nada mudou — as datas abaixo continuam valendo.</span>
+    <div style="margin-top:8px"><a class="btn" href="#/config">Ver em Configurações</a></div>
+  </div></div>` : ''}
   <p class="meta">Prazos, audiências, tarefas e prescrições no mesmo lugar. <b>Dar baixa</b> é o clique que você
     dá <i>depois</i> de protocolar ou realizar: o item some da agenda e entra no histórico. Enquanto o botão
     estiver ali, o compromisso continua em aberto. Prescrição não tem baixa — ela vive no cadastro do caso.</p>
@@ -6487,6 +6497,88 @@ async function telaTutoriais(){
 /* ---------- CRÉDITO DA API ----------
    A Anthropic não expõe saldo por API — só o gasto. Então o saldo aqui é a
    soma do que você registrou de recarga menos o gasto real do período. */
+let GAG = { conta: null, diverg: [], msg: null };
+async function carregarGoogle(){
+  const [c, d] = await Promise.all([
+    sb.from('google_conta_visao').select('*').maybeSingle(),
+    sb.from('google_link').select('id, qual, ref, divergencia').not('divergencia','is',null),
+  ]);
+  GAG.conta = c.data || null;
+  GAG.diverg = d.data || [];
+  return GAG;
+}
+async function chamarFuncao(nome, corpo){
+  const { data: ses } = await sb.auth.getSession();
+  const r = await fetch(SB_URL + '/functions/v1/' + nome, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', apikey: SB_KEY,
+               authorization: 'Bearer ' + (ses?.session?.access_token || SB_KEY) },
+    body: JSON.stringify(corpo || {}),
+  });
+  let j = {}; try { j = await r.json(); } catch {}
+  if (!r.ok || j.erro) throw new Error(j.erro || ('a função respondeu ' + r.status));
+  return j;
+}
+function blocoGoogle(){
+  const c = GAG.conta;
+  const ligada = c?.conectada;
+  const d = GAG.diverg;
+  return `<div class="card"><h2>Google Agenda</h2>
+  <p class="meta">Ligado, cada prazo, audiência, tarefa e prescrição vira evento no seu Google — e some
+    de lá quando você dá baixa aqui. O que você criar no Google entra aqui como reunião.</p>
+  ${GAG.msg ? `<p class="nota" style="padding:0 18px">${GAG.msg}</p>` : ''}
+  <div style="padding:10px 18px;border-top:1px solid var(--ln);display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+    ${ligada
+      ? `<span class="pill good">conectado${c.email?' · '+esc(c.email):''}</span>
+         ${c.ultimo_sync?`<span class="sub" style="margin:0">última troca ${br(String(c.ultimo_sync).slice(0,10))} às ${String(c.ultimo_sync).slice(11,16)}</span>`:'<span class="sub" style="margin:0">ainda não sincronizou</span>'}
+         <button class="btn ok" onclick="sincronizarGoogle()">Sincronizar agora</button>
+         <button class="btn" onclick="desligarGoogle()">Desconectar</button>`
+      : `<span class="pill cin">não conectado</span>
+         <button class="btn ok" onclick="ligarGoogle()">Conectar o Google Agenda</button>`}
+    <span class="sub" id="gg-st" style="margin:0"></span>
+  </div>
+  ${c?.ultimo_erro ? `<p class="nota" style="color:var(--crit);padding:0 18px 10px">
+     <b>Último erro:</b> ${esc(c.ultimo_erro)}</p>` : ''}
+  ${d.length ? `<div style="padding:10px 18px;border-top:1px solid var(--ln)">
+     <p class="nota" style="margin:0 0 6px"><b>${d.length} divergência${d.length>1?'s':''} esperando você.</b>
+       Alguém mexeu no Google num item que o sistema não deixa o Google mandar — prazo, audiência ou
+       prescrição. O sistema não obedeceu: a data daqui continua valendo.</p>
+     ${d.map(x=>`<div style="display:flex;gap:10px;justify-content:space-between;align-items:center;padding:6px 0;border-top:1px solid var(--ln)">
+       <div><b>${esc(x.qual)}</b><span class="sub">${esc(x.divergencia?.o_que||'')}${
+         x.divergencia?.de?` · de ${br(x.divergencia.de)} para ${br(x.divergencia.para)}`:''}</span></div>
+       <button class="btn" onclick="resolverDivergencia('${x.id}')">entendi, manter o que está aqui</button>
+     </div>`).join('')}
+   </div>` : ''}
+  <p class="nota" style="padding:0 18px 14px">Uma trava de propósito: <b>mudar ou apagar um prazo no Google
+    não muda nada aqui</b>. Prazo nasce da intimação, não de um arrastar de dedo. O sistema anota a
+    divergência e deixa a decisão com você. Reunião e tarefa, sim, aceitam a mudança feita lá.</p>
+  </div>`;
+}
+window.ligarGoogle = async function(){
+  const st = document.getElementById('gg-st'); st.textContent = 'preparando…';
+  try { const j = await chamarFuncao('google-oauth', { acao: 'iniciar' }); location.href = j.url; }
+  catch(e){ st.style.color='var(--crit)'; st.textContent = e.message; }
+};
+window.desligarGoogle = async function(){
+  const st = document.getElementById('gg-st'); st.textContent = 'desconectando…';
+  try { await chamarFuncao('google-oauth', { acao: 'desconectar' }); GAG.msg = 'Conta desconectada. Os eventos que já estão no Google continuam lá.'; telaConfig(); }
+  catch(e){ st.style.color='var(--crit)'; st.textContent = e.message; }
+};
+window.sincronizarGoogle = async function(){
+  const st = document.getElementById('gg-st'); st.style.color='var(--i3)'; st.textContent = 'trocando com o Google…';
+  try {
+    const j = await chamarFuncao('google-sync', {});
+    const n = j.contas?.[0] || {};
+    if (n.erro) throw new Error(n.erro);
+    GAG.msg = `Pronto: ${n.criados||0} criados, ${n.atualizados||0} atualizados, ${n.apagados||0} apagados, ` +
+              `${n.vindos||0} vindos do Google${n.divergencias?`, ${n.divergencias} divergência(s)`:''}.`;
+    telaConfig();
+  } catch(e){ st.style.color='var(--crit)'; st.textContent = e.message; }
+};
+window.resolverDivergencia = async function(id){
+  await sb.from('google_link').update({ divergencia: null }).eq('id', id);
+  telaConfig();
+};
 let CREDITO = { recargas: [], piso: 5, gasto: null, erro: null, desde: null };
 function moedaUsd(n){ return 'US$ ' + Number(n||0).toFixed(2).replace('.', ','); }
 async function carregarCredito(){
@@ -7338,6 +7430,14 @@ async function telaConfig(){
   AREAS = ar.data||[]; ORIGENS = og.data||[]; CATS = ct.data||[];
   const e = es.data || {};
   await carregarCredito().catch(()=>{});
+  await carregarGoogle().catch(()=>{});
+  const aviso = { ok:'Google Agenda conectado. Clique em "Sincronizar agora" para a primeira troca.',
+    negado:'Você recusou a permissão no Google. Nada foi conectado.',
+    semchave:'Falta cadastrar GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET nos Secrets do Supabase.',
+    estado:'O pedido não bateu com nenhuma conexão em aberto. Comece de novo.',
+    expirou:'O pedido passou de 15 minutos. Comece de novo.',
+    token:'O Google não devolveu a chave permanente. Veja o erro abaixo.' }[new URLSearchParams(location.hash.split('?')[1]||'').get('google')];
+  if (aviso) { GAG.msg = aviso; history.replaceState(null,'','#/config'); }
   app.innerHTML = menu('config') + `
   <main><h1>Configurações</h1><p class="meta">Escritório, equipe e as listas que alimentam o resto do sistema.</p>
 
@@ -7372,6 +7472,7 @@ async function telaConfig(){
     </tr>`).join('')}</tbody></table></div>
 
   <div id="credapi">${blocoCredito()}</div>
+  ${blocoGoogle()}
   <div class="card"><h2>Dados do escritório</h2>
     <p class="nota">Usados nos documentos e nos e-mails de aviso.</p>
     <form onsubmit="salvarEscritorio(event)" style="display:flex;gap:10px;flex-wrap:wrap;padding:0 18px 18px;align-items:flex-end">
