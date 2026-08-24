@@ -6487,7 +6487,7 @@ const pct = (a,b) => b>0 ? Math.min(100, Math.round(a/b*100)) : 0;
    parcela cai com o tempo. O saldo devedor é o que sobra depois de cada parcela. */
 function tabelaFin(f, aporteExtra){
   const i = Number(f.taxa_mes||0)/100, n = Number(f.parcelas), P = Number(f.valor_financiado);
-  const seg = Number(f.seguro_mes||0), extra = Number(aporteExtra||0);
+  const seg = Number(f.seguro_mes||0) + Number(f.taxa_adm||0), extra = Number(aporteExtra||0);
   const linhas = []; let saldo = P;
   const parcPrice = i > 0 ? P*i/(1-Math.pow(1+i,-n)) : P/n;
   for (let k = 1; k <= n && saldo > 0.005; k++){
@@ -6499,6 +6499,20 @@ function tabelaFin(f, aporteExtra){
     saldo -= abate;
   }
   return linhas;
+}
+/* Enquanto a obra corre, o banco libera aos poucos e você paga só juros sobre o
+   que já saiu, mais seguro e taxa. Nada disso abate o saldo: é custo puro. */
+function emObra(f, mes){ return !!f.obra_ate && (mes+'-01') < f.obra_ate; }
+function jurosDeObra(f){
+  const i = Number(f.taxa_mes||0)/100;
+  const liberado = Number(f.liberado||0);
+  return liberado * i + Number(f.seguro_mes||0) + Number(f.taxa_adm||0);
+}
+function mesesDeObra(f, mes){
+  if (!f.obra_ate) return 0;
+  const [ay,am] = f.primeira.slice(0,7).split('-').map(Number);
+  const [by,bm] = mes.split('-').map(Number);
+  return Math.max(0, (by-ay)*12 + (bm-am) + 1);
 }
 function parcelasPagas(f, ate){
   const [ay,am] = f.primeira.slice(0,7).split('-').map(Number);
@@ -6530,11 +6544,12 @@ async function carregarPessoal(){
   /* Projeto não cabe num mês: o realizado é a soma de tudo, desde o começo. */
   const { data: tp } = await sb.from('pessoal_lancamento').select('projeto_id,valor')
     .not('projeto_id','is',null).limit(5000);
+  const { data: fp } = await sb.from('pessoal_fin_parcela').select('*').order('competencia');
   const projTot = {};
   (tp||[]).forEach(l => { projTot[l.projeto_id] = (projTot[l.projeto_id]||0) + Number(l.valor); });
   PES = { uid, contas: ct.data||[], cats: cg.data||[], fins: fi.data||[], projs: pj.data||[],
           recs: rc.data||[], metas: mt.data||[], lancs: lc.data||[], distrib: ds.data||[],
-          candidatos: cand||[], __projTot: projTot };
+          candidatos: cand||[], parcelasFin: fp||[], __projTot: projTot };
   return PES;
 }
 
@@ -6544,6 +6559,10 @@ function contasPessoal(){
     + L.filter(l=>l.tipo==='entrada').reduce((a,l)=>a+Number(l.valor),0);
   const mesRef = PESMES;
   const parcelasMes = PES.fins.map(f => {
+    if (emObra(f, mesRef)) {
+      const j = jurosDeObra(f);
+      return j > 0 ? { f, k: mesesDeObra(f, mesRef), obra: true, linha: { parcela: j, juros: j, amort: 0 } } : null;
+    }
     const k = parcelasPagas(f, mesRef);
     if (k < 1 || k > f.parcelas) return null;
     const t = tabelaFin(f);
@@ -6612,23 +6631,33 @@ async function telaPessoal(){
   <p class="meta">Parcela do mês, quanto já foi pago e quanto ainda se deve. O saldo devedor é o número que
     interessa quando você pensa em amortizar.</p>
   ${PES.fins.length ? PES.fins.map(f=>{
+    const obra = emObra(f, PESMES);
     const t = tabelaFin(f), k = parcelasPagas(f, PESMES);
     const atual = t[Math.min(Math.max(k,1),t.length)-1];
-    const pagas = Math.max(0, Math.min(k, t.length));
-    const saldo = pagas>0 ? t[pagas-1].saldo : Number(f.valor_financiado);
-    const jurosPagos = t.slice(0,pagas).reduce((a,x)=>a+x.juros,0);
+    const pagas = obra ? 0 : Math.max(0, Math.min(k, t.length));
+    const saldo = obra ? Number(f.liberado||0) : (pagas>0 ? t[pagas-1].saldo : Number(f.valor_financiado));
+    const pagoObra = PES.parcelasFin.filter(x=>x.financiamento_id===f.id && x.fase==='obra')
+                       .reduce((a,x)=>a+Number(x.valor_pago||0),0);
+    const jurosPagos = obra ? pagoObra : t.slice(0,pagas).reduce((a,x)=>a+x.juros,0);
     const jurosTotal = t.reduce((a,x)=>a+x.juros,0);
     return `<div style="padding:12px 18px;border-top:1px solid var(--ln)">
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <b>${esc(f.nome)}</b>${f.credor?`<span class="sub" style="margin:0">${esc(f.credor)}</span>`:''}
         <span class="pill cin">${esc(f.sistema)} · ${Number(f.taxa_mes)}% a.m.</span>
-        <span class="pill ${pagas>=f.parcelas?'good':'cin'}">${pagas} de ${f.parcelas} parcelas</span>
+        ${obra ? `<span class="pill warn">em obra — juros até ${br(f.obra_ate)}</span>`
+               : `<span class="pill ${pagas>=f.parcelas?'good':'cin'}">${pagas} de ${f.parcelas} parcelas</span>`}
       </div>
+      ${obra ? `<p class="nota">Na fase de obra você paga juros sobre o que já foi liberado, mais seguro e taxa.
+        <b>Isso não abate nada do saldo</b> — é custo puro. A amortização começa em ${br(f.obra_ate)},
+        e é dali que as ${f.parcelas} parcelas passam a correr.</p>` : ''}
       <div class="kpis" style="margin:10px 0 6px">
-        <div class="kpi"><div class="n">${rs(atual?atual.parcela:0)}</div><div class="l">parcela deste mês</div></div>
-        <div class="kpi"><div class="n">${rs(saldo)}</div><div class="l">saldo devedor</div></div>
-        <div class="kpi"><div class="n">${rs(jurosPagos)}</div><div class="l">juros já pagos</div></div>
-        <div class="kpi"><div class="n">${rs(jurosTotal)}</div><div class="l">juros até o fim</div></div>
+        <div class="kpi"><div class="n">${rs(obra ? jurosDeObra(f) : (atual?atual.parcela:0))}</div>
+          <div class="l">${obra?'juros de obra no mês':'parcela deste mês'}</div></div>
+        <div class="kpi"><div class="n">${rs(saldo)}</div><div class="l">${obra?'liberado até agora':'saldo devedor'}</div></div>
+        <div class="kpi ${obra?'al':''}"><div class="n">${rs(jurosPagos)}</div>
+          <div class="l">${obra?'já pago sem abater':'juros já pagos'}</div></div>
+        <div class="kpi"><div class="n">${rs(obra ? (t[0]?.parcela||0) : jurosTotal)}</div>
+          <div class="l">${obra?'1ª parcela quando amortizar':'juros até o fim'}</div></div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:6px">
         <label style="display:flex;flex-direction:column;gap:3px">
@@ -6648,7 +6677,10 @@ async function telaPessoal(){
       <input id="fn-taxa" type="number" step="0.001" placeholder="% ao mês" style="width:110px">
       <input id="fn-parc" type="number" placeholder="parcelas" style="width:100px">
       <input id="fn-seg" type="number" step="0.01" placeholder="seguro/taxa" style="width:120px">
-      <input id="fn-1a" type="date" title="mês da primeira parcela">
+      <input id="fn-1a" type="date" title="mês da primeira cobrança">
+      <input id="fn-obra" type="date" title="fim da obra: quando começa a amortizar">
+      <input id="fn-lib" type="number" step="0.01" placeholder="já liberado" style="width:130px">
+      <input id="fn-adm" type="number" step="0.01" placeholder="taxa adm." style="width:110px">
       <select id="fn-sis"><option value="PRICE">PRICE (parcela fixa)</option><option value="SAC">SAC (parcela cai)</option></select>
       <button class="btn ok" onclick="novoFinanciamento()">Guardar</button>
     </div>
@@ -6802,6 +6834,7 @@ window.novoFinanciamento = async function(){
     valor_financiado: Number(v('fn-valor')), taxa_mes: Number(v('fn-taxa')||0),
     parcelas: Number(v('fn-parc')), seguro_mes: Number(v('fn-seg')||0),
     primeira: v('fn-1a'), sistema: v('fn-sis'),
+    obra_ate: v('fn-obra')||null, liberado: Number(v('fn-lib')||0), taxa_adm: Number(v('fn-adm')||0),
   });
   if(error) return alert(error.message);
   telaPessoal();
