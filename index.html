@@ -1319,10 +1319,13 @@ function detalheDia(){
     <p class="quando">${rotuloDia(iso)}${itens.length?` · ${itens.length} compromisso${itens.length>1?'s':''}`:''}</p>
     ${itens.length ? itens.map(it=>`<div class="item ${it.tipo}">
         <div class="tt">${it.hora?`<b>${it.hora}</b> · `:''}${
-          it.caso_id ? `<a class="lnk" href="#/caso/${it.caso_id}">${esc(it.titulo)}</a>` : esc(it.titulo)}</div>
+          it.caso_id ? `<a class="lnk" href="#/caso/${it.caso_id}">${esc(it.titulo)}</a>` : esc(it.titulo)}${
+          it.subtipo?` <span class="sub" style="display:inline;margin:0">(${esc(it.subtipo)})</span>`:''}</div>
         ${it.local?`<div class="mt">${esc(it.local)}</div>`:''}
         ${it.detalhe?`<div class="mt">${esc(String(it.detalhe).replace(/\n/g,' · '))}</div>`:''}
-        <div class="mt">${vinculoAgenda(it,'mini') || '<span class="sub" style="margin:0">sem caso</span>'}</div>
+        <div class="mt" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          ${vinculoAgenda(it,'mini') || '<span class="sub" style="margin:0">sem caso</span>'}
+          ${subtipoAudiencia(it)}</div>
         <div class="mt" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px">
           ${it.ref ? `<button class="btn" style="font-size:11.6px;padding:4px 9px;white-space:nowrap"
             title="${it.qual==='prazo'?'marcar este prazo como cumprido':'marcar como realizado'} — sai da agenda"
@@ -1331,6 +1334,24 @@ function detalheDia(){
       </div>`).join('') : '<p class="quando">Dia livre.</p>'}
   </div>`;
 }
+/* O tipo da audiência não vem na lista do PJe — só na tela do processo. E ele
+   muda o que você leva: preposto, testemunhas, provas, alçada de acordo. */
+const SUBAUD = ['una','inicial','instrução','conciliação','instrução e julgamento','julgamento','prosseguimento','perícia','justificação'];
+function subtipoAudiencia(it){
+  if (it.tipo !== 'audiencia' || !it.ref) return '';
+  return `<select onchange="marcarSubtipo('${it.ref}', this.value, this)"
+    title="tipo da audiência" style="font-size:11px;padding:2px 5px;margin-top:3px;max-width:150px;${
+      it.subtipo?'':'border-color:var(--warn)'}">
+    <option value=""${it.subtipo?'':' selected'}>— tipo? —</option>
+    ${SUBAUD.map(x=>`<option value="${x}"${x===it.subtipo?' selected':''}>${x}</option>`).join('')}
+  </select>`;
+}
+window.marcarSubtipo = async function(ref, valor, el){
+  el.disabled = true;
+  const { error } = await sb.from('evento').update({ subtipo: valor || null }).eq('id', ref);
+  if (error) { el.disabled = false; alert('Não deu para guardar: ' + error.message); return; }
+  telaAgenda();
+};
 /* Um item pode chegar solto: prazo lido de uma intimação de processo não cadastrado,
    tarefa criada às pressas. Aqui ele ganha dono — e, com dono, vira link. */
 function vinculoAgenda(it, tam){
@@ -1593,7 +1614,7 @@ function formEvento(){
 async function telaAgenda(){
   const colPz = c => 'id,descricao,data_fatal,dias,situacao,urgencia,caso_id' + c +
     ',intimacao:intimacao_id(numero_formatado,orgao),caso:caso_id(titulo,cliente_id,cliente:cliente_id(id,nome))';
-  const colEv = c => 'id,tipo,titulo,inicio,local,descricao,urgencia,situacao,link_sala,caso_id,cliente_id' + c +
+  const colEv = c => 'id,tipo,titulo,inicio,local,descricao,urgencia,situacao,link_sala,caso_id,cliente_id,subtipo' + c +
     ',cliente:cliente_id(id,nome),caso:caso_id(titulo,cliente_id,cliente:cliente_id(id,nome))';
   const extra = TEMCONV === false ? '' : ',convidado_email';
   let [pz, ev, cs, cl, ca] = await Promise.all([
@@ -1628,6 +1649,7 @@ async function telaAgenda(){
   for (const e of (ev.data||[])) AGE.push({
     id:'evento-'+e.id, ref:e.id, qual:'evento', tipo:e.tipo, data:String(e.inicio).slice(0,10), hora:String(e.inicio).slice(11,16),
     urgencia:e.urgencia, convidado:e.convidado_email,
+    subtipo:e.subtipo||null,
     caso_id:e.caso_id||null, caso_nome:e.caso?.titulo||null,
     cliente_id:e.cliente?.id||e.caso?.cliente?.id||null,
     cliente_nome:e.cliente?.nome||e.caso?.cliente?.nome||null,
@@ -1654,7 +1676,8 @@ async function telaAgenda(){
         : '<span class="sub" style="margin:0">—</span>'}</td>
       <td class="dt"><b>${br(it.data)}</b>${it.hora?' '+it.hora:''}
         <span class="sub">${d===0?'hoje':(d<0?'há '+(-d)+'d':'em '+d+' dias')}</span></td>
-      <td><span class="pill ${cor[it.tipo]||'cin'}">${it.tipo}</span></td>
+      <td><span class="pill ${cor[it.tipo]||'cin'}">${it.tipo}${
+        it.subtipo?' · '+esc(it.subtipo):''}</span>${subtipoAudiencia(it)}</td>
       <td>${it.caso_id ? `<a class="lnk" href="#/caso/${it.caso_id}"><b>${esc(it.titulo)}</b></a>` : `<b>${esc(it.titulo)}</b>`}
         ${it.local?`<span class="sub">${esc(it.local)}</span>`:''}
         ${it.urgencia && it.urgencia!=='normal' ? `<span class="pill ${URG[it.urgencia]?.[1]||'cin'}">${URG[it.urgencia]?.[0]||it.urgencia}</span>` : ''}</td>
@@ -1685,6 +1708,10 @@ async function telaAgenda(){
     return n ? `<p class="nota"><b>${n} ${n>1?'itens estão soltos':'item está solto'}</b> — sem caso vinculado.
       Na coluna <b>Cliente / caso</b> há um seletor amarelo em cada um: escolha o caso e ele passa a
       aparecer na ficha do cliente, na linha do tempo e nas métricas.</p>` : ''; })()}
+  ${(()=>{ const n = AGE.filter(i=>i.tipo==='audiencia' && i.ref && !i.subtipo).length;
+    return n ? `<p class="nota"><b>${n} audiência${n>1?'s':''} sem tipo.</b> Una, inicial, instrução e
+      conciliação exigem preparação diferente — quem leva testemunha para uma inicial perde a viagem.
+      O tipo não vem na lista do PJe: só na tela do processo, no alto, ao lado da data.</p>` : ''; })()}
   <div class="kpis">
     <div class="kpi"><div class="n">${futuros.length}</div><div class="l">compromissos à frente</div></div>
     <div class="kpi"><div class="n">${futuros.filter(i=>dias(String(i.data).slice(0,10))<=7).length}</div><div class="l">nos próximos 7 dias</div></div>
