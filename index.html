@@ -1318,9 +1318,11 @@ function detalheDia(){
     <h3>${data}</h3>
     <p class="quando">${rotuloDia(iso)}${itens.length?` · ${itens.length} compromisso${itens.length>1?'s':''}`:''}</p>
     ${itens.length ? itens.map(it=>`<div class="item ${it.tipo}">
-        <div class="tt">${it.hora?`<b>${it.hora}</b> · `:''}${esc(it.titulo)}</div>
+        <div class="tt">${it.hora?`<b>${it.hora}</b> · `:''}${
+          it.caso_id ? `<a class="lnk" href="#/caso/${it.caso_id}">${esc(it.titulo)}</a>` : esc(it.titulo)}</div>
         ${it.local?`<div class="mt">${esc(it.local)}</div>`:''}
         ${it.detalhe?`<div class="mt">${esc(String(it.detalhe).replace(/\n/g,' · '))}</div>`:''}
+        <div class="mt">${vinculoAgenda(it,'mini') || '<span class="sub" style="margin:0">sem caso</span>'}</div>
         <div class="mt" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px">
           ${it.ref ? `<button class="btn" style="font-size:11.6px;padding:4px 9px;white-space:nowrap"
             title="${it.qual==='prazo'?'marcar este prazo como cumprido':'marcar como realizado'} — sai da agenda"
@@ -1329,6 +1331,29 @@ function detalheDia(){
       </div>`).join('') : '<p class="quando">Dia livre.</p>'}
   </div>`;
 }
+/* Um item pode chegar solto: prazo lido de uma intimação de processo não cadastrado,
+   tarefa criada às pressas. Aqui ele ganha dono — e, com dono, vira link. */
+function vinculoAgenda(it, tam){
+  const p = tam === 'mini' ? 'font-size:11px;padding:2px 5px;max-width:150px' : 'font-size:11.6px;padding:3px 6px;max-width:210px';
+  if (it.caso_id) return `<a class="lnk" href="#/caso/${it.caso_id}" title="abrir o caso">${
+    esc(it.cliente_nome || it.caso_nome || 'ver o caso')}</a>`;
+  if (!it.ref) return '';
+  return `<select onchange="vincularAgenda('${it.qual}','${it.ref}', this.value, this)"
+    title="este item não está ligado a nenhum caso" style="${p};border-color:var(--warn)">
+    <option value="">— sem caso —</option>
+    ${AGCASO.map(c=>`<option value="${c.id}">${esc(c.titulo)}</option>`).join('')}
+  </select>`;
+}
+window.vincularAgenda = async function(qual, ref, casoId, el){
+  if (!casoId) return;
+  el.disabled = true;
+  const { data: c } = await sb.from('caso').select('id,cliente_id').eq('id', casoId).maybeSingle();
+  const campos = qual === 'prazo' ? { caso_id: casoId }
+                                  : { caso_id: casoId, cliente_id: c?.cliente_id || null };
+  const { error } = await sb.from(qual).update(campos).eq('id', ref);
+  if (error) { el.disabled = false; alert('Não deu para vincular: ' + error.message); return; }
+  telaAgenda();
+};
 function faixaProximos(){
   const f = AGE.filter(i => dias(String(i.data).slice(0,10)) >= 0)
     .sort((a,b)=>String(a.data).localeCompare(String(b.data))).slice(0,6);
@@ -1566,10 +1591,10 @@ function formEvento(){
   </form></div>`;
 }
 async function telaAgenda(){
-  const colPz = c => 'id,descricao,data_fatal,dias,situacao,urgencia' + c +
-    ',intimacao:intimacao_id(numero_formatado,orgao),caso:caso_id(titulo)';
-  const colEv = c => 'id,tipo,titulo,inicio,local,descricao,urgencia,situacao,link_sala' + c +
-    ',cliente:cliente_id(nome),caso:caso_id(titulo)';
+  const colPz = c => 'id,descricao,data_fatal,dias,situacao,urgencia,caso_id' + c +
+    ',intimacao:intimacao_id(numero_formatado,orgao),caso:caso_id(titulo,cliente_id,cliente:cliente_id(id,nome))';
+  const colEv = c => 'id,tipo,titulo,inicio,local,descricao,urgencia,situacao,link_sala,caso_id,cliente_id' + c +
+    ',cliente:cliente_id(id,nome),caso:caso_id(titulo,cliente_id,cliente:cliente_id(id,nome))';
   const extra = TEMCONV === false ? '' : ',convidado_email';
   let [pz, ev, cs, cl, ca] = await Promise.all([
     sb.from('prazo').select(colPz(extra)).in('situacao',['sugerido','confirmado']),
@@ -1595,17 +1620,22 @@ async function telaAgenda(){
   for (const p of (pz.data||[])) AGE.push({
     id:'prazo-'+p.id, ref:p.id, qual:'prazo', tipo:'prazo', data:p.data_fatal, urgencia:p.urgencia,
     convidado:p.convidado_email,
+    caso_id:p.caso_id||null, caso_nome:p.caso?.titulo||null,
+    cliente_id:p.caso?.cliente?.id||null, cliente_nome:p.caso?.cliente?.nome||null,
     titulo:`Prazo: ${p.descricao}${p.caso?.titulo ? ' — '+p.caso.titulo : ''}`,
     detalhe:`${p.dias||''} dias úteis · situação: ${p.situacao}\n${p.intimacao?.numero_formatado||''}`,
     local:p.intimacao?.orgao||'' });
   for (const e of (ev.data||[])) AGE.push({
     id:'evento-'+e.id, ref:e.id, qual:'evento', tipo:e.tipo, data:String(e.inicio).slice(0,10), hora:String(e.inicio).slice(11,16),
     urgencia:e.urgencia, convidado:e.convidado_email,
+    caso_id:e.caso_id||null, caso_nome:e.caso?.titulo||null,
+    cliente_id:e.cliente?.id||e.caso?.cliente?.id||null,
+    cliente_nome:e.cliente?.nome||e.caso?.cliente?.nome||null,
     titulo:`${e.tipo === 'audiencia' ? 'Audiência' : e.tipo}: ${e.titulo}` +
       (e.cliente?.nome ? ' — '+e.cliente.nome : (e.caso?.titulo ? ' — '+e.caso.titulo : '')),
     detalhe:e.descricao||'', local:e.local||'', sala:e.link_sala||'' });
   for (const c of (cs.data||[])) AGE.push({
-    id:'presc-'+c.id, tipo:'prescricao', data:c.prescricao_em,
+    id:'presc-'+c.id, tipo:'prescricao', data:c.prescricao_em, caso_id:c.id, caso_nome:c.titulo,
     titulo:`Prescrição — ${c.titulo}`, detalhe:c.prescricao_obs||'Prazo prescricional anotado no cadastro.', local:'' });
   AGE.sort((a,b)=>String(a.data).localeCompare(String(b.data)));
 
@@ -1625,8 +1655,10 @@ async function telaAgenda(){
       <td class="dt"><b>${br(it.data)}</b>${it.hora?' '+it.hora:''}
         <span class="sub">${d===0?'hoje':(d<0?'há '+(-d)+'d':'em '+d+' dias')}</span></td>
       <td><span class="pill ${cor[it.tipo]||'cin'}">${it.tipo}</span></td>
-      <td><b>${esc(it.titulo)}</b>${it.local?`<span class="sub">${esc(it.local)}</span>`:''}
+      <td>${it.caso_id ? `<a class="lnk" href="#/caso/${it.caso_id}"><b>${esc(it.titulo)}</b></a>` : `<b>${esc(it.titulo)}</b>`}
+        ${it.local?`<span class="sub">${esc(it.local)}</span>`:''}
         ${it.urgencia && it.urgencia!=='normal' ? `<span class="pill ${URG[it.urgencia]?.[1]||'cin'}">${URG[it.urgencia]?.[0]||it.urgencia}</span>` : ''}</td>
+      <td>${vinculoAgenda(it)}</td>
       <td>${botaoSala(it.sala)}
         <a class="btn" href="${linkGoogle(it)}" target="_blank" rel="noreferrer" style="text-decoration:none">Google Agenda</a>
         ${it.convidado ? `<a class="btn" style="text-decoration:none" href="${linkEmail(it)}">Avisar ${esc(it.convidado.split('@')[0])}</a>` : ''}
@@ -1649,6 +1681,10 @@ async function telaAgenda(){
        ['reunião','serie'],['tarefa','taref']].map(([r,c])=>
       `<span class="pill ${c}">${r}</span>`).join('')}
   </div>
+  ${(()=>{ const n = AGE.filter(i=>i.ref && !i.caso_id).length;
+    return n ? `<p class="nota"><b>${n} ${n>1?'itens estão soltos':'item está solto'}</b> — sem caso vinculado.
+      Na coluna <b>Cliente / caso</b> há um seletor amarelo em cada um: escolha o caso e ele passa a
+      aparecer na ficha do cliente, na linha do tempo e nas métricas.</p>` : ''; })()}
   <div class="kpis">
     <div class="kpi"><div class="n">${futuros.length}</div><div class="l">compromissos à frente</div></div>
     <div class="kpi"><div class="n">${futuros.filter(i=>dias(String(i.data).slice(0,10))<=7).length}</div><div class="l">nos próximos 7 dias</div></div>
@@ -1673,12 +1709,12 @@ async function telaAgenda(){
     : `<p class="nota">Baixe o arquivo e importe uma vez em <b>Google Agenda → Configurações → Importar e exportar</b>.</p>
     <div style="padding:0 18px 18px"><button class="btn ok" onclick="baixarIcs()">Baixar agenda (.ics)</button></div>`}</div>
   <div class="card"><h2>Pela frente</h2>
-    <table><thead><tr><th style="width:118px">Dar baixa</th><th>Quando</th><th>Tipo</th><th>O quê</th><th></th></tr></thead>
+    <table><thead><tr><th style="width:118px">Dar baixa</th><th>Quando</th><th>Tipo</th><th>O quê</th><th>Cliente / caso</th><th></th></tr></thead>
     <tbody>${futuros.map(linha).join('') || '<tr><td colspan="5" class="vazio">Nada agendado.</td></tr>'}</tbody></table></div>
   ${passados.length?`<div class="card"><h2>Vencidos e ainda abertos</h2>
     <p class="meta">Já passou da data e continua aberto. Se foi protocolado ou realizado, dê baixa aqui —
       é esse clique que alimenta a Métrica e a Jurimetria.</p>
-    <table><thead><tr><th style="width:118px">Dar baixa</th><th>Quando</th><th>Tipo</th><th>O quê</th><th></th></tr></thead>
+    <table><thead><tr><th style="width:118px">Dar baixa</th><th>Quando</th><th>Tipo</th><th>O quê</th><th>Cliente / caso</th><th></th></tr></thead>
     <tbody>${passados.map(linha).join('')}</tbody></table></div>`:''}
   </main>` + rodape();
   const hj = new Date();
