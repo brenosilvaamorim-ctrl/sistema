@@ -1336,7 +1336,7 @@ function detalheDia(){
 }
 /* O tipo da audiência não vem na lista do PJe — só na tela do processo. E ele
    muda o que você leva: preposto, testemunhas, provas, alçada de acordo. */
-const SUBAUD = ['una','inicial','instrução','conciliação','instrução e julgamento','julgamento','prosseguimento','perícia','justificação'];
+const SUBAUD = ['una','inicial','instrução','encerramento de instrução','conciliação','instrução e julgamento','julgamento','prosseguimento','perícia','justificação'];
 function subtipoAudiencia(it){
   if (it.tipo !== 'audiencia' || !it.ref) return '';
   return `<select onchange="marcarSubtipo('${it.ref}', this.value, this)"
