@@ -1885,6 +1885,9 @@ window.fecharLead = async (id) => {
   }).select('id').single();
   if (e2) return alert('Erro ao criar caso: ' + e2.message);
   await sb.from('lead').update({ etapa:'fechado', caso_id: caso.id, atualizado_em: new Date().toISOString() }).eq('id', id);
+  /* A ficha do atendimento segue o lead: sem isso, o que foi colhido na primeira
+     conversa ficaria órfão justamente quando o caso começa. */
+  await sb.from('ficha').update({ caso_id: caso.id, cliente_id: cli.id }).eq('lead_id', id);
   location.hash = '#/casos';
 };
 const VIAB = [
@@ -1954,11 +1957,384 @@ function cartaoLead(l){
       <select onchange="moverLead('${l.id}', this.value)" style="flex:1;min-width:120px;font-size:11.6px">
         ${ETAPAS.map(([k,r])=>`<option value="${k}" ${l.etapa===k?'selected':''}>${r}</option>`).join('')}
       </select>
+      <button class="btn" style="font-size:11.4px;padding:4px 8px" onclick="abrirFicha('${l.id}')">Ficha</button>
       <button class="btn ok" style="font-size:11.4px;padding:4px 8px" onclick="fecharLead('${l.id}')">Fechou</button>
       <button class="btn" style="font-size:11.4px;padding:4px 8px" onclick="perderLead('${l.id}')">Perdeu</button>
     </div>
   </div>`;
 }
+/* ------------------------------------------------------ FICHA DE ATENDIMENTO
+   Os dois modelos que o escritório usa hoje, em papel. A estrutura vive em
+   JSON: mudar uma pergunta é editar texto, não mexer no banco.
+   t: txt (uma linha) · long (parágrafo) · data · num · sn (sim/não/não sei)
+      · esc (escolha única) · multi (marcar vários) · hora · info (só texto) */
+const FICHA_ACIDENTE = [
+ {s:'Quem é você', c:[
+  {k:'nome',r:'Nome completo',t:'txt'},{k:'nasc',r:'Data de nascimento',t:'data'},
+  {k:'civil',r:'Estado civil',t:'txt'},{k:'cpf',r:'CPF',t:'txt'},
+  {k:'rg',r:'RG / órgão',t:'txt'},{k:'escol',r:'Escolaridade',t:'txt'},
+  {k:'fone',r:'Telefone / WhatsApp',t:'txt'},{k:'end',r:'Endereço completo',t:'txt'},
+  {k:'cidade',r:'Cidade / UF',t:'txt'},{k:'email',r:'E-mail',t:'txt'},
+  {k:'dep',r:'Dependentes — quantos e que idades',t:'txt'}]},
+ {s:'O trabalho', c:[
+  {k:'empresa',r:'Empresa (nome que aparece no contracheque)',t:'txt'},
+  {k:'cnpj',r:'CNPJ, se souber',t:'txt'},
+  {k:'ramo',r:'O que a empresa faz',t:'txt'},
+  {k:'terceiro',r:'Trabalhava para outra empresa no local? Qual',t:'txt'},
+  {k:'admissao',r:'Admissão',t:'data'},{k:'saida',r:'Saída',t:'data'},
+  {k:'motivo',r:'Motivo da saída',t:'txt'},
+  {k:'funcao',r:'Função anotada na carteira',t:'txt'},
+  {k:'salario',r:'Último salário',t:'txt'},
+  {k:'adicionais',r:'Recebia comissão, hora extra, adicional? Quais',t:'txt'},
+  {k:'rotina',r:'O que você fazia de verdade, no dia a dia — rotina, ritmo, peso, postura, ferramentas',t:'long'},
+  {k:'hoje_trab',r:'Trabalha hoje? Em quê',t:'txt'},
+  {k:'hoje_renda',r:'Quanto recebe hoje',t:'txt'},
+  {k:'safras',r:'Períodos de safra ou contratos anteriores com a mesma empresa',t:'long',
+   d:'A soma dos períodos é o que sustenta o caso.'}]},
+ {s:'O que aconteceu', c:[
+  {k:'tipo',r:'Marque o que corresponde',t:'multi',
+   op:['Acidente no trabalho','Acidente de trajeto','Doença ligada ao trabalho','Sem salário e sem INSS','Óbito']},
+  {k:'data_ac',r:'Data do acidente ou de início dos sintomas',t:'data'},
+  {k:'hora_ac',r:'Hora',t:'hora'},{k:'local_ac',r:'Local exato',t:'txt'},
+  {k:'relato',r:'Conte com suas palavras o que aconteceu — ou, se for doença, como o problema começou e foi piorando',t:'long'},
+  {k:'depois',r:'Quem mandou você fazer aquilo, o que a empresa fez depois, e o que disseram a você',t:'long'}]},
+ {s:'Sua saúde', c:[
+  {k:'diag',r:'Qual o diagnóstico / o que o médico disse',t:'long'},
+  {k:'cid',r:'CID, se souber',t:'txt'},
+  {k:'medico',r:'Médico ou hospital que atendeu',t:'txt'},
+  {k:'tratamento',r:'Faz tratamento hoje? Qual',t:'txt'},
+  {k:'preexist',r:'Já tinha esse problema antes de entrar na empresa? Já trabalhou em outro lugar fazendo a mesma coisa? Por quanto tempo?',t:'long'},
+  {k:'af15',r:'Ficou afastado do trabalho por mais de 15 dias?',t:'sn'},
+  {k:'inss',r:'Recebeu benefício do INSS?',t:'sn'},
+  {k:'b91',r:'O benefício era acidentário (B91) ou comum (B31)?',t:'txt'},
+  {k:'volta',r:'Depois da alta, a empresa aceitou você de volta?',t:'sn'},
+  {k:'limbo',r:'Ficou algum período sem salário e sem benefício?',t:'sn'},
+  {k:'plano',r:'Tinha plano de saúde pela empresa? Foi cortado?',t:'txt'},
+  {k:'especie',r:'Espécie do benefício',t:'txt'},
+  {k:'dib',r:'Início (DIB)',t:'data'},{k:'dcb',r:'Fim (DCB)',t:'data'},
+  {k:'sem_nada',r:'Período sem salário e sem INSS',t:'txt'}]},
+ {s:'Como era o trabalho e a segurança', c:[
+  {k:'cat',r:'A empresa emitiu CAT (comunicação de acidente de trabalho)?',t:'sn'},
+  {k:'epi',r:'Recebia equipamento de proteção adequado e em bom estado?',t:'sn'},
+  {k:'fisc_epi',r:'Alguém fiscalizava se você usava o equipamento?',t:'sn'},
+  {k:'treino',r:'Recebeu treinamento de segurança, com assinatura de lista?',t:'sn'},
+  {k:'protecao',r:'Havia proteção nas máquinas, guarda-corpo, sinalização?',t:'sn'},
+  {k:'pausa',r:'Rural/fruticultura: tinha pausa de 10 minutos a cada 90 de trabalho?',t:'sn'},
+  {k:'repet',r:'Trabalhava em pé ou repetindo o mesmo movimento o dia todo?',t:'sn'},
+  {k:'sol',r:'Trabalhava exposto ao sol e ao calor forte? Havia sombra e água?',t:'sn'},
+  {k:'veneno',r:'Aplicava, preparava ou trabalhava perto de veneno/agrotóxico?',t:'sn'},
+  {k:'ambiente',r:'Descreva o ambiente: ruído, calor, produtos, máquinas, altura, transporte — e o que faltava de proteção',t:'long'}]},
+ {s:'Como está sua vida hoje', c:[
+  {k:'perdas',r:'O que você fazia antes e não consegue mais fazer — no trabalho, em casa, com a família, no lazer',t:'long'},
+  {k:'dor',r:'Sente dor? Onde, com que frequência, o que piora, o que alivia, que remédio toma',t:'long'},
+  {k:'sequela',r:'Ficou alguma marca ou sequela visível',t:'multi',
+   op:['Cicatriz','Amputação','Dificuldade de andar','Deformidade','Usa prótese/órtese','Nenhuma']},
+  {k:'gastos',r:'Gastou dinheiro com o quê (remédio, consulta, transporte)',t:'long'},
+  {k:'notas',r:'Guardou as notas?',t:'sn'},
+  {k:'cuida',r:'Quem cuida de você hoje',t:'txt'},
+  {k:'cuidador',r:'Alguém deixou de trabalhar para cuidar?',t:'txt'}]},
+ {s:'Testemunhas', c:[
+  {k:'t1',r:'Testemunha 1 — nome, telefone, ainda trabalha na empresa?',t:'txt'},
+  {k:'t2',r:'Testemunha 2 — nome, telefone, ainda trabalha na empresa?',t:'txt'},
+  {k:'t3',r:'Testemunha 3 — nome, telefone, ainda trabalha na empresa?',t:'txt'}]},
+ {s:'Documentos', c:[
+  {k:'docs',r:'Marque o que já trouxe',t:'multi',
+   op:['Documento de identidade e CPF','CAT (comunicação de acidente)','Laudos e relatórios de médicos',
+       'PPP / exames do trabalho (ASO)','Carteira de trabalho','Cartas e comunicados do INSS',
+       'Exames (raio-X, ultrassom, ressonância, audiometria)','Fotos do local de trabalho ou da lesão',
+       'Contracheques (últimos 12 meses)','Extrato de benefícios (Meu INSS)','Receitas e notas de remédio']},
+  {k:'docs_outros',r:'Outros documentos entregues / o que ficou de trazer e até quando',t:'long'}]},
+ {s:'Uso interno — não preencher com o cliente presente', i:true, c:[
+  {k:'i_prescr',r:'Data em que soube da relação com o trabalho (marco da prescrição)',t:'data'},
+  {k:'i_limite',r:'Prazo-limite para ajuizar',t:'data'},
+  {k:'i_foro',r:'Justiça competente / vara',t:'txt'},
+  {k:'i_dossie',r:'Patologia e dossiê de evidência aplicável',t:'txt'},
+  {k:'i_alerta',r:'Sinais de alerta, contradições e pontos frágeis detectados no atendimento',t:'long'},
+  {k:'i_faltam',r:'Documentos indispensáveis que faltam, meio de obtenção e prazo',t:'long'},
+  {k:'i_teses',r:'Hipótese de nexo, grau de incapacidade e teses candidatas',t:'long'},
+  {k:'i_nexo',r:'Nexo (0-10, peso 3)',t:'num'},{k:'i_incap',r:'Incapacidade (0-10, peso 3)',t:'num'},
+  {k:'i_imput',r:'Imputação (0-10, peso 3)',t:'num'},{k:'i_prova',r:'Prova (0-10, peso 2)',t:'num'},
+  {k:'i_tempo',r:'Tempo (0-10, peso 2)',t:'num'},{k:'i_solv',r:'Solvência (0-10)',t:'num'},
+  {k:'i_coer',r:'Coerência (0-10)',t:'num'},
+  {k:'i_encam',r:'Encaminhamento',t:'esc',
+   op:['Ajuizar','Ajuizar após diligências','Aguardar prova','Não ajuizar — explicar por escrito']},
+  {k:'i_passo',r:'Próximo passo / responsável / prazo',t:'long'}]},
+];
+const FICHA_GERAL = [
+ {s:'Quem é você', c:[
+  {k:'nome',r:'Nome',t:'txt'},{k:'pis',r:'PIS',t:'txt'},
+  {k:'contrato',r:'Início e fim do contrato',t:'txt'},
+  {k:'ja_acao',r:'Já promoveu/promove ação contra a mesma empresa?',t:'sn'},
+  {k:'ja_proc',r:'Já assinou procuração para outro advogado?',t:'sn'}]},
+ {s:'A empresa e a função', c:[
+  {k:'empresa',r:'Nome da empresa reclamada',t:'txt'},
+  {k:'funcao',r:'Função para a qual foi contratado',t:'txt'},
+  {k:'atividades',r:'Quais eram as atividades desempenhadas no trabalho?',t:'long'},
+  {k:'equiparacao',r:'Tinha colega que fazia as mesmas funções e recebia mais? Tem o contracheque dele ou ele pode testemunhar?',t:'long'},
+  {k:'tempo_equip',r:'Se sim, quanto tempo de serviço os dois tinham na empresa?',t:'txt'},
+  {k:'pcs',r:'Havia, na empresa, plano de cargos e salários?',t:'sn'},
+  {k:'ctps',r:'CTPS assinada?',t:'sn'},
+  {k:'prazo',r:'Foi contratado por tempo indeterminado, determinado ou intermitente?',t:'txt'},
+  {k:'local_trab',r:'O trabalho era na própria empresa ou externo? Precisava comparecer às dependências?',t:'long'},
+  {k:'subord',r:'Ficava subordinado a alguém? Podia escolher o horário? Podia colocar outra pessoa no seu lugar?',t:'long'},
+  {k:'gestao',r:'Realizava alguma função com poderes de gestão? Especifique.',t:'long'},
+  {k:'nfunc',r:'Número de funcionários da empresa',t:'txt'}]},
+ {s:'Jornada', c:[
+  {k:'j_seg',r:'Segunda a sexta — entrada, saída para descanso, retorno, saída',t:'txt'},
+  {k:'j_sab',r:'Sábado — entrada, saída para descanso, retorno, saída',t:'txt'},
+  {k:'j_dom',r:'Domingo — entrada, saída para descanso, retorno, saída',t:'txt'},
+  {k:'controle',r:'Havia controle de horário? De que forma? Era registrado conforme a realidade, ou registrava e voltava a trabalhar?',t:'long'},
+  {k:'extras',r:'Fazia horas extras? Com que frequência? Média diária/semanal/mensal?',t:'long'},
+  {k:'extras_pag',r:'Havendo horas extras, elas eram pagas ou compensadas?',t:'txt'},
+  {k:'banco',r:'Havia banco de horas? Você assinou algo nesse sentido?',t:'txt'},
+  {k:'sobreaviso',r:'Precisava ficar de prontidão (na empresa) ou de sobreaviso (em casa) fora do horário?',t:'sn'},
+  {k:'sobre_pago',r:'Se sim, recebia algo por isso?',t:'txt'}]},
+ {s:'Salário e benefícios', c:[
+  {k:'valor',r:'Valor do salário',t:'txt'},
+  {k:'period',r:'Periodicidade do pagamento',t:'esc',op:['mensal','semanal','quinzenal','dia','hora','peça/tarefa']},
+  {k:'atraso',r:'O salário era pago com atraso? Com frequência?',t:'txt'},
+  {k:'forma',r:'Forma de pagamento: transferência ou em espécie?',t:'txt'},
+  {k:'porfora',r:'Recebia algo por fora do contracheque?',t:'txt'},
+  {k:'comissao',r:'Recebia comissão ou alguma gratificação?',t:'txt'},
+  {k:'noturno',r:'Recebeu adicional noturno?',t:'txt'},
+  {k:'beneficios',r:'Recebeu benefício: alimentação, moradia, vestuário, plano de saúde/odontológico, vale-transporte?',t:'long'},
+  {k:'plr',r:'Recebia participação nos lucros e resultados?',t:'txt'},
+  {k:'salfam',r:'Tem/teve filho de até 14 anos durante o contrato? Recebeu salário-família?',t:'txt'},
+  {k:'alteracao',r:'Houve alteração contratual — jornada, função? Concordou? Assinou algo?',t:'long'},
+  {k:'despesas',r:'Arcava com alguma despesa para exercer as atividades?',t:'long'},
+  {k:'contrato_ass',r:'Assinou contrato de trabalho?',t:'sn'}]},
+ {s:'Locais e transferências', c:[
+  {k:'cidades',r:'Locais (cidades) em que trabalhava',t:'txt'},
+  {k:'grupo',r:'Trabalhou para outras empresas do mesmo grupo? Quais atividades?',t:'long'},
+  {k:'transfer',r:'Já foi transferido para outra cidade? Provisória ou definitiva? Recebeu o adicional?',t:'long'}]},
+ {s:'A saída', c:[
+  {k:'motivo',r:'Qual foi o motivo da extinção do contrato? Como foi comunicada?',t:'long'},
+  {k:'aviso',r:'O aviso prévio foi trabalhado ou indenizado? Se trabalhado, cumpriu integralmente?',t:'txt'},
+  {k:'data_resc',r:'Data do pagamento da rescisão',t:'data'},
+  {k:'trct',r:'Recebeu o termo de rescisão?',t:'sn'},
+  {k:'guias',r:'Recebeu as guias do seguro-desemprego e do FGTS?',t:'sn'},
+  {k:'sd_antes',r:'Já recebeu o seguro-desemprego alguma vez? Quando?',t:'txt'},
+  {k:'desconto',r:'Sofreu algum desconto indevido na rescisão?',t:'txt'},
+  {k:'ferias',r:'Ficou sem gozar e/ou receber algum período de férias?',t:'txt'}]},
+ {s:'Saúde e segurança', c:[
+  {k:'agentes',r:'Havia exposição a agentes biológicos, químicos, calor, amianto, benzeno, umidade, radiação, vibração, inflamáveis, eletricidade?',t:'long'},
+  {k:'adicional',r:'Recebeu adicional de periculosidade ou insalubridade? Em qual percentual?',t:'txt'},
+  {k:'epi',r:'Usava EPI? Quais? Havia fiscalização do uso?',t:'long'},
+  {k:'acidente',r:'Sofreu acidente ou doença causada ou agravada pelo trabalho?',t:'sn'},
+  {k:'data_ac',r:'Data do acidente',t:'data'},
+  {k:'afast',r:'Data do afastamento pelo INSS',t:'data'},
+  {k:'beneficio',r:'Benefício e duração',t:'txt'},
+  {k:'cat',r:'Houve comunicação de acidente de trabalho (CAT)?',t:'sn'},
+  {k:'estetico',r:'Dano estético',t:'txt'},
+  {k:'sequelas',r:'Sequelas gerais',t:'long'},
+  {k:'desp_med',r:'Despesas médicas com comprovantes de pagamento',t:'txt'},
+  {k:'plano_corte',r:'Houve supressão do plano de saúde?',t:'sn'},
+  {k:'volta',r:'Ao ter alta do INSS, foi aceito na empresa?',t:'sn'},
+  {k:'sem_sal',r:'Se não, a empresa pagou salário durante o afastamento?',t:'txt'},
+  {k:'aso',r:'Possui atestado de saúde ocupacional (ASO)?',t:'sn'}]},
+ {s:'Assédio, estabilidade e prova', c:[
+  {k:'assedio',r:'Sofreu assédio moral ou sexual?',t:'long'},
+  {k:'estab',r:'Durante o contrato, teve alguma destas estabilidades',t:'multi',
+   op:['Gestante','Acidentado','Representante da CIPA','Comissão de conciliação prévia','Representante dos empregados']},
+  {k:'estab_dem',r:'Quando foi demitido, estava no período de estabilidade?',t:'sn'},
+  {k:'punicao',r:'Sofreu advertência ou suspensões?',t:'txt'},
+  {k:'testemunhas',r:'Para quais fatos tem testemunha?',t:'long'}]},
+];
+
+const FICHA_PADRAO = [
+  { nome:'Acidente de trabalho e doença ocupacional', area:'Acidente de trabalho', ordem:1, estrutura:FICHA_ACIDENTE },
+  { nome:'Trabalhista geral', area:'Trabalhista', ordem:2, estrutura:FICHA_GERAL },
+];
+let FICHA = null, FICHAMOD = [], FICHASALVA = null;
+
+/* Os modelos moram no banco, mas nascem daqui: na primeira vez que a tela abre,
+   ela planta os dois modelos de papel que o escritório já usava. */
+async function semearModelos(){
+  const e = await escId();
+  const { data } = await sb.from('ficha_modelo').select('id,nome');
+  const tem = new Set((data||[]).map(x=>x.nome));
+  const novos = FICHA_PADRAO.filter(m => !tem.has(m.nome))
+    .map(m => ({ escritorio_id:e, nome:m.nome, area:m.area, ordem:m.ordem, estrutura:m.estrutura }));
+  if (novos.length) await sb.from('ficha_modelo').insert(novos);
+  FICHAMOD = (await sb.from('ficha_modelo').select('*').eq('ativo',true).order('ordem')).data || [];
+  return FICHAMOD;
+}
+window.abrirFicha = async function(leadId){
+  const ja = (await sb.from('ficha').select('id').eq('lead_id', leadId).limit(1).maybeSingle()).data;
+  if (ja) { location.hash = '#/ficha/' + ja.id; return; }
+  await semearModelos();
+  const nomes = FICHAMOD.map((m,i)=>`${i+1}) ${m.nome}`).join('\n');
+  const esc = prompt('Qual ficha?\n\n' + nomes + '\n\nDigite o número:', '1');
+  const m = FICHAMOD[Number(esc)-1]; if (!m) return;
+  const l = (await sb.from('lead').select('*').eq('id', leadId).maybeSingle()).data;
+  const resp = {};
+  if (l?.nome) resp.nome = l.nome;
+  if (l?.telefone) resp.fone = l.telefone;
+  if (l?.email) resp.email = l.email;
+  const { data, error } = await sb.from('ficha').insert({
+    escritorio_id: await escId(), modelo_id: m.id, lead_id: leadId,
+    caso_id: l?.caso_id || null, respostas: resp,
+  }).select('id').maybeSingle();
+  if (error) return alert('Não deu para criar a ficha: ' + error.message);
+  location.hash = '#/ficha/' + data.id;
+};
+const campoFicha = (c, v) => {
+  const id = 'fc-' + c.k, val = v == null ? '' : v;
+  const rot = `<div style="font-size:12.6px;color:var(--i2);margin-bottom:3px">${esc(c.r)}${
+    c.d?`<span class="sub" style="display:block;margin:1px 0 0">${esc(c.d)}</span>`:''}</div>`;
+  if (c.t === 'long')  return rot + `<textarea id="${id}" rows="3" style="width:100%">${esc(val)}</textarea>`;
+  if (c.t === 'sn')    return rot + `<div style="display:flex;gap:14px;flex-wrap:wrap">${
+    ['sim','não','não sei'].map(o=>`<label style="display:flex;gap:5px;align-items:center;font-size:13px">
+      <input type="radio" name="${id}" value="${o}" ${val===o?'checked':''}> ${o}</label>`).join('')}</div>`;
+  if (c.t === 'esc')   return rot + `<select id="${id}"><option value=""></option>${
+    (c.op||[]).map(o=>`<option ${val===o?'selected':''}>${esc(o)}</option>`).join('')}</select>`;
+  if (c.t === 'multi') { const m = Array.isArray(val)?val:[];
+    return rot + `<div style="display:flex;gap:6px 16px;flex-wrap:wrap">${
+    (c.op||[]).map((o,i)=>`<label style="display:flex;gap:5px;align-items:center;font-size:13px">
+      <input type="checkbox" name="${id}" value="${esc(o)}" ${m.includes(o)?'checked':''}> ${esc(o)}</label>`).join('')}</div>`; }
+  const tipo = c.t==='data' ? 'date' : c.t==='hora' ? 'time' : c.t==='num' ? 'number' : 'text';
+  return rot + `<input id="${id}" type="${tipo}" value="${esc(val)}" style="width:100%">`;
+};
+function lerFicha(){
+  const est = FICHA.modelo.estrutura, r = {};
+  for (const sec of est) for (const c of sec.c) {
+    const id = 'fc-' + c.k;
+    if (c.t === 'sn')   { const m = document.querySelector(`input[name="${id}"]:checked`); if (m) r[c.k] = m.value; }
+    else if (c.t === 'multi') { const m = [...document.querySelectorAll(`input[name="${id}"]:checked`)].map(x=>x.value); if (m.length) r[c.k] = m; }
+    else { const el = document.getElementById(id); if (el && el.value !== '') r[c.k] = el.value; }
+  }
+  return r;
+}
+window.salvarFicha = async function(silencioso){
+  const st = document.getElementById('fi-st');
+  const respostas = lerFicha();
+  if (st && !silencioso) st.textContent = 'guardando…';
+  const { error } = await sb.from('ficha').update({ respostas, atualizado_em: new Date().toISOString() }).eq('id', FICHA.id);
+  if (st) { st.style.color = error ? 'var(--crit)' : 'var(--i3)';
+            st.textContent = error ? error.message : 'guardado ' + new Date().toTimeString().slice(0,5); }
+  FICHA.respostas = respostas;
+};
+async function telaFicha(id){
+  const f = (await sb.from('ficha').select('*, modelo:modelo_id(*), lead:lead_id(nome,telefone), caso:caso_id(id,titulo)').eq('id', id).maybeSingle()).data;
+  if (!f) return erro('Ficha não encontrada.');
+  FICHA = f;
+  const r = f.respostas || {}, est = f.modelo?.estrutura || [];
+  const total = est.reduce((a,s)=>a+s.c.length,0);
+  const feitos = est.reduce((a,s)=>a+s.c.filter(c=>r[c.k]!=null && r[c.k]!=='').length,0);
+  app.innerHTML = menu('captacao') + `
+  <main><h1>Ficha de atendimento</h1>
+  <p class="meta">${esc(f.modelo?.nome||'')}${f.lead?.nome?' · '+esc(f.lead.nome):''} ·
+    aberta em ${br(String(f.criado_em).slice(0,10))}. O que você escreve é guardado sozinho ao sair de cada campo.</p>
+  <div class="kpis">
+    <div class="kpi"><div class="n">${feitos}/${total}</div><div class="l">respondido</div></div>
+    <div class="kpi"><div class="n">${pct(feitos,total)}%</div><div class="l">da ficha</div></div>
+    <div class="kpi"><div class="n">${f.situacao==='concluida'?'concluída':'rascunho'}</div><div class="l">situação</div></div>
+    <div class="kpi"><div class="n">${f.caso?'sim':'não'}</div><div class="l">virou caso</div></div>
+  </div>
+  <div class="card"><div style="padding:12px 18px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <button class="btn ok" onclick="salvarFicha()">Guardar agora</button>
+    <button class="btn" onclick="imprimirFicha()">Imprimir para assinar</button>
+    <button class="btn" onclick="fichaVirarFatos()">Levar respostas para os fatos do caso</button>
+    <button class="btn" onclick="fichaCobrarDocs()">Cobrar os documentos que faltam</button>
+    <button class="btn" onclick="concluirFicha()">${f.situacao==='concluida'?'Reabrir':'Concluir'}</button>
+    <span class="sub" id="fi-st" style="margin:0"></span>
+  </div></div>
+  ${est.map(sec=>`<div class="card"${sec.i?' style="border-left:3px solid var(--warn)"':''}>
+    <h2>${esc(sec.s)}</h2>
+    <div style="padding:6px 18px 16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px 16px">
+      ${sec.c.map(c=>`<div${c.t==='long'||c.t==='multi'?' style="grid-column:1/-1"':''}>${campoFicha(c, r[c.k])}</div>`).join('')}
+    </div></div>`).join('')}
+  </main>` + rodape();
+  app.querySelectorAll('input,textarea,select').forEach(el =>
+    el.addEventListener('change', () => salvarFicha(true)));
+}
+
+window.concluirFicha = async function(){
+  await salvarFicha(true);
+  const nova = FICHA.situacao === 'concluida' ? 'rascunho' : 'concluida';
+  await sb.from('ficha').update({ situacao: nova, assinada_em: nova==='concluida' ? hoje() : null }).eq('id', FICHA.id);
+  telaFicha(FICHA.id);
+};
+/* Cada resposta longa vira um fato do caso — é isso que a minuta lê depois. */
+window.fichaVirarFatos = async function(){
+  await salvarFicha(true);
+  if (!FICHA.caso_id) return alert('Esta ficha ainda não está ligada a um caso. Feche o lead como cliente primeiro — o caso nasce ali.');
+  const est = FICHA.modelo.estrutura, r = FICHA.respostas || {};
+  const jaTem = new Set(((await sb.from('fato').select('descricao').eq('caso_id', FICHA.caso_id)).data||[]).map(x=>x.descricao));
+  const novos = [];
+  for (const sec of est) { if (sec.i) continue;
+    for (const c of sec.c) {
+      const v = r[c.k]; if (v == null || v === '' || (Array.isArray(v) && !v.length)) continue;
+      if (c.t !== 'long' && String(v).length < 12) continue;      // dado curto não é fato
+      const d = `${c.r} — ${Array.isArray(v) ? v.join('; ') : v}`;
+      if (!jaTem.has(d)) novos.push(d);
+    }
+  }
+  if (!novos.length) return alert('Nada novo para levar: ou a ficha está vazia, ou os fatos já estão no caso.');
+  const e = await escId();
+  const base = ((await sb.from('fato').select('id').eq('caso_id', FICHA.caso_id)).data||[]).length;
+  const { error } = await sb.from('fato').insert(novos.map((d,i)=>({
+    escritorio_id:e, caso_id:FICHA.caso_id, descricao:d, ordem:base+i, origem:'ficha de atendimento' })));
+  alert(error ? 'Erro: '+error.message : `${novos.length} fato(s) levados para o caso. Abra o caso e confira antes de gerar a minuta.`);
+};
+/* O checklist do fim da ficha vira pendência no caso, com o que NÃO foi marcado. */
+window.fichaCobrarDocs = async function(){
+  await salvarFicha(true);
+  if (!FICHA.caso_id) return alert('Ligue a ficha a um caso antes — o pedido de documento mora no caso.');
+  const est = FICHA.modelo.estrutura, r = FICHA.respostas || {};
+  let campo = null;
+  for (const sec of est) for (const c of sec.c) if (c.t==='multi' && /document/i.test(c.r)) campo = c;
+  if (!campo) return alert('Este modelo não tem checklist de documentos.');
+  const trouxe = new Set(Array.isArray(r[campo.k]) ? r[campo.k] : []);
+  const faltam = (campo.op||[]).filter(o => !trouxe.has(o));
+  if (!faltam.length) return alert('O cliente trouxe tudo o que a ficha pede.');
+  const e = await escId();
+  const jaTem = new Set(((await sb.from('caso_documento').select('descricao').eq('caso_id', FICHA.caso_id)).data||[]).map(x=>x.descricao));
+  const novos = faltam.filter(d=>!jaTem.has(d));
+  if (!novos.length) return alert('Esses documentos já estão na lista do caso.');
+  const base = ((await sb.from('caso_documento').select('id').eq('caso_id', FICHA.caso_id)).data||[]).length;
+  const { error } = await sb.from('caso_documento').insert(novos.map((d,i)=>({
+    escritorio_id:e, caso_id:FICHA.caso_id, descricao:d, ordem:base+i, obs:'pedido na ficha de atendimento' })));
+  alert(error ? 'Erro: '+error.message : `${novos.length} documento(s) entraram na lista do caso.`);
+};
+/* Versão de papel: o navegador imprime ou salva em PDF. */
+window.imprimirFicha = async function(){
+  await salvarFicha(true);
+  const e = (await sb.from('escritorio').select('*').limit(1).maybeSingle()).data || {};
+  const est = FICHA.modelo.estrutura, r = FICHA.respostas || {};
+  const linha = (c) => { const v = r[c.k];
+    const txt = v == null || v === '' ? '&nbsp;' : (Array.isArray(v) ? v.join(' · ') : esc(v));
+    return `<div class="q"><b>${esc(c.r)}</b><div class="a">${txt}</div></div>`; };
+  const corpo = est.filter(s=>!s.i).map(s =>
+    `<h2>${esc(s.s)}</h2>${s.c.map(linha).join('')}`).join('');
+  const w = window.open('', '_blank'); if (!w) return alert('O navegador bloqueou a janela de impressão.');
+  w.document.write(`<!doctype html><meta charset="utf-8"><title>Ficha de atendimento</title>
+  <style>@page{size:A4;margin:18mm 16mm}
+  body{font:11pt/1.5 Georgia,'Times New Roman',serif;color:#141310;margin:0}
+  .tim{text-align:center;border-bottom:1.5px solid #141310;padding-bottom:8px;margin-bottom:18px}
+  .tim b{font-size:14pt;letter-spacing:.02em}.tim span{display:block;font-size:9pt;color:#4a463e;margin-top:3px}
+  h1{font-size:14pt;margin:0 0 2px}h2{font-size:11.5pt;margin:16px 0 6px;padding-top:8px;border-top:1px solid #ddd8cd;page-break-after:avoid}
+  .q{margin:0 0 9px;page-break-inside:avoid}.q b{font-weight:normal;color:#4a463e;font-size:9.5pt;display:block}
+  .a{border-bottom:1px solid #ccc7bb;min-height:17px;padding:1px 0}
+  .dec{margin-top:20px;font-size:10pt;text-align:justify}
+  .ass{margin-top:34px;text-align:center;font-size:10pt}
+  .ass div{border-top:1px solid #141310;width:62%;margin:0 auto;padding-top:4px}</style>
+  <div class="tim"><b>${esc(e.nome||'')}</b>
+    <span>${[e.cnpj?'CNPJ '+e.cnpj:'', e.endereco||'', e.telefone||'', e.email||''].filter(Boolean).join(' · ')}</span></div>
+  <h1>Ficha de atendimento</h1>
+  <p style="font-size:10pt;color:#4a463e;margin:0 0 6px">${esc(FICHA.modelo.nome)}</p>
+  ${corpo}
+  <div class="dec"><b>Declaração.</b> Declaro que as informações acima foram prestadas por mim, são verdadeiras e
+  correspondem ao que vivi. Comprometo-me a entregar os documentos solicitados e a comunicar qualquer fato novo.
+  Autorizo o escritório a tratar meus dados pessoais e de saúde exclusivamente para analisar e conduzir este caso,
+  nos termos da Lei nº 13.709/2018.</div>
+  <div class="ass"><div style="margin-bottom:26px">&nbsp;</div>
+    <div>Cliente</div>
+    <p style="margin-top:16px">${esc(e.endereco? String(e.endereco).split(',').slice(-1)[0].trim() : 'Petrolina, Pernambuco')}, ______ de ____________________ de ${new Date().getFullYear()}.</p>
+  </div>`);
+  w.document.close(); setTimeout(()=>w.print(), 400);
+};
+
 async function telaCaptacao(){
   const [le, ar, og] = await Promise.all([
     sb.from('lead').select('*').order('criado_em', { ascending:false }),
@@ -2418,6 +2794,7 @@ async function telaCaso(id){
   CASO = cs.data; CASOPROC = pr.data || [];
   CASODOCS = cd.data || []; CASOMODELOS = cm.data || []; CASOASSIN = asg.data || [];
   CASOTIPOS = tpc.data || []; CASOFATOS = ftx.data || [];
+  CASOFICHA = ((await sb.from('ficha').select('id,situacao,modelo:modelo_id(nome)').eq('caso_id', id).limit(1)).data||[])[0] || null;
   await carregarTags().catch(()=>{});
   const procIds = CASOPROC.map(p => p.id);
   const mv = procIds.length
@@ -2540,6 +2917,9 @@ async function telaCaso(id){
   <div class="card"><h2>Linha do tempo dos fatos, com a prova de cada um</h2>
     <p class="nota">Um fato por linha, na ordem em que aconteceu, dizendo qual documento prova aquilo.
       É daqui que sai a narrativa da inicial — e é isto que evita alegar o que não se consegue provar.</p>
+    ${CASOFICHA ? `<p class="nota" style="margin:0 18px 8px"><b>Ficha de atendimento:</b>
+      ${esc(CASOFICHA.modelo?.nome||'')} (${esc(CASOFICHA.situacao)}) ·
+      <a class="lnk" href="#/ficha/${CASOFICHA.id}">abrir</a> — de lá você leva as respostas para cá.</p>` : ''}
     ${CASOFATOS.length ? `<table><thead><tr><th style="width:120px">Quando</th><th>O que aconteceu</th>
       <th>O que prova</th><th></th></tr></thead><tbody>
       ${[...CASOFATOS].sort((a,b)=>String(a.data||'').localeCompare(String(b.data||''))).map(f=>`<tr>
@@ -6247,7 +6627,7 @@ window.copiarFatos = async () => {
   catch(e){ st.textContent = 'não deu para copiar'; }
   setTimeout(()=>{ if (st) st.textContent=''; }, 3000);
 };
-let CASODOCS = [], CASOMODELOS = [], CASOTIPOS = [];
+let CASODOCS = [], CASOMODELOS = [], CASOTIPOS = [], CASOFICHA = null;
 function tipoAtual(c){ return CASOTIPOS.find(t => t.id === (c||CASO)?.tipo_caso_id) || null; }
 window.aplicarTipo = async (casoId) => {
   const st = document.getElementById('tp-st');
@@ -7759,6 +8139,7 @@ async function rota(){
   if(h.startsWith('#/tutoriais'))  return telaTutoriais();
   if(h.startsWith('#/auditoria'))  return telaAuditoria();
   if(h.startsWith('#/investir'))   return telaInvestir();
+  if(h.startsWith('#/ficha/'))     return telaFicha(h.split('/')[2]);
   if(h.startsWith('#/pessoal'))    return telaPessoal();
   if(h.startsWith('#/config'))     return telaConfig();
   return telaInicio();
