@@ -579,13 +579,16 @@ async function telaProcessos(){
   CASOSLISTA = kk.data || [];
   const extraP = Object.fromEntries((px.data||[]).map(x=>[x.id,x]));
   PROCS = (data||[]).map(x => ({ ...x, ...(extraP[x.id]||{}) }));
-  const parados = PROCS.filter(p=>p.ultima_movimentacao && (Date.now()-Date.parse(p.ultima_movimentacao))/864e5 > 90).length;
-  const semSync = PROCS.filter(p=>!p.ultima_sync).length;
+  const parados = PROCS.filter(p=>p.fase!=='arquivado' && p.ultima_movimentacao
+    && (Date.now()-Date.parse(p.ultima_movimentacao))/864e5 > 90).length;
+  const semSync = PROCS.filter(p=>p.fase!=='arquivado' && !p.ultima_sync).length;
+  const arquivados = PROCS.filter(p=>p.fase==='arquivado').length;
   app.innerHTML = menu('processos') + `
   <main><h1>Processos</h1><p class="meta">Andamento buscado no DataJud do CNJ, de madrugada. Clique para abrir a linha do tempo.
     Para ver o que está parado demais e cobrar, abra <a class="lnk" href="#/andamento">Andamento</a>.</p>
   <div class="kpis">
-    <div class="kpi"><div class="n">${PROCS.length}</div><div class="l">processos</div></div>
+    <div class="kpi"><div class="n">${PROCS.length - arquivados}</div><div class="l">processos em curso</div></div>
+    ${arquivados ? `<div class="kpi"><div class="n">${arquivados}</div><div class="l">arquivados</div></div>` : ''}
     <div class="kpi"><div class="n">${PROCS.reduce((a,p)=>a+Number(p.movimentacoes||0),0)}</div><div class="l">movimentações</div></div>
     <div class="kpi ${parados?'al':''}"><div class="n">${parados}</div><div class="l">parados há mais de 90 dias</div></div>
     <div class="kpi"><div class="n">${semSync}</div><div class="l">ainda não consultados</div></div>
@@ -2882,6 +2885,14 @@ window.vincularProcesso = async function(qual, ref, procId, el){
   const lista = qual === 'prazo' ? CASOPZ : CASOEV;
   const linha = lista.find(x => x.id === ref); if (linha) linha.processo_id = procId || null;
 };
+window.mudarFaseCaso = async (id, v, el) => {
+  const st = el.parentElement.querySelector('.sub');
+  if (st) st.textContent = 'salvando…';
+  const { error } = await sb.from('processo').update({ fase: v }).eq('id', id);
+  if (error) { if (st) { st.style.color='var(--crit)'; st.textContent = 'erro'; } return; }
+  const p = CASOPROC.find(x => x.id === id); if (p) p.fase = v;
+  telaCaso(CASO.id);
+};
 window.addAtividade = async (ev) => {
   ev.preventDefault();
   const f = ev.target, v = n => (f.elements[n]?.value || '').trim() || null;
@@ -3026,7 +3037,8 @@ async function telaCaso(id){
   const tipos = [...new Set(L.map(x=>x.tipo))];
   const idade = CASOPROC.map(p=>emTramite(p)).filter(x=>x!=null).sort((a,b)=>b-a)[0]
     ?? diasDesde(c.criado_em);
-  const paradoMais = CASOPROC.map(p=>diasDesde(CASOMOV[p.id] || p.data_ajuizamento))
+  const paradoMais = CASOPROC.filter(p=>p.fase!=='arquivado')
+    .map(p=>diasDesde(CASOMOV[p.id] || p.data_ajuizamento))
     .filter(x=>x!=null).sort((a,b)=>b-a)[0];
 
   app.innerHTML = menu('casos') + `
@@ -3144,11 +3156,18 @@ async function telaCaso(id){
         <td>${esc(p.tribunal_sigla||'—')}${p.orgao?'<span class="sub">'+esc(p.orgao)+'</span>':''}</td>
         <td>${esc(p.classe||'—')}${p.grau?'<span class="sub">'+esc(p.grau)+'</span>':''}</td>
         <td class="dt">${p.data_ajuizamento?br(p.data_ajuizamento):'—'}</td>
-        <td class="dt">${humano(emTramite(p))}<span class="sub">${esc(FASES[p.fase||'conhecimento'])}</span></td>
+        <td class="dt">${humano(emTramite(p))}
+          <select onchange="mudarFaseCaso('${p.id}', this.value, this)"
+                  style="font-size:11.5px;margin-top:3px;width:100%">
+            ${Object.entries(FASES).map(([k,r]) =>
+              `<option value="${k}" ${(p.fase||'conhecimento')===k?'selected':''}>${r}</option>`).join('')}
+          </select><span class="sub"></span></td>
         <td><span class="pill ${sf.cor}">${esc(sf.titulo)}</span><span class="sub" style="display:block;margin-top:3px">${esc(sf.acao)}</span></td>
         <td><button class="btn" onclick="tirarProcesso('${p.id}')">Desvincular</button></td>
       </tr>`; }).join('')}</tbody></table>
-      <p class="nota">Para mudar a fase ou silenciar o alerta de um processo, use o menu Andamento.</p>` : '<div class="vazio">Nenhum processo cadastrado ainda.</div>'}
+      <p class="nota">A fase é editável aqui mesmo. <b>Arquivado</b> encerra o processo: ele continua
+        guardado e pesquisável, mas sai das contas do menu Andamento e para de pedir providência.
+        Para silenciar um alerta temporariamente, use o menu Andamento.</p>` : '<div class="vazio">Nenhum processo cadastrado ainda.</div>'}
     ${pickerHtml(c.id)}
     <form onsubmit="addProcesso(event)" style="display:flex;gap:9px;flex-wrap:wrap;padding:14px 18px 18px;align-items:flex-end">
       <label style="display:flex;flex-direction:column;gap:3px;min-width:250px">
@@ -4179,7 +4198,7 @@ Não existe OCR separado: as páginas são vistas como imagem, então **PDF de t
 
 **Processos** é a lista de todos os números, com busca.
 
-**Andamento** ordena os processos pelos mais parados e mostra um semáforo por processo: em dia, atenção, parado. Dá para mudar a fase (conhecimento, recurso, execução, suspenso), marcar espera e silenciar o alerta de um processo que está corretamente parado.
+**Andamento** ordena os processos pelos mais parados e mostra um semáforo por processo: em dia, atenção, parado. Dá para mudar a fase (conhecimento, recurso, execução, suspenso, arquivado), marcar espera e silenciar o alerta de um processo que está corretamente parado. **Arquivado** é o fim de linha: o processo continua guardado e pesquisável, mas sai das contas e para de cobrar providência — tem um botão próprio para listar só os arquivados. A fase também pode ser mudada dentro do caso, na tabela de processos.
 
 ## 9. Clientes
 
@@ -6449,7 +6468,11 @@ function pintarAssinaturas(){
 
 /* --------------------------------------------- tempo de trâmite e paralisação */
 const DIA_MS = 864e5;
-const FASES = { conhecimento:'Conhecimento', recurso:'Recurso', execucao:'Execução', suspenso:'Suspenso' };
+const FASES = { conhecimento:'Conhecimento', recurso:'Recurso', execucao:'Execução',
+                suspenso:'Suspenso', arquivado:'Arquivado' };
+/* Arquivado é fim de linha: o processo não cobra mais nada e sai das contas
+   de andamento. Continua guardado e pesquisável — só para de pedir providência. */
+const arquivado = p => p.fase === 'arquivado';
 const diasDesde = d => {
   if (!d) return null;
   const s = String(d);
@@ -6473,6 +6496,9 @@ function semaforo(p){
   if (p.aguardando_ate && p.aguardando_ate >= hoje)
     return { cor:'cin', peso:0, silenciado:true, titulo:'Aguardando ' + br(p.aguardando_ate),
              acao: p.aguardando_obs || 'alerta silenciado até essa data' };
+  if (p.fase === 'arquivado')
+    return { cor:'cin', peso:-1, silenciado:true, titulo:'Arquivado',
+             acao:'processo encerrado — fica guardado, mas não cobra mais nada' };
   if (p.fase === 'suspenso')
     return { cor:'cin', peso:0, silenciado:true, titulo:'Suspenso', acao:'sem cobrança enquanto estiver suspenso' };
 
@@ -6555,10 +6581,13 @@ function pintarAndamento(){
   const linhas = AND.map(p => ({ p, s: semaforo(p) }))
     .sort((a,b) => b.s.peso - a.s.peso ||
       (diasDesde(ultimoSinal(b.p)) || 0) - (diasDesde(ultimoSinal(a.p)) || 0));
-  const vis = ANDFILTRO === 'tudo' ? linhas : linhas.filter(x => x.s.peso >= 3);
+  const vis = ANDFILTRO === 'arquivados' ? linhas.filter(x => arquivado(x.p))
+            : ANDFILTRO === 'tudo'       ? linhas.filter(x => !arquivado(x.p))
+            : linhas.filter(x => !arquivado(x.p) && x.s.peso >= 3);
   for (const b of document.querySelectorAll('#andf .btn')) b.classList.toggle('ok', b.dataset.f === ANDFILTRO);
-  if (!vis.length) return alvo.innerHTML =
-    '<div class="vazio">Nada pedindo providência agora. Bom sinal.</div>';
+  if (!vis.length) return alvo.innerHTML = ANDFILTRO === 'arquivados'
+    ? '<div class="vazio">Nenhum processo arquivado. Para arquivar um, mude a fase dele na lista.</div>'
+    : '<div class="vazio">Nada pedindo providência agora. Bom sinal.</div>';
   alvo.innerHTML = `<table><thead><tr>
       <th>Cliente / caso</th><th>Processo</th><th style="width:135px">Fase</th>
       <th style="width:110px">Em trâmite</th><th>Situação e providência</th>
@@ -6592,12 +6621,14 @@ async function telaAndamento(){
   if (pp.error) return erro(pp.error.message);
   const extra = Object.fromEntries((px.data || []).map(x => [x.id, x]));
   AND = (pp.data || []).map(p => ({ ...p, ...(extra[p.id] || {}) }));
-  const s = AND.map(semaforo);
+  const vivos = AND.filter(p => !arquivado(p));
+  const s = vivos.map(semaforo);
   const criticos = s.filter(x => x.peso >= 4).length;
   const atencao  = s.filter(x => x.peso === 3).length;
-  const risco    = AND.filter(p => p.fase === 'execucao' && semaforo(p).peso >= 3).length;
+  const risco    = vivos.filter(p => p.fase === 'execucao' && semaforo(p).peso >= 3).length;
   const calados  = s.filter(x => x.silenciado).length;
-  const idades = AND.map(emTramite).filter(x => x != null);
+  const arqui    = AND.filter(arquivado).length;
+  const idades = vivos.map(emTramite).filter(x => x != null);
   const medio = idades.length ? Math.round(idades.reduce((a,b)=>a+b,0) / idades.length) : null;
   app.innerHTML = menu('andamento') + `
   <main><h1>Andamento dos processos</h1>
@@ -6613,10 +6644,12 @@ async function telaAndamento(){
   <div class="card"><h2>Os mais parados primeiro</h2>
     <p class="nota">Marque a fase de cada processo — a régua da execução é bem mais severa que a do conhecimento.
       Se o processo está só aguardando audiência já marcada, preencha “aguardando até” e ele para de aparecer aqui.
-      ${calados ? '<b>' + calados + '</b> processo(s) silenciado(s) no momento.' : ''}</p>
+      ${calados ? '<b>' + calados + '</b> processo(s) silenciado(s) no momento.' : ''}
+      ${arqui ? ' <b>' + arqui + '</b> arquivado(s) — fora das contas acima.' : ''}</p>
     <div id="andf" style="padding:0 18px 12px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn" data-f="atencao" onclick="filtrarAndamento('atencao')">só o que pede ação</button>
-      <button class="btn" data-f="tudo" onclick="filtrarAndamento('tudo')">todos os processos</button>
+      <button class="btn" data-f="tudo" onclick="filtrarAndamento('tudo')">todos em curso</button>
+      <button class="btn" data-f="arquivados" onclick="filtrarAndamento('arquivados')">arquivados${arqui?' ('+arqui+')':''}</button>
     </div>
     <div id="andlista"></div></div>
   </main>` + rodape();
