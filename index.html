@@ -3860,26 +3860,90 @@ function contar(lista, chave, rotulos){
   return [...m.entries()].map(([k,v]) => [rotulos ? (rotulos.get(k)||'não informado') : k, v])
     .sort((a,b)=>b[1]-a[1]);
 }
-/* ------------------------------------------------------------ playbook */
-let PBK = [];
+/* ------------------------------------------------------------ playbook
+   O playbook e o banco de teses guardam a MESMA tese em dois formatos: aqui
+   mora o texto pronto para colar na peça, lá mora o verbete que alimenta as
+   minutas e as habilidades. Desde a migração 20 existe `playbook.tese_id`
+   ligando os dois — e o formulário abaixo escreve nos dois de uma vez, que é
+   o que impede a duplicação de voltar a acontecer. */
+let PBK = [], PBTESES = [];
+const codigoDe = s => String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'')
+  .toUpperCase().replace(/[^A-Z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,60);
+
+window.sugerirCodigo = (el) => {
+  const f = el.form, cod = f.elements['codigo'];
+  if (cod && !cod.dataset.tocado) cod.value = codigoDe(el.value);
+};
+window.marcarCodigo = (el) => { el.dataset.tocado = '1'; };
+
 window.addTese = async ev => {
   ev.preventDefault();
   const f = ev.target, v = n => (f.elements[n]?.value || '').trim() || null;
   const st = document.getElementById('pb-st');
-  st.style.color='var(--i3)'; st.textContent = 'gravando…';
+  const e = await escId();
+  const area = v('area') || 'Trabalhista';
+  const tema = v('tema');
+  const codigo = v('codigo') || codigoDe(tema);
+  st.style.color = 'var(--i3)'; st.textContent = 'gravando nos dois lugares…';
+
+  /* 1 — o verbete no banco de teses (reaproveita se o código já existir) */
+  const ja = (await sb.from('tese').select('id,titulo').eq('codigo', codigo).limit(1).maybeSingle()).data;
+  let teseId = ja?.id;
+  if (!teseId) {
+    const r = await sb.from('tese').insert({
+      escritorio_id: e, codigo, area, titulo: tema,
+      rubrica: v('rubrica'), gatilho: v('gatilho'),
+      texto_base: v('texto'), origem: 'cadastrado pelo playbook',
+    }).select('id').maybeSingle();
+    if (r.error) { st.style.color='var(--crit)';
+      return st.textContent = 'erro no banco de teses: ' + r.error.message; }
+    teseId = r.data.id;
+  }
+
+  /* 2 — o texto pronto no playbook, já ligado ao verbete */
   const { error } = await sb.from('playbook').insert({
-    escritorio_id: await escId(), area: v('area'), tema: v('tema'), tese: v('tese'),
+    escritorio_id: e, area, tema, tese: v('tese'), tese_id: teseId,
     quando_usar: v('quando'), texto_padrao: v('texto'), contra: v('contra'),
     fundamento: v('fundamento'), ordem: PBK.length });
-  if (error) { st.style.color='var(--crit)'; st.textContent='erro: '+error.message; return; }
+  if (error) { st.style.color='var(--crit)';
+    return st.textContent = 'a tese entrou no banco, mas o texto pronto falhou: ' + error.message; }
   telaPlaybook();
 };
+
 window.tirarTese = async id => {
-  if (!confirm('Apagar esta tese do playbook?')) return;
+  const t = PBK.find(x => x.id === id);
+  const aviso = t?.tese_id
+    ? 'Apagar o texto pronto deste verbete?\n\nO verbete continua no banco de teses — só o texto sai.'
+    : 'Apagar esta tese do playbook?';
+  if (!confirm(aviso)) return;
   const { error } = await sb.from('playbook').delete().eq('id', id);
   if (error) return alert('Não foi possível: ' + error.message);
   telaPlaybook();
 };
+
+window.ligarTese = async (playbookId, teseId, el) => {
+  el.disabled = true;
+  const { error } = await sb.from('playbook').update({ tese_id: teseId || null }).eq('id', playbookId);
+  el.disabled = false;
+  if (error) return alert('Não deu para ligar: ' + error.message);
+  telaPlaybook();
+};
+
+/* Uma tese que ainda não tem texto pronto: leva os dados dela para o formulário. */
+window.escreverTexto = (codigo) => {
+  const t = PBTESES.find(x => x.codigo === codigo); if (!t) return;
+  const f = document.getElementById('pb-form'); if (!f) return;
+  f.elements['area'].value    = t.area || '';
+  f.elements['tema'].value    = t.titulo || '';
+  f.elements['codigo'].value  = t.codigo || '';
+  f.elements['codigo'].dataset.tocado = '1';
+  f.elements['rubrica'].value = t.rubrica || '';
+  f.elements['gatilho'].value = t.gatilho || '';
+  f.elements['texto'].value   = t.texto_base || '';
+  f.scrollIntoView({ block:'center' });
+  f.elements['tese'].focus();
+};
+
 window.copiarTese = async (id) => {
   const t = PBK.find(x=>x.id===id); if (!t) return;
   const txt = [t.tema, t.tese, t.texto_padrao, t.fundamento ? 'Fundamento: '+t.fundamento : '',
@@ -3889,41 +3953,81 @@ window.copiarTese = async (id) => {
   catch(e){ st.textContent = 'não deu para copiar'; }
   setTimeout(()=>{ if (st) st.textContent=''; }, 2500);
 };
+
 async function telaPlaybook(){
-  const { data, error } = await sb.from('playbook').select('*').eq('ativo', true).order('area').order('ordem');
-  if (error) return erro(error.message);
-  PBK = data || [];
+  const [pb, te] = await Promise.all([
+    sb.from('playbook').select('*').eq('ativo', true).order('area').order('ordem'),
+    sb.from('tese').select('id,codigo,titulo,rubrica,gatilho,area,texto_base')
+      .eq('ativo', true).not('codigo','like','\\_%').order('area').order('codigo'),
+  ]);
+  if (pb.error) return erro(pb.error.message);
+  PBK = pb.data || []; PBTESES = te.data || [];
+  const porId = new Map(PBTESES.map(t=>[t.id,t]));
+  const usadas = new Set(PBK.map(t=>t.tese_id).filter(Boolean));
+  const semTexto = PBTESES.filter(t => !usadas.has(t.id));
+  const soltos = PBK.filter(t => !t.tese_id);
   const areas = [...new Set(PBK.map(t=>t.area||'sem área'))];
+  const AREAS = [...new Set([...PBK.map(t=>t.area), ...PBTESES.map(t=>t.area)].filter(Boolean))].sort();
+
   app.innerHTML = menu('playbook') + `
   <main><h1>Playbook de teses</h1>
   <p class="meta">As suas posições padrão, escritas uma vez. Quando você for redigir, o texto já está aqui pronto,
-    com o fundamento e a resposta para a defesa mais comum. É o que faz a peça sair no seu jeito, e não num jeito genérico.</p>
+    com o fundamento e a resposta para a defesa mais comum. Cada verbete daqui é a face escrita de uma tese do
+    banco de teses — o formulário no fim da página grava nos dois lugares de uma vez só.</p>
   <div class="kpis">
-    <div class="kpi"><div class="n">${PBK.length}</div><div class="l">teses no playbook</div></div>
-    <div class="kpi"><div class="n">${areas.length}</div><div class="l">áreas cobertas</div></div>
-    <div class="kpi"><div class="n">${PBK.filter(t=>t.contra).length}</div><div class="l">com resposta à defesa</div></div>
+    <div class="kpi"><div class="n">${PBK.length}</div><div class="l">textos prontos</div></div>
+    <div class="kpi"><div class="n">${usadas.size}</div><div class="l">ligados ao banco de teses</div></div>
+    <div class="kpi ${soltos.length?'al':''}"><div class="n">${soltos.length}</div><div class="l">sem tese no banco</div></div>
+    <div class="kpi ${semTexto.length?'al':''}"><div class="n">${semTexto.length}</div><div class="l">teses ainda sem texto</div></div>
   </div>
+
+  ${semTexto.length ? `<div class="card" style="border-left:3px solid var(--warn)">
+    <h2>Teses do banco que ainda não têm texto pronto</h2>
+    <p class="nota">Elas já valem para as minutas e para as habilidades, mas não têm o parágrafo na sua voz.
+      Clique em <b>Escrever o texto</b> e o formulário abre preenchido — é só escrever o parágrafo e guardar.</p>
+    <table><thead><tr><th>Código</th><th>Título</th><th>Área</th><th></th></tr></thead><tbody>
+    ${semTexto.map(t=>`<tr>
+      <td class="proc" style="font-size:11.5px">${esc(t.codigo)}</td>
+      <td>${esc(t.titulo||'')}${t.rubrica?`<span class="sub">${esc(String(t.rubrica).slice(0,110))}</span>`:''}</td>
+      <td class="sub">${esc(t.area||'')}</td>
+      <td><button class="btn" onclick="escreverTexto('${esc(t.codigo)}')">Escrever o texto</button></td>
+    </tr>`).join('')}</tbody></table></div>` : ''}
+
   ${areas.map(a=>`<div class="card"><h2>${esc(a)}</h2>
-    ${PBK.filter(t=>(t.area||'sem área')===a).map(t=>`
+    ${PBK.filter(t=>(t.area||'sem área')===a).map(t=>{ const v = porId.get(t.tese_id); return `
     <div style="padding:12px 18px;border-top:1px solid var(--ln)">
       <b>${esc(t.tema)}</b>
+      ${v ? `<span class="pill good" style="margin-left:7px;font-size:10.5px">${esc(v.codigo)}</span>`
+          : `<span class="pill warn" style="margin-left:7px;font-size:10.5px">sem tese no banco</span>`}
       <div class="sub" style="margin-top:3px">${esc(t.tese)}</div>
       ${t.quando_usar?`<div class="sub"><b>Quando usar:</b> ${esc(t.quando_usar)}</div>`:''}
       ${t.fundamento?`<div class="sub"><b>Fundamento:</b> ${esc(t.fundamento)}</div>`:''}
       ${t.contra?`<div class="sub"><b>Se a defesa alegar:</b> ${esc(t.contra)}</div>`:''}
       ${t.texto_padrao?`<textarea rows="5" readonly onclick="this.select()" style="margin-top:8px">${esc(t.texto_padrao)}</textarea>`:''}
+      ${!v ? `<div class="sub" style="margin-top:7px">Este texto não está ligado a nenhuma tese do banco:
+        <select onchange="ligarTese('${t.id}', this.value, this)" style="font-size:12px;max-width:340px">
+          <option value="">— escolha a tese correspondente —</option>
+          ${PBTESES.map(x=>`<option value="${x.id}">${esc(x.codigo)} — ${esc(String(x.titulo||'').slice(0,60))}</option>`).join('')}
+        </select></div>` : ''}
       <div style="margin-top:6px;display:flex;gap:8px;align-items:center">
         <button class="btn" onclick="copiarTese('${t.id}')">Copiar</button>
         <button class="btn" onclick="tirarTese('${t.id}')">Apagar</button>
         <span class="sub" id="pbc-${t.id}" style="margin:0"></span></div>
-    </div>`).join('')}</div>`).join('')
+    </div>`; }).join('')}</div>`).join('')
     || '<div class="card"><div class="vazio">Playbook vazio. Comece pela tese que você mais usa.</div></div>'}
+
   <div class="card"><h2>Guardar uma tese</h2>
-    <form onsubmit="addTese(event)" style="display:flex;gap:9px;flex-wrap:wrap;padding:0 18px 18px;align-items:flex-end">
-      <label style="display:flex;flex-direction:column;gap:3px;min-width:160px"><span class="sub" style="margin:0">Área</span>
-        <input name="area" placeholder="Trabalhista"></label>
+    <p class="nota">Isto grava em <b>dois lugares de uma vez</b>: o verbete entra no banco de teses (que alimenta
+      as minutas e as habilidades) e o texto pronto entra aqui, já ligado a ele. Se o código já existir no banco,
+      a tese não é duplicada — só ganha o texto.</p>
+    <form id="pb-form" onsubmit="addTese(event)" style="display:flex;gap:9px;flex-wrap:wrap;padding:0 18px 18px;align-items:flex-end">
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:190px"><span class="sub" style="margin:0">Área</span>
+        <input name="area" list="pb-areas" placeholder="Trabalhista">
+        <datalist id="pb-areas">${AREAS.map(a=>`<option value="${esc(a)}">`).join('')}</datalist></label>
       <label style="display:flex;flex-direction:column;gap:3px;min-width:250px"><span class="sub" style="margin:0">Tema</span>
-        <input name="tema" required placeholder="Ex.: horas extras — cartão de ponto britânico"></label>
+        <input name="tema" required oninput="sugerirCodigo(this)" placeholder="Ex.: horas extras — cartão de ponto britânico"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:250px"><span class="sub" style="margin:0">Código no banco de teses</span>
+        <input name="codigo" oninput="marcarCodigo(this)" placeholder="sai sozinho do tema"></label>
       <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:300px"><span class="sub" style="margin:0">A tese em uma frase</span>
         <input name="tese" required placeholder="Cartão com horário uniforme é inválido e inverte o ônus da prova"></label>
       <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:260px"><span class="sub" style="margin:0">Quando usar</span>
@@ -3932,9 +4036,13 @@ async function telaPlaybook(){
         <input name="fundamento" placeholder="Súmula 338 do TST, art. 74 da CLT"></label>
       <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:260px"><span class="sub" style="margin:0">Se a defesa alegar</span>
         <input name="contra" placeholder="A resposta pronta para a alegação mais comum"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:300px"><span class="sub" style="margin:0">Rubrica — o cabeçalho em caixa alta, para a minuta</span>
+        <input name="rubrica" placeholder="SÚMULA 338 DO TST. CARTÃO DE PONTO INVÁLIDO. ÔNUS DA PROVA"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:260px"><span class="sub" style="margin:0">Gatilhos — palavras que trazem esta tese</span>
+        <input name="gatilho" placeholder="cartão de ponto, jornada uniforme, britânico"></label>
       <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:100%"><span class="sub" style="margin:0">Texto pronto</span>
         <textarea name="texto" rows="5" placeholder="O parágrafo do jeito que você escreve"></textarea></label>
-      <button class="btn ok" type="submit">Guardar no playbook</button>
+      <button class="btn ok" type="submit">Guardar nos dois</button>
       <span class="sub" id="pb-st" style="margin:0"></span>
     </form></div>
   </main>` + rodape();
@@ -4267,6 +4375,8 @@ Contas a receber e a pagar, por caso, cliente e categoria. Honorário por êxito
 Precedente antigo, absorvido antes desta melhoria, pode aparecer sem o trecho. Basta reensinar aquela peça que ele passa a vir completo.
 
 **Playbook** — as suas teses padrão. É o que faz a peça sair no seu jeito e não num jeito genérico: ao minutar, o sistema puxa as teses do playbook da área daquele caso, aplica só as que os fatos sustentarem e escreve com a sua redação e o seu fundamento, em vez de redigir por conta própria. Ele é proibido de inventar fundamento e de esticar a tese além do que está escrito ali.
+
+O playbook e o banco de teses guardam a mesma tese em dois formatos: aqui mora o texto pronto para colar na peça, lá mora o verbete que alimenta as minutas e as habilidades. Os dois são ligados por uma chave, e o formulário **Guardar uma tese** grava nos dois de uma vez — não existe mais cadastrar duas vezes à mão. No topo da tela aparecem as teses do banco que ainda não têm texto pronto, com um botão que abre o formulário já preenchido; e todo verbete sem tese correspondente ganha um seletor para você ligar.
 
 ### Como preencher cada campo
 
