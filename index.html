@@ -2860,6 +2860,28 @@ window.tirarProcesso = async (id) => {
   await sb.from('processo').update({ caso_id: null, monitorar: false }).eq('id', id);
   telaCaso(CASO.id);
 };
+/* Um caso pode ter vários processos. Cada prazo, audiência ou tarefa precisa
+   dizer a qual deles pertence — ou ficar no caso, quando vale para todos. */
+let CASOPZ = [], CASOEV = [];
+const procDoCaso = p => (p.numero_formatado || p.numero_cnj || 'processo sem número')
+  + (p.orgao ? ' · ' + p.orgao : (p.tribunal_sigla ? ' · ' + p.tribunal_sigla : ''));
+function seletorProcesso(nome, atual, extra){
+  if (!CASOPROC.length) return '';
+  return `<select ${nome.startsWith('on') ? nome : 'name="'+nome+'"'} ${extra||''}>
+    <option value="">— o caso todo —</option>
+    ${CASOPROC.map(p=>`<option value="${p.id}" ${String(atual)===p.id?'selected':''}
+      >${esc(procDoCaso(p))}</option>`).join('')}</select>`;
+}
+window.vincularProcesso = async function(qual, ref, procId, el){
+  el.disabled = true;
+  const { error } = await sb.from(qual).update({ processo_id: procId || null }).eq('id', ref);
+  el.disabled = false;
+  if (error) return alert('Não deu para vincular: ' + error.message);
+  el.style.borderColor = 'var(--ok)';
+  setTimeout(()=>{ el.style.borderColor=''; }, 1400);
+  const lista = qual === 'prazo' ? CASOPZ : CASOEV;
+  const linha = lista.find(x => x.id === ref); if (linha) linha.processo_id = procId || null;
+};
 window.addAtividade = async (ev) => {
   ev.preventDefault();
   const f = ev.target, v = n => (f.elements[n]?.value || '').trim() || null;
@@ -2870,7 +2892,7 @@ window.addAtividade = async (ev) => {
   if (tipo === 'prazo') {
     ({ error } = await sb.from('prazo').insert({
       escritorio_id: CASO.escritorio_id, caso_id: CASO.id,
-      processo_id: CASOPROC[0]?.id ?? null,
+      processo_id: v('processo'),
       descricao: v('titulo'), providencia: v('obs'), data_fatal: data,
       origem: 'manual', situacao: 'confirmado', urgencia: v('urgencia'), fatal: true,
       confirmado_em: new Date().toISOString() }));
@@ -2882,6 +2904,7 @@ window.addAtividade = async (ev) => {
   } else {
     ({ error } = await sb.from('evento').insert({
       escritorio_id: CASO.escritorio_id, caso_id: CASO.id, cliente_id: CASO.cliente_id,
+      processo_id: v('processo'),
       tipo, titulo: v('titulo'), descricao: v('obs'),
       inicio: data + 'T' + hora + ':00+00:00', local: v('local'), urgencia: v('urgencia'),
       link_sala: v('sala') }));
@@ -2913,6 +2936,7 @@ function pintarLinha(){
       <div class="tlcorpo">
         <span class="pill ${cor}">${rot}</span>
         <b>${esc(i.titulo)}</b>
+        ${i.proc ? `<span class="sub">proc. ${esc(i.proc)}</span>` : ''}
         ${i.detalhe ? `<span class="sub">${esc(i.detalhe)}</span>` : ''}
         ${i.situacao ? `<span class="sub">situação: ${esc(i.situacao)}</span>` : ''}
         ${i.sala ? `<span class="sub">${botaoSala(i.sala)}</span>` : ''}
@@ -2940,6 +2964,7 @@ async function telaCaso(id){
   if (cs.error) return erro(cs.error.message);
   await carregarClientes().catch(()=>{});
   CASO = cs.data; CASOPROC = pr.data || [];
+  CASOPZ = pz.data || []; CASOEV = ev.data || [];
   CASODOCS = cd.data || []; CASOMODELOS = cm.data || []; CASOASSIN = asg.data || [];
   CASOTIPOS = tpc.data || []; CASOFATOS = ftx.data || [];
   CASOFICHA = ((await sb.from('ficha').select('id,situacao,modelo:modelo_id(nome)').eq('caso_id', id).limit(1)).data||[])[0] || null;
@@ -2953,12 +2978,16 @@ async function telaCaso(id){
     : { data: [] };
 
   const L = [];
+  const numDe = id => { const p = CASOPROC.find(x=>x.id===id);
+    return p ? (p.numero_formatado || p.numero_cnj || '') : null; };
   for (const p of (pz.data||[])) L.push({ tipo:'prazo', data:p.data_fatal,
     titulo:p.descricao, detalhe:[p.providencia, p.dias?p.dias+' dias':''].filter(Boolean).join(' · '),
+    proc: numDe(p.processo_id),
     situacao:p.situacao, futuro: dias(p.data_fatal) >= 0 && p.situacao !== 'cumprido' });
   for (const e of (ev.data||[])) L.push({ tipo:e.tipo, data:String(e.inicio).slice(0,10),
     hora:String(e.inicio).slice(11,16), titulo:e.titulo, sala:e.link_sala,
     detalhe:[e.local, e.descricao].filter(Boolean).join(' · '), situacao:e.situacao,
+    proc: numDe(e.processo_id),
     futuro: dias(String(e.inicio).slice(0,10)) >= 0 && e.situacao === 'aberta' });
   for (const i of (it.data||[])) L.push({ tipo:'contato', data:String(i.data).slice(0,10),
     hora:String(i.data).slice(11,16), titulo:i.descricao, detalhe:i.tipo });
@@ -3144,6 +3173,31 @@ async function telaCaso(id){
       <span class="sub" id="pr-st" style="margin:0"></span>
     </form></div>
 
+  ${(CASOPZ.length + CASOEV.length) ? `
+  <div class="card"><h2>Prazos, audiências e tarefas deste caso</h2>
+    <p class="sub" style="margin:-4px 18px 0">${CASOPROC.length > 1
+      ? 'Este caso tem ' + CASOPROC.length + ' processos. Diga a qual deles pertence cada item — o que ficar em <i>&ldquo;o caso todo&rdquo;</i> vale para todos.'
+      : CASOPROC.length === 1
+        ? 'Este caso tem um processo só. Se entrar outro depois, é aqui que você separa o que é de cada um.'
+        : 'Este caso ainda não tem processo cadastrado. Cadastre um acima e ele passa a aparecer nesta coluna.'}</p>
+    <table><thead><tr><th>Quando</th><th>Tipo</th><th>O quê</th><th>De qual processo</th><th></th></tr></thead><tbody>
+    ${[...CASOPZ.map(x=>({q:'prazo', id:x.id, d:x.data_fatal, h:'', t:'prazo',
+         nome:x.descricao, proc:x.processo_id, sit:x.situacao, fim:['cumprido','cancelado'].includes(x.situacao)})),
+       ...CASOEV.map(x=>({q:'evento', id:x.id, d:String(x.inicio).slice(0,10), h:String(x.inicio).slice(11,16),
+         t:x.tipo, nome:x.titulo, proc:x.processo_id, sit:x.situacao,
+         fim:['concluida','cancelada'].includes(x.situacao)}))]
+      .sort((a,b)=>String(b.d).localeCompare(String(a.d)))
+      .map(i=>`<tr${i.fim?' style="opacity:.5"':''}>
+        <td style="white-space:nowrap">${br(i.d)}${i.h?' <span class="sub">'+i.h+'</span>':''}</td>
+        <td><span class="pill ${(TIPOLINHA[i.t]||['',''])[1]||'cin'}">${(TIPOLINHA[i.t]||[i.t])[0]}</span></td>
+        <td>${esc(i.nome||'')}</td>
+        <td>${CASOPROC.length
+          ? seletorProcesso(`onchange="vincularProcesso('${i.q}','${i.id}', this.value, this)"`, i.proc,
+              'style="max-width:320px;font-size:12.4px"' + (i.proc ? '' : ' data-solto="1"'))
+          : '<span class="sub">sem processo cadastrado</span>'}</td>
+        <td class="sub">${i.sit ? esc(i.sit) : ''}</td></tr>`).join('')}
+    </tbody></table></div>` : ''}
+
   <div class="card"><h2>Registrar atividade neste caso</h2>
     <form onsubmit="addAtividade(event)" style="display:flex;gap:9px;flex-wrap:wrap;padding:0 18px 18px;align-items:flex-end">
       <label style="display:flex;flex-direction:column;gap:3px;min-width:145px">
@@ -3164,6 +3218,9 @@ async function telaCaso(id){
         <span class="sub" style="margin:0">Urgência</span>
         <select name="urgencia">${Object.entries(URG).map(([k,[r]])=>
           `<option value="${k}" ${k==='normal'?'selected':''}>${r}</option>`).join('')}</select></label>
+      ${CASOPROC.length ? `<label style="display:flex;flex-direction:column;gap:3px;min-width:250px">
+        <span class="sub" style="margin:0">De qual processo</span>
+        ${seletorProcesso('processo', CASOPROC.length===1 ? CASOPROC[0].id : '')}</label>` : ''}
       <label style="display:flex;flex-direction:column;gap:3px;min-width:180px">
         <span class="sub" style="margin:0">Onde</span>
         <input name="local" placeholder="Vara, sala, endereço"></label>
