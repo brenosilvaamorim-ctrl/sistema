@@ -363,7 +363,122 @@ async function acao(id, campos){
   const { error } = await sb.from('prazo').update(campos).eq('id', id);
   if (error) alert('Não foi possível: ' + error.message); else rota();
 }
-window.confirmar = id => acao(id, { situacao:'confirmado', confirmado_em:new Date().toISOString() });
+/* Confirmar um prazo não é só dizer "é verdade": é dizer de que ele trata e a
+   que caso e processo pertence. O que vem do DJEN chega com a descrição crua da
+   leitura automática e, muitas vezes, sem caso nenhum — e um prazo sem caso não
+   aparece na ficha do cliente nem no relatório. Por isso o botão abre um painel
+   em vez de gravar direto. */
+let PZCASOS = [], PZPROCS = [], PZINTIM = null;
+
+async function carregarPzListas(){
+  if (PZCASOS.length) return;
+  const [k, pr] = await Promise.all([
+    sb.from('caso').select('id,titulo,cliente:cliente_id(nome)').is('encerrado_em', null).order('titulo').limit(1000),
+    sb.from('processo').select('id,caso_id,numero_formatado,numero_cnj,orgao,tribunal_sigla').limit(2000),
+  ]);
+  PZCASOS = k.data || []; PZPROCS = pr.data || [];
+}
+const rotuloCaso = c => (c.titulo || 'sem título') + (c.cliente?.nome && c.cliente.nome !== c.titulo ? ' — ' + c.cliente.nome : '');
+const rotuloPz   = x => (x.numero_formatado || cnjFormata(x.numero_cnj) || 'sem número')
+  + (x.orgao ? ' · ' + x.orgao : (x.tribunal_sigla ? ' · ' + x.tribunal_sigla : ''));
+
+/* Só os processos do caso escolhido — e, se não houver caso, todos, para o
+   caminho inverso: escolher o processo e deixar o caso vir junto. */
+function opcoesProcesso(casoId, atual){
+  const l = casoId ? PZPROCS.filter(x => x.caso_id === casoId) : PZPROCS;
+  return `<option value="">— nenhum / vale para o caso todo —</option>` +
+    l.map(x=>`<option value="${x.id}" ${atual===x.id?'selected':''}>${esc(rotuloPz(x))}</option>`).join('');
+}
+window.trocarCasoPz = (id) => {
+  const casoId = document.getElementById('pz-caso-'+id).value;
+  const sel = document.getElementById('pz-proc-'+id);
+  sel.innerHTML = opcoesProcesso(casoId, null);
+};
+/* Escolher o processo primeiro também resolve: o caso dele vem junto. */
+window.trocarProcPz = (id) => {
+  const procId = document.getElementById('pz-proc-'+id).value;
+  const pr = PZPROCS.find(x => x.id === procId);
+  const selCaso = document.getElementById('pz-caso-'+id);
+  if (pr && pr.caso_id && !selCaso.value) selCaso.value = pr.caso_id;
+};
+
+window.abrirConfirma = async (id) => {
+  const linha = document.getElementById('pzp-' + id);
+  if (linha) { linha.remove(); return; }
+  await carregarPzListas();
+  const p = (PZLISTA || []).find(x => x.id === id); if (!p) return;
+  const tr = document.getElementById('pzl-' + id); if (!tr) return;
+  const cols = tr.children.length;
+  const novaLinha = document.createElement('tr');
+  novaLinha.id = 'pzp-' + id;
+  const confirmado = p.situacao === 'confirmado';
+  novaLinha.innerHTML = `<td colspan="${cols}" style="background:var(--f2);padding:14px 18px">
+    <div style="font-size:12.6px;color:var(--i2);margin-bottom:9px">
+      ${confirmado ? 'Corrija o que estiver errado. A situação continua confirmada.'
+        : 'Antes de confirmar, diga <b>de que trata</b> este prazo e a <b>que caso e processo</b> ele pertence — sem caso, ele não aparece na ficha do cliente nem nos relatórios.'}
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px 14px">
+      <label style="display:flex;flex-direction:column;gap:3px;grid-column:1/-1">
+        <span class="sub" style="margin:0">Do que se trata — é o que vai aparecer na agenda</span>
+        <input id="pz-desc-${id}" value="${esc(p.descricao||'')}" placeholder="Ex.: contrarrazões ao recurso ordinário da reclamada"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;grid-column:1/-1">
+        <span class="sub" style="margin:0">O que precisa ser feito</span>
+        <input id="pz-prov-${id}" value="${esc(p.providencia||'')}" placeholder="protocolar a peça, juntar documento, comparecer…"></label>
+      <label style="display:flex;flex-direction:column;gap:3px">
+        <span class="sub" style="margin:0">Vence em</span>
+        <input id="pz-data-${id}" type="date" value="${p.data_fatal||''}"></label>
+      <label style="display:flex;flex-direction:column;gap:3px">
+        <span class="sub" style="margin:0">Caso</span>
+        <select id="pz-caso-${id}" onchange="trocarCasoPz('${id}')">
+          <option value="">— sem caso —</option>
+          ${PZCASOS.map(c=>`<option value="${c.id}" ${p.caso_id===c.id?'selected':''}>${esc(rotuloCaso(c))}</option>`).join('')}
+        </select></label>
+      <label style="display:flex;flex-direction:column;gap:3px">
+        <span class="sub" style="margin:0">Processo</span>
+        <select id="pz-proc-${id}" onchange="trocarProcPz('${id}')">
+          ${opcoesProcesso(p.caso_id || null, p.processo_id || null)}
+        </select></label>
+    </div>
+    <div style="margin-top:11px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button class="btn ok" onclick="salvarConfirma('${id}', ${confirmado ? 'false' : 'true'})">
+        ${confirmado ? 'Guardar as correções' : 'Confirmar o prazo'}</button>
+      <button class="btn" onclick="abrirConfirma('${id}')">Cancelar</button>
+      <span class="sub" id="pz-st-${id}" style="margin:0"></span>
+    </div></td>`;
+  tr.after(novaLinha);
+  document.getElementById('pz-desc-' + id).focus();
+};
+
+window.salvarConfirma = async (id, confirmando) => {
+  const st = document.getElementById('pz-st-' + id);
+  const val = k => (document.getElementById('pz-'+k+'-'+id)?.value || '').trim() || null;
+  const desc = val('desc');
+  if (!desc) { st.style.color='var(--crit)'; return st.textContent = 'escreva do que se trata'; }
+  const data = val('data');
+  if (!data) { st.style.color='var(--crit)'; return st.textContent = 'a data de vencimento é obrigatória'; }
+  st.style.color = 'var(--i3)'; st.textContent = 'gravando…';
+
+  const campos = { descricao: desc, providencia: val('prov'), data_fatal: data,
+                   caso_id: val('caso'), processo_id: val('proc') };
+  /* Escolheu o processo mas não o caso? O caso do processo entra junto. */
+  if (!campos.caso_id && campos.processo_id) {
+    const pr = PZPROCS.find(x => x.id === campos.processo_id);
+    if (pr?.caso_id) campos.caso_id = pr.caso_id;
+  }
+  if (confirmando) { campos.situacao = 'confirmado'; campos.confirmado_em = new Date().toISOString(); }
+  const p = (PZLISTA||[]).find(x=>x.id===id);
+  if (p && data !== p.data_fatal) campos.origem = 'manual';
+
+  const { error } = await sb.from('prazo').update(campos).eq('id', id);
+  if (error) { st.style.color='var(--crit)'; return st.textContent = 'erro: ' + error.message; }
+  if (confirmando && PZINTIM) {
+    await sb.from('intimacao').update({ situacao:'confirmada', lida_em:new Date().toISOString() }).eq('id', PZINTIM);
+    PZINTIM = null;
+  }
+  telaPrazos();
+};
+
+window.confirmar = id => abrirConfirma(id);
 window.cumprir  = id => acao(id, { situacao:'cumprido', cumprido_em:new Date().toISOString() });
 window.descartar= id => { if(confirm('Marcar como "não é prazo"? Ele sai do painel.')) acao(id, { situacao:'cancelado' }); };
 window.ajustar  = (id, ev) => { ev.preventDefault();
@@ -375,20 +490,25 @@ function linhaPrazo(p, podeConfirmar){
   const alertas = (m.alertas||[]).map(a=>`<span class="sub" style="color:var(--ser)">▲ ${esc(a)}</span>`).join('');
   const acoes = podeConfirmar
     ? `<div class="acoes">
-        <button class="btn ok" onclick="confirmar('${p.id}')">Confirmar</button>
-        <form onsubmit="ajustar('${p.id}',event)"><input type="date" value="${p.data_fatal}"><button class="btn">Ajustar</button></form>
+        <button class="btn ok" onclick="abrirConfirma('${p.id}')"
+          title="abre o painel para descrever o prazo e ligá-lo a um caso e processo">Conferir e confirmar</button>
         <button class="btn" onclick="descartar('${p.id}')">Não é prazo</button></div>`
-    : '';
+    : `<div class="acoes">
+        <button class="btn" onclick="abrirConfirma('${p.id}')"
+          title="corrigir a descrição, a data, o caso ou o processo">Editar</button></div>`;
   const proc = p.processo_id
     ? `<a class="lnk" href="#/processo/${p.processo_id}">${esc(p.intimacao?.numero_formatado||'ver')}</a>`
     : esc(p.intimacao?.numero_formatado||'—');
-  return `<tr>
+  const semCaso = !p.caso_id;
+  return `<tr id="pzl-${p.id}">
     <td style="text-align:center"><input type="checkbox" title="marcar como cumprido"
       onchange="riscar('prazo','${p.id}',this)"></td>
     <td class="dt"><b>${br(p.data_fatal)}</b><span class="sub">${r===0?'hoje':(r<0?'há '+(-r)+'d':r+' dias')}</span></td>
     <td><span class="pill ${k}"><span aria-hidden="true">${ic}</span> ${tx}</span></td>
     <td><b>${esc(p.descricao)}</b><span class="sub">${p.dias} dias úteis · ${esc(m.regime||'')}</span></td>
-    <td><b>${esc(p.caso?.titulo || '—')}</b><span class="sub">${esc(p.intimacao?.tribunal_sigla||'')} · ${esc(p.intimacao?.orgao||'')}</span></td>
+    <td>${semCaso
+      ? `<span class="pill warn" style="font-size:10.5px">sem caso</span>`
+      : `<b>${esc(p.caso?.titulo || '—')}</b>`}<span class="sub">${esc(p.intimacao?.tribunal_sigla||'')} · ${esc(p.intimacao?.orgao||'')}</span></td>
     <td class="proc">${proc}</td>
     <td style="max-width:330px"><span class="q">“${esc((p.trecho_origem||'').slice(0,105))}…”</span>
       <span class="sub">publicação ${br(m.publicacao)} → início ${br(m.inicioContagem)}</span>${alertas}</td>
@@ -490,12 +610,15 @@ function tabelaPrazos(titulo, nota, itens, podeConfirmar){
     <th>Cliente / vara</th><th>Processo</th><th>Trecho lido e memória</th><th>Conf.</th><th>Ação</th></tr></thead>
     <tbody>${itens.map(p=>linhaPrazo(p,podeConfirmar)).join('')}</tbody></table></div>`;
 }
+let PZLISTA = [];
 async function telaPrazos(){
   const { data, error } = await sb.from('prazo')
-    .select('id,descricao,data_fatal,dias,situacao,confianca,trecho_origem,memoria_calculo,processo_id,intimacao:intimacao_id(numero_formatado,tribunal_sigla,orgao,link_pje),caso:caso_id(titulo)')
+    .select('id,descricao,providencia,data_fatal,dias,situacao,confianca,trecho_origem,memoria_calculo,processo_id,caso_id,intimacao:intimacao_id(numero_formatado,tribunal_sigla,orgao,link_pje),caso:caso_id(titulo)')
     .in('situacao',['sugerido','confirmado']).order('data_fatal');
   if(error) return erro(error.message);
   const lista = data||[], sug = lista.filter(p=>p.situacao==='sugerido'), conf = lista.filter(p=>p.situacao==='confirmado');
+  PZLISTA = lista;
+  const semCaso = lista.filter(p=>!p.caso_id).length;
   const urg = lista.filter(p=>dias(p.data_fatal)<=5).length, venc = lista.filter(p=>dias(p.data_fatal)<0).length;
   const tri = await blocoTriagem();
   app.innerHTML = menu('prazos') + `
@@ -506,12 +629,16 @@ async function telaPrazos(){
     <div class="kpi ${urg?'al':''}"><div class="n">${urg}</div><div class="l">vencem em até 5 dias</div></div>
     <div class="kpi ${venc?'al':''}"><div class="n">${venc}</div><div class="l">já vencidos</div></div>
     <div class="kpi"><div class="n">${sug.length}</div><div class="l">aguardando confirmação</div></div>
+    <div class="kpi ${semCaso?'al':''}"><div class="n">${semCaso}</div><div class="l">sem caso vinculado</div></div>
   </div>
+  ${semCaso?`<div class="aviso" style="border-color:var(--warn)"><b>${semCaso} prazo(s) sem caso vinculado.</b>
+    Prazo sem caso não aparece na ficha do cliente, não entra no relatório do caso e não tem como virar peça.
+    Use <i>Conferir e confirmar</i> — ou <i>Editar</i>, nos já confirmados — para ligar cada um.</div>`:''}
   ${sug.length?`<div class="aviso"><b>${sug.length} prazo(s) aguardando sua confirmação.</b>
     Foram lidos automaticamente do texto da intimação. Confira a data antes de aceitar —
     a contagem é sugestão do sistema, a responsabilidade continua sendo sua.</div>`:''}
-  ${tabelaPrazos('Aguardando confirmação','Confirme, ajuste a data ou descarte o que não for prazo.',sug,true)}
-  ${tabelaPrazos('Confirmados por você','Marque o quadradinho quando protocolar: o prazo sai do painel e some da agenda.',conf,false)}
+  ${tabelaPrazos('Aguardando confirmação','O botão <b>Conferir e confirmar</b> abre um painel: escreva do que o prazo trata, ajuste a data e diga a que caso e processo ele pertence. Descarte o que não for prazo.',sug,true)}
+  ${tabelaPrazos('Confirmados por você','Marque o quadradinho quando protocolar: o prazo sai do painel e some da agenda. <b>Editar</b> corrige a descrição, a data, o caso ou o processo.',conf,false)}
   ${lista.length?'':'<div class="card"><div class="vazio">Nenhum prazo em aberto.</div></div>'}
   ${tri}
   </main>` + rodape();
@@ -4222,9 +4349,13 @@ A faixa "Começar alguma coisa" leva direto a novo atendimento, casos, agenda, p
 
 É onde a maior parte do trabalho começa. A tela tem três partes, de cima para baixo:
 
-**Aguardando confirmação.** Prazos que o robô leu da intimação. Cada linha traz o trecho lido, a memória de cálculo e o nível de confiança. Você confirma, ajusta a data ou descarta. *Confirme sempre olhando a data — a contagem é sugestão do sistema.*
+**Aguardando confirmação.** Prazos que o robô leu da intimação. Cada linha traz o trecho lido, a memória de cálculo e o nível de confiança.
 
-**Confirmados por você.** Marque o quadradinho quando protocolar. O prazo sai do painel e some da agenda.
+O botão **Conferir e confirmar** abre um painel embaixo da linha, com cinco campos: *do que se trata* (a descrição que vai aparecer na agenda, já preenchida com o que o robô leu), *o que precisa ser feito*, a *data de vencimento*, o *caso* e o *processo*. Só depois de preencher é que o prazo é confirmado. Escolhendo o caso, a lista de processos se reduz aos daquele caso; escolhendo o processo primeiro, o caso dele vem junto. *Confirme sempre olhando a data — a contagem é sugestão do sistema.*
+
+O quadro no topo conta quantos prazos estão **sem caso vinculado**, e cada um deles aparece na tabela com uma etiqueta laranja. Isso importa: prazo sem caso não aparece na ficha do cliente, não entra no relatório do caso e não tem como virar peça.
+
+**Confirmados por você.** Marque o quadradinho quando protocolar. O prazo sai do painel e some da agenda. O botão **Editar** abre o mesmo painel, para corrigir a descrição, a data, o caso ou o processo depois.
 
 **Publicações que chegaram.** Os cartões da triagem, com o texto integral da publicação — não precisa abrir o PJe para ler. Cada cartão diz o que o robô entendeu (prazo, audiência, sem providência, processo não cadastrado) e o quanto confia nisso. Botões: ver a publicação, confirmar o prazo, cadastrar processo, escrever ao cliente, marcar como lida.
 
@@ -4236,7 +4367,7 @@ O filtro padrão é "a conferir (fora os prazos acima)", para você não tratar 
 
 1. Leia o cartão. Ele diz o que o robô entendeu e com que confiança — **alta**, **regular** ou **baixa**. Confiança regular ou baixa quer dizer: leia o texto antes de aceitar.
 2. Clique em **Ver a publicação** para abrir o texto integral. Ele vem direto do Diário, sem corte.
-3. Se virou prazo, confira a **data fatal** e a **memória de cálculo** — o sistema mostra de que data contou, quantos dias e se contou em dias úteis. Errou? Descarte e marque à mão.
+3. Se virou prazo, confira a **data fatal** e a **memória de cálculo** — o sistema mostra de que data contou, quantos dias e se contou em dias úteis. **Confirmar o prazo**, no cartão, leva você até a linha dele na tabela de cima e abre o painel de conferência; ao guardar, a publicação é marcada como confirmada junto. Errou? Descarte e marque à mão.
 4. Se marcou audiência, cadastre na agenda e cole o **link da sala**, se for por vídeo.
 5. Se o processo não estiver cadastrado, use **Cadastrar processo**: ele já vem com número, tribunal e órgão preenchidos da própria publicação.
 6. Se for caso de avisar o cliente, **Escrever ao cliente** abre a mensagem daquele caso já montada.
@@ -5886,16 +6017,25 @@ window.baixarIntimacao = async (id, situacao) => {
   const i = TRI.find(x => x.id === id); if (i) i.situacao = situacao;
   pintarTriagem();
 };
+/* A publicação também confirma pelo painel: quem confirma um prazo precisa dizer
+   do que ele trata e a que caso pertence, venha de onde vier. A intimação é
+   marcada como confirmada junto. */
 window.confirmarPrazoTri = async (intimId, prazoId) => {
-  const st = document.getElementById('ts-' + intimId);
-  if (st) st.textContent = 'confirmando…';
-  const e1 = (await sb.from('prazo').update({ situacao:'confirmado',
-    confirmado_em: new Date().toISOString() }).eq('id', prazoId)).error;
-  if (e1) { if (st) st.textContent = 'erro: ' + e1.message; return; }
-  await sb.from('intimacao').update({ situacao:'confirmada', lida_em:new Date().toISOString() }).eq('id', intimId);
-  const i = TRI.find(x => x.id === intimId);
-  if (i) { i.situacao = 'confirmada'; const p = i.prazos.find(x=>x.id===prazoId); if (p) p.situacao = 'confirmado'; }
-  pintarTriagem();
+  PZINTIM = intimId;
+  const tr = document.getElementById('pzl-' + prazoId);
+  if (!tr) {   /* o prazo não está na tabela acima — grava do jeito antigo */
+    const st = document.getElementById('ts-' + intimId);
+    if (st) st.textContent = 'confirmando…';
+    const e1 = (await sb.from('prazo').update({ situacao:'confirmado',
+      confirmado_em: new Date().toISOString() }).eq('id', prazoId)).error;
+    if (e1) { if (st) st.textContent = 'erro: ' + e1.message; return; }
+    await sb.from('intimacao').update({ situacao:'confirmada', lida_em:new Date().toISOString() }).eq('id', intimId);
+    return telaPrazos();
+  }
+  tr.scrollIntoView({ block:'center' });
+  tr.style.outline = '2px solid var(--ok)';
+  setTimeout(()=>{ tr.style.outline = ''; }, 2200);
+  await abrirConfirma(prazoId);
 };
 window.cadastrarDaPublicacao = async id => {
   const i = TRI.find(x => x.id === id); if (!i) return;
