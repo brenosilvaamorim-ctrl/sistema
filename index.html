@@ -1967,16 +1967,35 @@ const ETAPAS = [
   ['proposta', 'Proposta enviada'],
 ];
 let LEADS = [];
-window.novoLead = async (ev) => {
+window.novoLead = async (ev, abrirAFicha) => {
   ev.preventDefault();
-  const f = ev.target, v = n => f.elements[n].value.trim() || null;
-  const { error } = await sb.from('lead').insert({
+  const f = ev.target.closest('form'), v = n => (f.elements[n]?.value || '').trim() || null;
+  const st = document.getElementById('nl-st');
+  if (!v('nome')) { f.elements['nome'].focus(); return; }
+  const arq = f.elements['arquivo']?.files?.[0] || null;
+  if (st) { st.style.color='var(--i3)'; st.textContent = 'gravando…'; }
+
+  const { data, error } = await sb.from('lead').insert({
     escritorio_id: await escritorioId(),
     nome: v('nome'), telefone: v('telefone'), origem_id: v('origem_id'),
     area_id: v('area_id'), resumo: v('resumo'),
     proximo_contato: v('proximo_contato'), etapa: 'novo',
-  });
-  if (error) alert('Não foi possível: ' + error.message); else telaCaptacao();
+  }).select('id').maybeSingle();
+  if (error) { if (st) { st.style.color='var(--crit)'; st.textContent = 'erro: ' + error.message; } return; }
+
+  /* O papel anexado exige uma ficha, porque é nela que o arquivo mora. */
+  if (arq) {
+    if (st) st.textContent = 'enviando ' + arq.name + '…';
+    const fid = await garantirFicha(data.id);
+    if (fid) {
+      const r = await subirFichaPapel(fid, arq);
+      if (r.erro) { if (st) { st.style.color='var(--crit)';
+        st.textContent = 'o contato foi gravado, mas o arquivo falhou: ' + r.erro; } return; }
+      if (abrirAFicha) return abrirFicha(data.id);
+    }
+  }
+  if (abrirAFicha) return abrirFicha(data.id);
+  telaCaptacao();
 };
 window.moverLead = async (id, etapa) => {
   const { error } = await sb.from('lead').update({ etapa, atualizado_em: new Date().toISOString() }).eq('id', id);
@@ -2402,27 +2421,78 @@ async function semearModelos(){
   FICHAMOD = (await sb.from('ficha_modelo').select('*').eq('ativo',true).order('ordem')).data || [];
   return FICHAMOD;
 }
-window.abrirFicha = async function(leadId){
+/* Devolve o id da ficha do lead, criando-a se ainda não existir. Serve aos dois
+   caminhos: abrir para preencher na tela, e anexar o papel já preenchido. */
+async function garantirFicha(leadId){
   const ja = (await sb.from('ficha').select('id').eq('lead_id', leadId).limit(1).maybeSingle()).data;
-  if (ja) { location.hash = '#/ficha/' + ja.id; return; }
+  if (ja) return ja.id;
   await semearModelos();
   let m = FICHAMOD[0];
   if (FICHAMOD.length > 1) {
     const nomes = FICHAMOD.map((x,i)=>`${i+1}) ${x.nome}`).join('\n');
     m = FICHAMOD[Number(prompt('Qual ficha?\n\n' + nomes + '\n\nDigite o número:', '1'))-1];
   }
-  if (!m) return alert('Nenhum modelo de ficha cadastrado.');
+  if (!m) { alert('Nenhum modelo de ficha cadastrado.'); return null; }
   const l = (await sb.from('lead').select('*').eq('id', leadId).maybeSingle()).data;
   const resp = {};
-  if (l?.nome) resp.nome = l.nome;
-  if (l?.telefone) resp.fone = l.telefone;
-  if (l?.email) resp.email = l.email;
+  if (l?.nome)     resp.nome  = l.nome;
+  if (l?.telefone) resp.fone  = l.telefone;
+  if (l?.email)    resp.email = l.email;
   const { data, error } = await sb.from('ficha').insert({
     escritorio_id: await escId(), modelo_id: m.id, lead_id: leadId,
     caso_id: l?.caso_id || null, respostas: resp,
   }).select('id').maybeSingle();
-  if (error) return alert('Não deu para criar a ficha: ' + error.message);
-  location.hash = '#/ficha/' + data.id;
+  if (error) { alert('Não deu para criar a ficha: ' + error.message); return null; }
+  return data.id;
+}
+window.abrirFicha = async function(leadId){
+  const id = await garantirFicha(leadId);
+  if (id) location.hash = '#/ficha/' + id;
+};
+
+/* ---------------------------------------------- ficha preenchida em papel
+   Quem atende presencialmente volta com o papel na mão. O arquivo fica no
+   bucket privado `fichas`, sob a pasta do escritório, e é lido por URL
+   assinada de curta duração — nunca por link público. */
+const MAX_FICHA = 15 * 1024 * 1024;
+
+async function subirFichaPapel(fichaId, arquivo){
+  if (arquivo.size > MAX_FICHA)
+    return { erro: 'O arquivo tem ' + (arquivo.size/1048576).toFixed(1) + ' MB. O limite é 15 MB.' };
+  const e = await escId();
+  const limpo = arquivo.name.normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .replace(/[^A-Za-z0-9._-]/g,'-').slice(-80);
+  const caminho = `${e}/${fichaId}/${Date.now()}-${limpo}`;
+  const up = await sb.storage.from('fichas').upload(caminho, arquivo, { upsert: false });
+  if (up.error) return { erro: up.error.message };
+  const { error } = await sb.from('ficha').update({
+    arquivo_path: caminho, arquivo_nome: arquivo.name,
+    arquivo_em: new Date().toISOString(), atualizado_em: new Date().toISOString(),
+  }).eq('id', fichaId);
+  if (error) return { erro: error.message };
+  return { caminho };
+}
+
+window.verFichaPapel = async (caminho) => {
+  const { data, error } = await sb.storage.from('fichas').createSignedUrl(caminho, 300);
+  if (error) return alert('Não deu para abrir: ' + error.message);
+  window.open(data.signedUrl, '_blank');
+};
+
+window.anexarFichaPapel = async (fichaId, el) => {
+  const arq = el.files?.[0]; if (!arq) return;
+  const st = document.getElementById('fp-st');
+  if (st) { st.style.color = 'var(--i3)'; st.textContent = 'enviando ' + arq.name + '…'; }
+  const r = await subirFichaPapel(fichaId, arq);
+  if (r.erro) { if (st) { st.style.color='var(--crit)'; st.textContent = 'erro: ' + r.erro; } return; }
+  telaFicha(fichaId);
+};
+
+window.tirarFichaPapel = async (fichaId, caminho) => {
+  if (!confirm('Tirar o arquivo desta ficha?\n\nO arquivo é apagado do armazenamento.')) return;
+  await sb.storage.from('fichas').remove([caminho]);
+  await sb.from('ficha').update({ arquivo_path:null, arquivo_nome:null, arquivo_em:null }).eq('id', fichaId);
+  telaFicha(fichaId);
 };
 const campoFicha = (c, v) => {
   const id = 'fc-' + c.k, val = v == null ? '' : v;
@@ -2488,6 +2558,23 @@ async function telaFicha(id){
     <button class="btn" onclick="concluirFicha()">${f.situacao==='concluida'?'Reabrir':'Concluir'}</button>
     <span class="sub" id="fi-st" style="margin:0"></span>
   </div></div>
+
+  <div class="card"><h2>Ficha em papel</h2>
+    ${f.arquivo_path ? `
+    <div style="padding:10px 18px 16px;display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+      <span class="pill good">anexada</span>
+      <b>${esc(f.arquivo_nome || 'arquivo')}</b>
+      <span class="sub" style="margin:0">enviada em ${br(String(f.arquivo_em).slice(0,10))}</span>
+      <button class="btn" onclick="verFichaPapel('${esc(f.arquivo_path)}')">Abrir</button>
+      <button class="btn" onclick="tirarFichaPapel('${f.id}','${esc(f.arquivo_path)}')">Tirar</button>
+    </div>` : `
+    <p class="nota">Se a pessoa preencheu e assinou a ficha no papel, anexe aqui o PDF ou a foto —
+      fica guardado junto das respostas, e vai com o caso quando o lead fechar. Até 15 MB.</p>
+    <div style="padding:0 18px 16px;display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+      <input type="file" accept="application/pdf,image/*" onchange="anexarFichaPapel('${f.id}', this)">
+      <span class="sub" id="fp-st" style="margin:0"></span>
+    </div>`}</div>
+
   <div id="fi-avisoA" class="card" style="border-left:3px solid var(--warn);display:none">
     <div style="padding:12px 18px" class="sub">
       O <b>módulo A</b> — acidente de trabalho e doença ocupacional — está escondido.
@@ -2651,10 +2738,21 @@ async function telaCaptacao(){
       <input name="telefone" type="text" placeholder="telefone" style="width:150px">
       <select name="origem_id">${opt(ORIGENS,'de onde veio')}</select>
       <select name="area_id">${opt(AREAS,'área')}</select>
-      <input name="resumo" type="text" placeholder="o que a pessoa relatou" style="flex:1;min-width:220px">
+      <input name="resumo" type="text" placeholder="o que a pessoa relatou — em uma linha" style="flex:1;min-width:220px">
       <input name="proximo_contato" type="date" title="quando retornar">
+      <div style="flex-basis:100%;height:0"></div>
+      <label class="sub" style="margin:0;display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+        Ficha em papel, se o atendimento foi presencial:
+        <input name="arquivo" type="file" accept="application/pdf,image/*" style="font-size:12px"></label>
+      <div style="flex-basis:100%;height:0"></div>
       <button class="btn ok" type="submit">Registrar</button>
-    </form></div>
+      <button class="btn" type="button" onclick="novoLead(event, true)"
+        title="grava o contato e abre a ficha de atendimento já com nome e telefone preenchidos">Registrar e preencher a ficha</button>
+      <span class="sub" id="nl-st" style="margin:0"></span>
+    </form>
+    <p class="nota" style="padding-top:0">A linha acima é o resumo de triagem. O relato completo — jornada, salário,
+      saúde, testemunhas, documentos — vive na <b>ficha de atendimento</b>, e é dela que saem os fatos da inicial.
+      Você pode preencher a ficha na tela agora, anexar o papel que a pessoa já assinou, ou as duas coisas.</p></div>
 
   <div class="quadro">
     ${ETAPAS.map(([k,rot])=>{
@@ -4352,6 +4450,14 @@ A tela de abertura. Seis números no topo, três blocos embaixo:
 - **O mês no dinheiro** — a receber, a pagar e o resultado previsto.
 
 A faixa "Começar alguma coisa" leva direto a novo atendimento, casos, agenda, prazos, mensagem, financeiro e minuta.
+
+### A ficha de atendimento nasce aqui
+
+No quadro **Novo contato** há dois botões. **Registrar** grava o contato e volta ao painel. **Registrar e preencher a ficha** grava e abre a ficha de atendimento na mesma hora, já com nome e telefone preenchidos — é o caminho de quem está com a pessoa na linha.
+
+O campo *o que a pessoa relatou* é o resumo de triagem, de uma linha. O relato completo — jornada, salário, saúde, testemunhas, documentos — vive na ficha, e é dela que saem os fatos da inicial.
+
+Se o atendimento foi presencial e a pessoa já preencheu e assinou o papel, o campo **Ficha em papel** anexa o PDF ou a foto (até 15 MB). O arquivo fica guardado junto das respostas, num armazenamento privado que só abre por link temporário, e vai junto com o caso quando o lead fechar. Dentro da ficha, o mesmo quadro permite anexar depois, abrir e tirar o arquivo.
 
 ## 4. Prazos e publicações
 
