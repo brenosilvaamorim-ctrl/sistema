@@ -4459,6 +4459,20 @@ O campo *o que a pessoa relatou* é o resumo de triagem, de uma linha. O relato 
 
 Se o atendimento foi presencial e a pessoa já preencheu e assinou o papel, o campo **Ficha em papel** anexa o PDF ou a foto (até 15 MB). O arquivo fica guardado junto das respostas, num armazenamento privado que só abre por link temporário, e vai junto com o caso quando o lead fechar. Dentro da ficha, o mesmo quadro permite anexar depois, abrir e tirar o arquivo.
 
+## 3b. Meu financeiro — ler extrato e fatura
+
+O quadro **Ler extrato ou fatura** aceita o PDF do extrato da conta ou da fatura do cartão. O sistema lê, separa **créditos** de **débitos** e abre uma tela de conferência com todas as linhas.
+
+**Nada entra na sua conta sozinho.** A tela mostra o que foi lido, com um seletor de categoria por linha, e você marca o que vai virar lançamento. Há botões para marcar tudo, só os débitos ou só os créditos. Só ao clicar em *Importar os marcados* é que os lançamentos são criados.
+
+O sistema avisa quando uma linha **já parece lançada** — mesma data, mesmo valor, mesma descrição — mas não bloqueia, porque duas compras iguais no mesmo dia acontecem. E se o leitor descartar alguma linha por vir ilegível, ele diz quantas foram: confira o original nesse caso.
+
+**A armadilha da fatura de cartão.** As linhas de uma fatura são as compras. Quando você paga a fatura, o extrato da conta traz *um* débito com o total — é o mesmo dinheiro. Lance as compras **ou** o pagamento da fatura, nunca os dois. A tela avisa isso quando reconhece uma fatura.
+
+O arquivo lido fica guardado num armazenamento privado, por usuário, e abre por link temporário. *Desfazer a importação* apaga de uma vez os lançamentos que vieram daquele arquivo, sem apagar o arquivo.
+
+Leitura de PDF consome crédito da chave da Anthropic (item da tela Configurações). PDF grande é lido em blocos de dez páginas, e cada bloco é uma chamada.
+
 ## 4. Prazos e publicações
 
 É onde a maior parte do trabalho começa. A tela tem três partes, de cima para baixo:
@@ -7835,6 +7849,10 @@ async function carregarPessoal(){
   const { data: tp } = await sb.from('pessoal_lancamento').select('projeto_id,valor')
     .not('projeto_id','is',null).limit(5000);
   const { data: fp } = await sb.from('pessoal_fin_parcela').select('*').order('competencia');
+  const { data: ex } = await sb.from('pessoal_extrato')
+    .select('id,arquivo_nome,tipo,banco,conta,periodo_ini,periodo_fim,situacao,linhas')
+    .order('criado_em', { ascending:false }).limit(12);
+  EXTRATOS = ex || [];
   const projTot = {};
   (tp||[]).forEach(l => { projTot[l.projeto_id] = (projTot[l.projeto_id]||0) + Number(l.valor); });
   PES = { uid, contas: ct.data||[], cats: cg.data||[], fins: fi.data||[], projs: pj.data||[],
@@ -7903,6 +7921,264 @@ function lancamentoDaRecorrente(r){
   return PES.lancs.find(l => l.origem === 'recorrente' && l.descricao === r.descricao);
 }
 
+
+/* ============================================================ EXTRATOS
+   Ler extrato bancário e fatura de cartão, separar entrada de saída, e só
+   então — depois de você conferir linha a linha — virar lançamento.
+
+   A regra de ouro deste bloco: NADA entra na sua conta sozinho. O leitor
+   devolve o que está escrito no arquivo; o que decide é você, na tela. Foi
+   assim que o financiamento da Caixa entrou certo, e é o único jeito de o
+   sistema não passar a inventar número. */
+
+let EXT = null, EXTMARCA = new Set(), EXTCAT = {}, EXTRATOS = [];
+
+/* Impressão digital de um movimento: mesma data, mesmo valor, mesma descrição
+   reduzida ao essencial. Serve para AVISAR que a linha já foi lançada — nunca
+   para bloquear, porque duas compras iguais no mesmo dia acontecem. */
+const digital = (data, valor, desc) =>
+  String(data) + '|' + Number(valor).toFixed(2) + '|' +
+  String(desc||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .replace(/[^a-z0-9]/g,'').slice(0,28);
+
+async function mandarAoLeitorExtrato(b64, mime, nome){
+  const { data: { session } } = await sb.auth.getSession();
+  const cats = (PES?.cats || []).filter(c=>c.ativo!==false).map(c=>c.nome);
+  const r = await fetch(SB_URL + '/functions/v1/ler-extrato', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', apikey: SB_KEY,
+               Authorization: 'Bearer ' + session.access_token },
+    body: JSON.stringify({ arquivo: b64, mime, nome, categorias: cats }),
+  });
+  return r.json();
+}
+
+window.lerExtrato = async (input) => {
+  const f = input.files?.[0]; if (!f) return;
+  const st = document.getElementById('ex-st');
+  const ehPdf = /pdf/i.test(f.type) || /\.pdf$/i.test(f.name);
+  if (!ehPdf && f.size > 6*1024*1024) { st.style.color='var(--crit)';
+    return st.textContent = 'foto grande demais (máx. 6 MB). Reduza a imagem.'; }
+  if (f.size > 60*1024*1024) { st.style.color='var(--crit)';
+    return st.textContent = 'arquivo acima de 60 MB. Divida em duas partes.'; }
+  st.style.color='var(--i3)'; st.textContent = 'lendo o arquivo…';
+
+  try {
+    let doc = null, linhas = [], obs = [], descartadas = 0;
+    if (ehPdf && f.size > 3*1024*1024) {
+      const { paginas, partes } = await fatiarPdf(f, 10);
+      for (let i = 0; i < partes.length; i++) {
+        const p = partes[i];
+        st.textContent = `lendo páginas ${p.de} a ${p.ate} de ${paginas}…`;
+        const r = await mandarAoLeitorExtrato(p.b64, 'application/pdf', `${f.name} (p. ${p.de}-${p.ate})`);
+        if (r.erro) { st.style.color='var(--crit)';
+          return st.textContent = `erro nas páginas ${p.de}-${p.ate}: ${r.erro}`; }
+        doc = doc || r.documento;
+        if (r.documento?.total_fatura && !doc.total_fatura) doc.total_fatura = r.documento.total_fatura;
+        if (r.documento?.saldo_final) doc.saldo_final = r.documento.saldo_final;
+        linhas = linhas.concat(r.lancamentos || []);
+        descartadas += Number(r.descartadas || 0);
+        if (r.observacao) obs.push(`p. ${p.de}-${p.ate}: ${r.observacao}`);
+      }
+    } else {
+      const b64 = await new Promise(res => {
+        const rd = new FileReader();
+        rd.onload = () => res(String(rd.result).split(',')[1]);
+        rd.readAsDataURL(f);
+      });
+      st.textContent = 'lendo…';
+      const r = await mandarAoLeitorExtrato(b64, f.type || 'application/pdf', f.name);
+      if (r.erro) { st.style.color='var(--crit)'; return st.textContent = 'erro: ' + r.erro; }
+      doc = r.documento; linhas = r.lancamentos || [];
+      descartadas = Number(r.descartadas || 0);
+      if (r.observacao) obs.push(r.observacao);
+    }
+
+    if (!linhas.length) { st.style.color='var(--crit)';
+      return st.textContent = 'não encontrei nenhuma linha de movimento neste arquivo.'; }
+
+    st.textContent = 'guardando o arquivo…';
+    /* O arquivo fica guardado para você poder voltar e comparar. */
+    const reg = (await sb.from('pessoal_extrato').insert({
+      dono_id: PES.uid, arquivo_nome: f.name, tipo: doc?.tipo || 'extrato',
+      banco: doc?.banco || null, conta: doc?.conta || null,
+      periodo_ini: doc?.periodo_inicio || null, periodo_fim: doc?.periodo_fim || null,
+      saldo_final: doc?.saldo_final ?? null, total_fatura: doc?.total_fatura ?? null,
+      vencimento: doc?.vencimento || null,
+      linhas, observacao: obs.join(' · ') || null,
+    }).select('id').maybeSingle()).data;
+
+    if (reg) {
+      const caminho = `${PES.uid}/${reg.id}/${Date.now()}-${f.name.replace(/[^A-Za-z0-9._-]/g,'-').slice(-70)}`;
+      const up = await sb.storage.from('financeiro').upload(caminho, f, { upsert:false });
+      if (!up.error) await sb.from('pessoal_extrato').update({ arquivo_path: caminho }).eq('id', reg.id);
+    }
+    st.textContent = '';
+    telaExtrato(reg?.id, { doc, linhas, obs: obs.join(' · '), descartadas, arquivo: f.name });
+  } catch (e) {
+    st.style.color='var(--crit)'; st.textContent = 'erro: ' + (e.message || e);
+  }
+};
+
+window.abrirExtrato = async (id) => {
+  const r = (await sb.from('pessoal_extrato').select('*').eq('id', id).maybeSingle()).data;
+  if (!r) return alert('Extrato não encontrado.');
+  telaExtrato(id, { doc: { tipo:r.tipo, banco:r.banco, conta:r.conta, periodo_inicio:r.periodo_ini,
+    periodo_fim:r.periodo_fim, saldo_final:r.saldo_final, total_fatura:r.total_fatura, vencimento:r.vencimento },
+    linhas: r.linhas || [], obs: r.observacao, descartadas: 0, arquivo: r.arquivo_nome, situacao: r.situacao,
+    path: r.arquivo_path });
+};
+
+window.verArquivoExtrato = async (caminho) => {
+  const { data, error } = await sb.storage.from('financeiro').createSignedUrl(caminho, 300);
+  if (error) return alert('Não deu para abrir: ' + error.message);
+  window.open(data.signedUrl, '_blank');
+};
+
+window.marcarLinha = (i, el) => { if (el.checked) EXTMARCA.add(i); else EXTMARCA.delete(i); pintarResumoExt(); };
+window.catLinha    = (i, v) => { EXTCAT[i] = v || null; };
+window.marcarTodas = (quais) => {
+  EXT.linhas.forEach((l, i) => {
+    const cabe = quais === 'tudo' ? !EXT.jaLancado[i]
+               : quais === 'saidas'   ? (l.tipo === 'saida'   && !EXT.jaLancado[i])
+               : quais === 'entradas' ? (l.tipo === 'entrada' && !EXT.jaLancado[i]) : false;
+    if (cabe) EXTMARCA.add(i);
+  });
+  telaExtrato(EXT.id, EXT.bruto, true);
+};
+window.desmarcarTodas = () => { EXTMARCA.clear(); telaExtrato(EXT.id, EXT.bruto, true); };
+
+function pintarResumoExt(){
+  const alvo = document.getElementById('ex-resumo'); if (!alvo || !EXT) return;
+  const m = [...EXTMARCA].map(i => EXT.linhas[i]).filter(Boolean);
+  const ent = m.filter(l=>l.tipo==='entrada').reduce((a,l)=>a+Number(l.valor),0);
+  const sai = m.filter(l=>l.tipo==='saida').reduce((a,l)=>a+Number(l.valor),0);
+  alvo.innerHTML = `<b>${m.length}</b> linha(s) marcada(s) · entradas ${rs(ent)} · saídas ${rs(sai)}`;
+}
+
+window.importarExtrato = async () => {
+  if (!EXTMARCA.size) return alert('Marque as linhas que você quer lançar.');
+  const st = document.getElementById('ex-imp');
+  st.style.color='var(--i3)'; st.textContent = 'lançando…';
+  const catId = nome => (PES.cats.find(c=>c.nome===nome) || {}).id || null;
+  const novos = [...EXTMARCA].map(i => {
+    const l = EXT.linhas[i]; if (!l) return null;
+    return { dono_id: PES.uid, data: l.data, tipo: l.tipo, valor: l.valor,
+             descricao: l.descricao,
+             categoria_id: EXTCAT[i] !== undefined ? EXTCAT[i] : catId(l.categoria_sugerida),
+             situacao: 'pago', origem: 'extrato', extrato_id: EXT.id || null,
+             hash_origem: digital(l.data, l.valor, l.descricao) };
+  }).filter(Boolean);
+  const { error } = await sb.from('pessoal_lancamento').insert(novos);
+  if (error) { st.style.color='var(--crit)'; return st.textContent = 'erro: ' + error.message; }
+  if (EXT.id) await sb.from('pessoal_extrato').update({ situacao:'importado' }).eq('id', EXT.id);
+  st.style.color='var(--ok)';
+  st.textContent = `${novos.length} lançamento(s) entraram. Abrindo o mês…`;
+  const primeiro = novos.map(n=>n.data).sort()[0];
+  if (primeiro) PESMES = primeiro.slice(0,7);
+  setTimeout(()=>{ location.hash = '#/pessoal'; }, 900);
+};
+
+window.desfazerImportacao = async (id) => {
+  const n = (await sb.from('pessoal_lancamento').select('id').eq('extrato_id', id)).data?.length || 0;
+  if (!n) return alert('Nenhum lançamento deste arquivo para desfazer.');
+  if (!confirm(`Apagar os ${n} lançamento(s) que vieram deste arquivo?\n\nO arquivo continua guardado.`)) return;
+  await sb.from('pessoal_lancamento').delete().eq('extrato_id', id);
+  await sb.from('pessoal_extrato').update({ situacao:'lido' }).eq('id', id);
+  abrirExtrato(id);
+};
+
+async function telaExtrato(id, bruto, manterMarcas){
+  if (!PES) await carregarPessoal();
+  if (!manterMarcas) { EXTMARCA = new Set(); EXTCAT = {}; }
+  const linhas = bruto.linhas || [];
+
+  /* O que já está lançado no seu financeiro, para avisar antes de duplicar. */
+  const datas = linhas.map(l=>l.data).sort();
+  const ja = datas.length ? (await sb.from('pessoal_lancamento')
+      .select('hash_origem,data,valor,descricao')
+      .gte('data', datas[0]).lte('data', datas[datas.length-1])).data || [] : [];
+  const vistos = new Set(ja.map(x => x.hash_origem || digital(x.data, x.valor, x.descricao)));
+  const jaLancado = linhas.map(l => vistos.has(digital(l.data, l.valor, l.descricao)));
+
+  EXT = { id, linhas, bruto, jaLancado };
+  const d = bruto.doc || {};
+  const ent = linhas.filter(l=>l.tipo==='entrada').reduce((a,l)=>a+Number(l.valor),0);
+  const sai = linhas.filter(l=>l.tipo==='saida').reduce((a,l)=>a+Number(l.valor),0);
+  const dup = jaLancado.filter(Boolean).length;
+  const ehFatura = d.tipo === 'fatura';
+  const cats = PES.cats.filter(c=>c.ativo!==false);
+
+  app.innerHTML = menu('pessoal') + `
+  <main>
+  <p class="meta"><a class="lnk" href="#/pessoal">← voltar para o Meu financeiro</a></p>
+  <h1>${ehFatura ? 'Fatura de cartão' : 'Extrato'} — conferência</h1>
+  <p class="meta">${esc(bruto.arquivo || '')}${d.banco?' · '+esc(d.banco):''}${d.conta?' · '+esc(d.conta):''}
+    ${d.periodo_inicio?' · '+br(d.periodo_inicio)+' a '+br(d.periodo_fim||d.periodo_inicio):''}</p>
+
+  <div class="aviso"><b>Nada foi lançado ainda.</b> O sistema leu o arquivo e separou as linhas;
+    quem decide o que entra na sua conta é você. Marque o que for lançar, ajuste a categoria,
+    e só então clique em importar.</div>
+
+  <div class="kpis">
+    <div class="kpi"><div class="n">${linhas.length}</div><div class="l">linhas lidas</div></div>
+    <div class="kpi"><div class="n">${rs(ent)}</div><div class="l">créditos</div></div>
+    <div class="kpi"><div class="n">${rs(sai)}</div><div class="l">débitos</div></div>
+    <div class="kpi ${dup?'al':''}"><div class="n">${dup}</div><div class="l">já parecem lançados</div></div>
+  </div>
+
+  ${ehFatura ? `<div class="aviso" style="border-color:var(--warn)">
+    <b>Isto é uma fatura de cartão.</b> As linhas abaixo são as compras. Quando a fatura for paga na
+    conta corrente, o extrato do banco vai trazer <i>um</i> débito com o total
+    ${d.total_fatura ? 'de <b>'+rs(d.total_fatura)+'</b> ' : ''}— é o mesmo dinheiro.
+    Lance as compras <b>ou</b> o pagamento da fatura, nunca os dois, senão a despesa conta em dobro.</div>` : ''}
+
+  ${bruto.obs ? `<div class="card" style="border-left:3px solid var(--warn)">
+    <div style="padding:12px 18px" class="sub"><b>O que o leitor não conseguiu ler:</b> ${esc(bruto.obs)}</div></div>` : ''}
+  ${bruto.descartadas ? `<div class="card" style="border-left:3px solid var(--crit)">
+    <div style="padding:12px 18px" class="sub"><b>${bruto.descartadas} linha(s) foram descartadas</b> por virem
+      sem data, sem valor ou sem descrição legível. Confira o arquivo original: elas não estão na lista abaixo.</div></div>` : ''}
+
+  <div class="card"><div style="padding:12px 18px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <button class="btn" onclick="marcarTodas('tudo')">Marcar tudo</button>
+    <button class="btn" onclick="marcarTodas('saidas')">Só os débitos</button>
+    <button class="btn" onclick="marcarTodas('entradas')">Só os créditos</button>
+    <button class="btn" onclick="desmarcarTodas()">Desmarcar</button>
+    <span class="sub" id="ex-resumo" style="margin:0"></span>
+    <span style="flex:1"></span>
+    ${bruto.path ? `<button class="btn" onclick="verArquivoExtrato('${esc(bruto.path)}')">Ver o arquivo</button>` : ''}
+    ${bruto.situacao === 'importado' ? `<button class="btn" onclick="desfazerImportacao('${id}')">Desfazer a importação</button>` : ''}
+    <button class="btn ok" onclick="importarExtrato()">Importar os marcados</button>
+    <span class="sub" id="ex-imp" style="margin:0"></span>
+  </div></div>
+
+  ${bruto.situacao === 'importado' ? `<div class="aviso" style="border-color:var(--ok)">
+    Este arquivo já foi importado uma vez. Marcar de novo cria lançamentos repetidos —
+    use <i>Desfazer a importação</i> antes, se quiser refazer.</div>` : ''}
+
+  <div class="card"><h2>Linha a linha</h2>
+    <table><thead><tr><th style="width:40px"></th><th style="width:100px">Data</th><th>Descrição</th>
+      <th style="width:120px">Valor</th><th style="width:90px">Tipo</th><th style="width:210px">Categoria</th></tr></thead>
+    <tbody>${linhas.map((l,i)=>`<tr${jaLancado[i]?' style="background:var(--f2)"':''}>
+      <td style="text-align:center"><input type="checkbox" ${EXTMARCA.has(i)?'checked':''}
+        onchange="marcarLinha(${i}, this)"></td>
+      <td class="dt">${br(l.data)}</td>
+      <td>${esc(l.descricao)}
+        ${l.parcela?`<span class="sub">parcela ${l.parcela}${l.total_parcelas?' de '+l.total_parcelas:''}</span>`:''}
+        ${jaLancado[i]?'<span class="sub" style="color:var(--warn)">▲ já existe um lançamento igual neste dia e valor</span>':''}</td>
+      <td class="dt" style="text-align:right;white-space:nowrap">${rs(l.valor)}</td>
+      <td><span class="pill ${l.tipo==='entrada'?'good':'ser'}">${l.tipo==='entrada'?'crédito':'débito'}</span></td>
+      <td><select onchange="catLinha(${i}, this.value)" style="font-size:12px;width:100%">
+        <option value="">— sem categoria —</option>
+        ${cats.map(c=>`<option value="${c.id}" ${c.nome===l.categoria_sugerida?'selected':''}>${esc(c.nome)}</option>`).join('')}
+      </select></td></tr>`).join('')}
+    </tbody></table></div>
+  </main>` + rodape();
+  linhas.forEach((l,i)=>{ if (EXTCAT[i] === undefined) {
+    const c = cats.find(x=>x.nome===l.categoria_sugerida); if (c) EXTCAT[i] = c.id; } });
+  pintarResumoExt();
+}
+
 async function telaPessoal(){
   await carregarPessoal();
   const c = contasPessoal();
@@ -7929,6 +8205,27 @@ async function telaPessoal(){
     <div class="kpi ${compPct>70?'al':''}"><div class="n">${compPct}%</div><div class="l">já comprometido</div></div>
     <div class="kpi"><div class="n">${rs(c.variaveis)}</div><div class="l">variáveis do mês</div></div>
     <div class="kpi ${c.sobra<0?'al':''}"><div class="n">${rs(c.sobra)}</div><div class="l">sobra</div></div>
+  </div>
+
+  <div class="card"><h2>Ler extrato ou fatura</h2>
+    <p class="nota">Mande o PDF do extrato da conta ou da fatura do cartão. O sistema lê, separa
+      <b>créditos</b> de <b>débitos</b> e mostra linha a linha para você conferir.
+      <b>Nada entra na sua conta sozinho</b> — só o que você marcar. PDF grande é lido em blocos de
+      dez páginas. Foto também serve, até 6 MB.</p>
+    <div style="padding:0 18px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <input type="file" accept="application/pdf,image/*" onchange="lerExtrato(this)">
+      <span class="sub" id="ex-st" style="margin:0"></span>
+    </div>
+    ${EXTRATOS.length ? `<table><thead><tr><th>Arquivo</th><th>Tipo</th><th>Período</th>
+      <th>Linhas</th><th>Situação</th><th></th></tr></thead><tbody>
+      ${EXTRATOS.map(x=>`<tr>
+        <td>${esc(x.arquivo_nome||'—')}<span class="sub">${esc(x.banco||'')}${x.conta?' · '+esc(x.conta):''}</span></td>
+        <td><span class="pill ${x.tipo==='fatura'?'ser':'cin'}">${x.tipo==='fatura'?'fatura':'extrato'}</span></td>
+        <td class="dt">${x.periodo_ini?br(x.periodo_ini)+' a '+br(x.periodo_fim||x.periodo_ini):'—'}</td>
+        <td>${(x.linhas||[]).length}</td>
+        <td class="sub">${x.situacao === 'importado' ? 'importado' : 'lido, aguardando conferência'}</td>
+        <td><a class="lnk" href="#/extrato/${x.id}">abrir</a></td></tr>`).join('')}
+      </tbody></table>` : ''}
   </div>
 
   <div class="card"><h2>Para onde vai a distribuição</h2>
@@ -8742,6 +9039,7 @@ async function rota(){
   if(h.startsWith('#/auditoria'))  return telaAuditoria();
   if(h.startsWith('#/investir'))   return telaInvestir();
   if(h.startsWith('#/ficha/'))     return telaFicha(h.split('/')[2]);
+  if(h.startsWith('#/extrato/'))   return abrirExtrato(h.split('/')[2]);
   if(h.startsWith('#/pessoal'))    return telaPessoal();
   if(h.startsWith('#/config'))     return telaConfig();
   return telaInicio();
