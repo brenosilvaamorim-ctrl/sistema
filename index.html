@@ -2993,6 +2993,10 @@ window.tirarProcesso = async (id) => {
 /* Um caso pode ter vários processos. Cada prazo, audiência ou tarefa precisa
    dizer a qual deles pertence — ou ficar no caso, quando vale para todos. */
 let CASOPZ = [], CASOEV = [];
+/* As palavras do banco não são as palavras do escritório. */
+const SITCASO = { aberta:'em aberto', em_andamento:'em andamento', concluida:'realizado',
+                  cancelada:'cancelado', sugerido:'a confirmar', confirmado:'confirmado',
+                  cumprido:'cumprido', perdido:'perdido', cancelado:'cancelado' };
 const procDoCaso = p => (p.numero_formatado || p.numero_cnj || 'processo sem número')
   + (p.orgao ? ' · ' + p.orgao : (p.tribunal_sigla ? ' · ' + p.tribunal_sigla : ''));
 function seletorProcesso(nome, atual, extra){
@@ -3326,7 +3330,7 @@ async function telaCaso(id){
       : CASOPROC.length === 1
         ? 'Este caso tem um processo só. Se entrar outro depois, é aqui que você separa o que é de cada um.'
         : 'Este caso ainda não tem processo cadastrado. Cadastre um acima e ele passa a aparecer nesta coluna.'}</p>
-    <table><thead><tr><th>Quando</th><th>Tipo</th><th>O quê</th><th>De qual processo</th><th></th></tr></thead><tbody>
+    <table><thead><tr><th>Quando</th><th>Tipo</th><th>O quê</th><th>De qual processo</th><th style="width:150px">Situação</th></tr></thead><tbody>
     ${[...CASOPZ.map(x=>({q:'prazo', id:x.id, d:x.data_fatal, h:'', t:'prazo',
          nome:x.descricao, proc:x.processo_id, sit:x.situacao, fim:['cumprido','cancelado'].includes(x.situacao)})),
        ...CASOEV.map(x=>({q:'evento', id:x.id, d:String(x.inicio).slice(0,10), h:String(x.inicio).slice(11,16),
@@ -3341,7 +3345,11 @@ async function telaCaso(id){
           ? seletorProcesso(`onchange="vincularProcesso('${i.q}','${i.id}', this.value, this)"`, i.proc,
               'style="max-width:320px;font-size:12.4px"' + (i.proc ? '' : ' data-solto="1"'))
           : '<span class="sub">sem processo cadastrado</span>'}</td>
-        <td class="sub">${i.sit ? esc(i.sit) : ''}</td></tr>`).join('')}
+        <td>${i.fim
+          ? `<span class="sub">${esc(SITCASO[i.sit] || i.sit || '')}</span>`
+          : `<button class="btn" style="font-size:11.6px;padding:4px 9px;white-space:nowrap"
+               title="${i.q === 'prazo' ? 'marcar este prazo como cumprido' : 'marcar como realizado'} — sai da agenda"
+               onclick="riscar('${i.q}','${i.id}',this)">Dar baixa</button>`}</td></tr>`).join('')}
     </tbody></table></div>` : ''}
 
   <div class="card"><h2>Registrar atividade neste caso</h2>
