@@ -7941,6 +7941,13 @@ const digital = (data, valor, desc) =>
   String(desc||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
     .replace(/[^a-z0-9]/g,'').slice(0,28);
 
+/* Preço do Sonnet 5 em 04/09/2026 e câmbio do dia. Se qualquer um dos dois mudar,
+   é aqui que se corrige — em um lugar só. */
+const PRECO_ENTRADA = 2, PRECO_SAIDA = 10, DOLAR = 5.10;
+function custoLeitura(uso){
+  const usd = (Number(uso.entrada||0)/1e6)*PRECO_ENTRADA + (Number(uso.saida||0)/1e6)*PRECO_SAIDA;
+  return 'US$ ' + usd.toFixed(4) + ' (cerca de ' + rs(usd * DOLAR) + ')';
+}
 async function mandarAoLeitorExtrato(b64, mime, nome){
   const { data: { session } } = await sb.auth.getSession();
   const cats = (PES?.cats || []).filter(c=>c.ativo!==false).map(c=>c.nome);
@@ -7965,6 +7972,7 @@ window.lerExtrato = async (input) => {
 
   try {
     let doc = null, linhas = [], obs = [], descartadas = 0;
+    const uso = { entrada: 0, saida: 0 };
     if (ehPdf && f.size > 3*1024*1024) {
       const { paginas, partes } = await fatiarPdf(f, 10);
       for (let i = 0; i < partes.length; i++) {
@@ -7978,6 +7986,7 @@ window.lerExtrato = async (input) => {
         if (r.documento?.saldo_final) doc.saldo_final = r.documento.saldo_final;
         linhas = linhas.concat(r.lancamentos || []);
         descartadas += Number(r.descartadas || 0);
+        uso.entrada += Number(r.uso?.entrada || 0); uso.saida += Number(r.uso?.saida || 0);
         if (r.observacao) obs.push(`p. ${p.de}-${p.ate}: ${r.observacao}`);
       }
     } else {
@@ -7991,6 +8000,7 @@ window.lerExtrato = async (input) => {
       if (r.erro) { st.style.color='var(--crit)'; return st.textContent = 'erro: ' + r.erro; }
       doc = r.documento; linhas = r.lancamentos || [];
       descartadas = Number(r.descartadas || 0);
+      uso.entrada = Number(r.uso?.entrada || 0); uso.saida = Number(r.uso?.saida || 0);
       if (r.observacao) obs.push(r.observacao);
     }
 
@@ -8014,7 +8024,7 @@ window.lerExtrato = async (input) => {
       if (!up.error) await sb.from('pessoal_extrato').update({ arquivo_path: caminho }).eq('id', reg.id);
     }
     st.textContent = '';
-    telaExtrato(reg?.id, { doc, linhas, obs: obs.join(' · '), descartadas, arquivo: f.name });
+    telaExtrato(reg?.id, { doc, linhas, obs: obs.join(' · '), descartadas, arquivo: f.name, uso });
   } catch (e) {
     st.style.color='var(--crit)'; st.textContent = 'erro: ' + (e.message || e);
   }
@@ -8039,9 +8049,10 @@ window.marcarLinha = (i, el) => { if (el.checked) EXTMARCA.add(i); else EXTMARCA
 window.catLinha    = (i, v) => { EXTCAT[i] = v || null; };
 window.marcarTodas = (quais) => {
   EXT.linhas.forEach((l, i) => {
-    const cabe = quais === 'tudo' ? !EXT.jaLancado[i]
-               : quais === 'saidas'   ? (l.tipo === 'saida'   && !EXT.jaLancado[i])
-               : quais === 'entradas' ? (l.tipo === 'entrada' && !EXT.jaLancado[i]) : false;
+    const limpa = !EXT.jaLancado[i] && !EXT.choque[i];
+    const cabe = quais === 'tudo' ? limpa
+               : quais === 'saidas'   ? (l.tipo === 'saida'   && limpa)
+               : quais === 'entradas' ? (l.tipo === 'entrada' && limpa) : false;
     if (cabe) EXTMARCA.add(i);
   });
   telaExtrato(EXT.id, EXT.bruto, true);
@@ -8101,11 +8112,36 @@ async function telaExtrato(id, bruto, manterMarcas){
   const vistos = new Set(ja.map(x => x.hash_origem || digital(x.data, x.valor, x.descricao)));
   const jaLancado = linhas.map(l => vistos.has(digital(l.data, l.valor, l.descricao)));
 
-  EXT = { id, linhas, bruto, jaLancado };
+  /* ------------------------------------------------------------------
+     O painel já conta sozinho duas coisas que TAMBÉM aparecem no extrato:
+     a parcela do financiamento (que vem da tabela de parcelas, não de
+     lançamento) e as despesas recorrentes ativas ainda não lançadas.
+     Importar essas linhas conta a mesma despesa duas vezes. Aqui elas são
+     reconhecidas pelo valor e avisadas — e ficam de fora do "marcar tudo". */
+  const perto = (a,b) => b > 0 && Math.abs(a-b) / b < 0.02;
+  const choque = linhas.map(l => {
+    if (l.tipo !== 'saida') return null;
+    const mes = String(l.data).slice(0,7);
+    for (const f of (PES.fins || [])) {
+      const v = emObra(f, mes) ? jurosDeObra(f, mes)
+              : (tabelaFin(f)[parcelasPagas(f, mes) - 1] || {}).parcela;
+      if (v && perto(Number(l.valor), Number(v)))
+        return { tipo:'financiamento', nome: f.nome, valor: Number(v) };
+    }
+    for (const r of (PES.recs || [])) {
+      if (r.ativo === false) continue;
+      if (perto(Number(l.valor), Number(r.valor)))
+        return { tipo:'recorrente', nome: r.descricao, valor: Number(r.valor) };
+    }
+    return null;
+  });
+
+  EXT = { id, linhas, bruto, jaLancado, choque };
   const d = bruto.doc || {};
   const ent = linhas.filter(l=>l.tipo==='entrada').reduce((a,l)=>a+Number(l.valor),0);
   const sai = linhas.filter(l=>l.tipo==='saida').reduce((a,l)=>a+Number(l.valor),0);
   const dup = jaLancado.filter(Boolean).length;
+  const nChoque = choque.filter(Boolean).length;
   const ehFatura = d.tipo === 'fatura';
   const cats = PES.cats.filter(c=>c.ativo!==false);
 
@@ -8125,7 +8161,13 @@ async function telaExtrato(id, bruto, manterMarcas){
     <div class="kpi"><div class="n">${rs(ent)}</div><div class="l">créditos</div></div>
     <div class="kpi"><div class="n">${rs(sai)}</div><div class="l">débitos</div></div>
     <div class="kpi ${dup?'al':''}"><div class="n">${dup}</div><div class="l">já parecem lançados</div></div>
+    ${nChoque?`<div class="kpi al"><div class="n">${nChoque}</div><div class="l">o painel já conta sozinho</div></div>`:''}
   </div>
+
+  ${nChoque?`<div class="aviso" style="border-color:var(--crit)">
+    <b>${nChoque} linha(s) o painel já conta por outro caminho</b> — a parcela do financiamento vem da tabela
+    de parcelas, e as despesas recorrentes entram sozinhas todo mês. Elas ficam <b>fora</b> do "marcar tudo";
+    se você marcar mesmo assim, a despesa vai contar em dobro.</div>`:''}
 
   ${ehFatura ? `<div class="aviso" style="border-color:var(--warn)">
     <b>Isto é uma fatura de cartão.</b> As linhas abaixo são as compras. Quando a fatura for paga na
@@ -8133,6 +8175,12 @@ async function telaExtrato(id, bruto, manterMarcas){
     ${d.total_fatura ? 'de <b>'+rs(d.total_fatura)+'</b> ' : ''}— é o mesmo dinheiro.
     Lance as compras <b>ou</b> o pagamento da fatura, nunca os dois, senão a despesa conta em dobro.</div>` : ''}
 
+  ${bruto.uso && bruto.uso.entrada ? `<div class="card">
+    <div style="padding:12px 18px" class="sub">Esta leitura custou
+      <b>${custoLeitura(bruto.uso)}</b> — ${bruto.uso.entrada.toLocaleString('pt-BR')} tokens de entrada e
+      ${bruto.uso.saida.toLocaleString('pt-BR')} de saída, ao preço do Sonnet 5
+      (US$ 2 e US$ 10 por milhão), convertidos a R$ 5,10 por dólar.
+      É o valor real desta chamada, não estimativa.</div></div>` : ''}
   ${bruto.obs ? `<div class="card" style="border-left:3px solid var(--warn)">
     <div style="padding:12px 18px" class="sub"><b>O que o leitor não conseguiu ler:</b> ${esc(bruto.obs)}</div></div>` : ''}
   ${bruto.descartadas ? `<div class="card" style="border-left:3px solid var(--crit)">
@@ -8165,7 +8213,11 @@ async function telaExtrato(id, bruto, manterMarcas){
       <td class="dt">${br(l.data)}</td>
       <td>${esc(l.descricao)}
         ${l.parcela?`<span class="sub">parcela ${l.parcela}${l.total_parcelas?' de '+l.total_parcelas:''}</span>`:''}
-        ${jaLancado[i]?'<span class="sub" style="color:var(--warn)">▲ já existe um lançamento igual neste dia e valor</span>':''}</td>
+        ${jaLancado[i]?'<span class="sub" style="color:var(--warn)">▲ já existe um lançamento igual neste dia e valor</span>':''}
+        ${choque[i]?`<span class="sub" style="color:var(--crit)">▲ o painel já conta isto sozinho:
+          ${choque[i].tipo==='financiamento' ? 'parcela do financiamento <b>'+esc(choque[i].nome)+'</b>'
+            : 'despesa recorrente <b>'+esc(choque[i].nome)+'</b>'} (${rs(choque[i].valor)}).
+          Lançar aqui conta a mesma despesa duas vezes.</span>`:''}</td>
       <td class="dt" style="text-align:right;white-space:nowrap">${rs(l.valor)}</td>
       <td><span class="pill ${l.tipo==='entrada'?'good':'ser'}">${l.tipo==='entrada'?'crédito':'débito'}</span></td>
       <td><select onchange="catLinha(${i}, this.value)" style="font-size:12px;width:100%">
