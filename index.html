@@ -521,12 +521,39 @@ function botaoSala(link){
   return `<a class="btn ok" href="${esc(link)}" target="_blank" rel="noreferrer"
      style="text-decoration:none;padding:4px 9px;font-size:11.6px">Entrar agora</a>`;
 }
+/* ---------------------------------------- assinaturas paradas, no painel inicial
+   Espelha o que a tela do caso já faz, mas visto de cima: no caso você só enxerga
+   os documentos daquele caso; aqui você enxerga os de todos, e é isso que
+   transforma "esqueci" em "está na minha frente". */
+let INIASSIN = [];
+
+window.cobrarAssinaturaInicio = (id) => {
+  const a = INIASSIN.find(x => x.id === id); if (!a) return;
+  const fone = a.caso?.cliente?.whatsapp || a.caso?.cliente?.telefone;
+  if (!fone) return alert('Este cliente não tem telefone cadastrado.');
+  const nome = primeiroNome(a.caso?.cliente?.nome || '');
+  const texto = (nome ? 'Olá, ' + nome + '! ' : 'Olá! ')
+    + 'Preciso da sua assinatura' + (a.titulo ? ' no documento “' + a.titulo + '”' : ' em um documento')
+    + '. É rápido, dá para fazer pelo celular:\n\n' + (a.link ? a.link + '\n\n' : '')
+    + 'Você vai precisar tirar uma selfie e uma foto de um documento com foto (RG ou CNH). '
+    + 'Tem um passo a passo com vídeo explicando: ' + location.origin + '/ajuda#assinar'
+    + '\n\nQualquer dúvida, é só me chamar por aqui.';
+  window.open(linkWa(fone, texto), '_blank');
+};
+
+window.assinouAgora = async (id, data) => {
+  if (!data) return;
+  const { error } = await sb.from('assinatura').update({ assinado_em: data }).eq('id', id);
+  if (error) return alert('Não foi possível: ' + error.message);
+  telaInicio();
+};
+
 async function telaInicio(){
   const h = hoje();
   const d7  = new Date(Date.now() + 7*864e5).toISOString().slice(0,10);
   const d30 = new Date(Date.now() - 30*864e5).toISOString().slice(0,10);
   const mes = h.slice(0,7);
-  const [pz, ev, itm, lc, cs] = await Promise.all([
+  const [pz, ev, itm, lc, cs, asn] = await Promise.all([
     sb.from('prazo').select('id,descricao,data_fatal,situacao,caso:caso_id(id,titulo)')
       .in('situacao',['sugerido','confirmado']).order('data_fatal'),
     sb.from('evento').select('id,titulo,tipo,inicio,local,link_sala,situacao,caso:caso_id(id,titulo),cliente:cliente_id(nome)')
@@ -534,6 +561,9 @@ async function telaInicio(){
     sb.from('intimacao').select('id,situacao').gte('data_disponibilizacao', d30),
     sb.from('lancamento').select('tipo,valor,situacao,vencimento').gte('vencimento', mes+'-01').lte('vencimento', mes+'-31'),
     sb.from('caso').select('id,encerrado_em'),
+    sb.from('assinatura')
+      .select('id,titulo,tipo,link,plataforma,enviado_em,caso:caso_id(id,titulo,cliente:cliente_id(nome,whatsapp,telefone))')
+      .is('assinado_em', null).order('enviado_em'),
   ]);
   if (pz.error) return erro(pz.error.message);
   const PZ = pz.data||[], EV = ev.data||[], LC = lc.data||[];
@@ -546,6 +576,10 @@ async function telaInicio(){
   const aud7      = EV.filter(e => e.tipo === 'audiencia' && dia(e) >= h && dia(e) <= d7);
   const conferir  = (itm.data||[]).filter(i => !['sem_providencia','confirmada','cumprida'].includes(i.situacao)).length;
   const abertos   = (cs.data||[]).filter(c => !c.encerrado_em).length;
+  /* Documento subido na ZapSign e nunca assinado. Enquanto não houver API, ninguém
+     avisa — o documento simplesmente para, e a gente só descobre quando precisa dele. */
+  INIASSIN = (asn.data || []).filter(a => a.enviado_em);
+  const paradas = INIASSIN.filter(a => diasDesde(a.enviado_em) >= 5);
   const entra = LC.filter(x=>x.tipo==='entrada').reduce((a,b)=>a+Number(b.valor||0),0);
   const sai   = LC.filter(x=>x.tipo==='saida').reduce((a,b)=>a+Number(b.valor||0),0);
 
@@ -570,6 +604,7 @@ async function telaInicio(){
     <div class="kpi"><div class="n">${pr7.length}</div><div class="l">prazos nos próximos 7 dias</div></div>
     <div class="kpi"><div class="n">${aud7.length}</div><div class="l">audiências na semana</div></div>
     <div class="kpi ${conferir?'al':''}"><div class="n">${conferir}</div><div class="l">publicações a conferir</div></div>
+    <div class="kpi ${paradas.length?'al':''}"><div class="n">${paradas.length}</div><div class="l">assinaturas paradas</div></div>
     <div class="kpi"><div class="n">${abertos}</div><div class="l">casos abertos</div></div>
   </div>
   <div class="card"><h2>Começar alguma coisa</h2>
@@ -593,6 +628,32 @@ async function telaInicio(){
       ${(pr7.map(linhaPz).join('') + ev7.map(linhaEv).join(''))
         || '<div class="vazio">Semana livre pela frente.</div>'}
     </div></div>
+  ${INIASSIN.length ? `<div class="card"${paradas.length?' style="border-left:3px solid var(--warn)"':''}>
+    <h2>Documentos esperando assinatura</h2>
+    <p class="nota">${paradas.length
+      ? '<b>' + paradas.length + '</b> documento(s) parado(s) há cinco dias ou mais. Enquanto a integração com a ZapSign não existir, ninguém avisa quando o cliente assina — e ninguém avisa quando ele <i>não</i> assina. Este quadro é o lembrete.'
+      : 'Nada parado. Os documentos abaixo foram enviados nos últimos dias.'}
+      Cobrar aqui abre o <b>seu</b> WhatsApp com o texto pronto — não usa o envio pago da ZapSign.</p>
+    <table><thead><tr><th>Documento</th><th>Cliente / caso</th><th style="width:150px">Enviado</th>
+      <th>Link</th><th style="width:150px">Assinado em</th><th style="width:200px"></th></tr></thead><tbody>
+    ${INIASSIN.map(a=>{ const d = diasDesde(a.enviado_em); const tarde = d >= 5; return `<tr>
+      <td>${esc(a.titulo||'Documento')}<span class="sub">${esc(TIPODOC[a.tipo]||a.plataforma||'')}</span></td>
+      <td>${a.caso ? `<a class="lnk" href="#/caso/${a.caso.id}">${esc(a.caso.cliente?.nome || a.caso.titulo)}</a>` : '<span class="sub">sem caso</span>'}</td>
+      <td class="dt">${br(a.enviado_em)}
+        <span class="sub"${tarde?' style="color:var(--warn)"':''}>${
+          d === 0 ? 'hoje' : (tarde ? '▲ há ' + humano(d) : 'há ' + humano(d))}</span></td>
+      <td>${a.link ? `<a class="lnk" href="${esc(a.link)}" target="_blank" rel="noreferrer">abrir na ZapSign</a>`
+                   : '<span class="sub" style="display:inline">sem link</span>'}</td>
+      <td><input type="date" value="" max="${h}" style="font-size:12px;width:100%"
+            title="preencha quando o cliente assinar — o documento sai desta lista"
+            onchange="assinouAgora('${a.id}', this.value)"></td>
+      <td style="white-space:nowrap">
+        ${(a.caso?.cliente?.whatsapp || a.caso?.cliente?.telefone)
+          ? `<button class="btn ok" onclick="cobrarAssinaturaInicio('${a.id}')">Cobrar no WhatsApp</button>`
+          : '<span class="sub" style="display:inline">cliente sem telefone</span>'}</td>
+    </tr>`; }).join('')}
+    </tbody></table></div>` : ''}
+
   <div class="card"><h2>O mês no dinheiro</h2>
     <div class="kpis" style="padding-top:0">
       <div class="kpi"><div class="n" style="font-size:19px">${rs(entra)}</div><div class="l">a receber no mês</div></div>
@@ -4556,6 +4617,10 @@ Não existe OCR separado: as páginas são vistas como imagem, então **PDF de t
 **Documentos do cliente.** A lista do que foi pedido, com data de recebimento, e o botão que monta a cobrança pronta no WhatsApp.
 
 **Assinatura de documentos.** Gera a procuração e o contrato, registra o envio e a assinatura, e monta a cobrança de quem não assinou. O envio é manual, pelo seu WhatsApp ou e-mail.
+
+Como o envio é manual, ninguém avisa quando o cliente assina — nem quando ele deixa de assinar. Por isso o painel **Início** traz o quadro **Documentos esperando assinatura**, com todos os pendentes de todos os casos, dos mais antigos para os mais novos. Os que estão parados há **cinco dias ou mais** aparecem marcados, e o número deles vira um indicador no topo. De lá dá para abrir o documento na ZapSign, cobrar o cliente pelo seu WhatsApp com o texto já pronto, ou preencher a data de assinatura — e aí o documento sai da lista.
+
+A cobrança abre o **seu** WhatsApp: não usa o envio pago da ZapSign, que custa R$ 0,50 por disparo no plano Profissional.
 
 **Delegado a parceiro.** Quando você passa a diligência, a audiência ou a peça para outro advogado: registra o combinado, o valor e o prazo, e joga o pagamento no financeiro.
 
