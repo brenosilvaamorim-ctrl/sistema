@@ -2943,12 +2943,70 @@ function cartao(c){
       </div></div>
   </div>`;
 }
+/* ------------------------------------------------------- abrir caso pelo quadro
+   Nem todo caso nasce de um lead. Cliente antigo que volta, indicação que já
+   chega decidida, processo que aparece pelo DJEN — antes disso tudo obrigava a
+   passar pela Captação ou nascer sem cliente. O formulário abaixo cria os dois
+   de uma vez: se o nome digitado não existir em Clientes, o cliente é cadastrado
+   junto e passa a aparecer lá — não existe caso com dono anônimo. */
+window.novoCaso = async (ev) => {
+  ev.preventDefault();
+  const f = ev.target, v = n => (f.elements[n]?.value || '').trim() || null;
+  const st = document.getElementById('nc-st');
+  const nome = v('cliente');
+  if (!nome) { f.elements['cliente'].focus(); return; }
+  st.style.color = 'var(--i3)'; st.textContent = 'criando…';
+  const eid = await escId();
+
+  /* Já existe alguém com esse nome? Comparo sem acento e sem caixa, para não
+     criar "Maria Jose" ao lado de "MARIA JOSÉ". */
+  const chave = t => String(t||'').toLowerCase().normalize('NFD')
+    .replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim();
+  await carregarClientes().catch(()=>{});
+  let cli = CLILISTA.find(c => chave(c.nome) === chave(nome));
+
+  if (!cli) {
+    const { data: novo, error } = await sb.from('cliente')
+      .insert({ escritorio_id: eid, nome, tipo: v('tipo') || 'fisica',
+                telefone: v('telefone'), whatsapp: v('telefone') })
+      .select('id,nome').single();
+    if (error) { st.style.color='var(--crit)'; return st.textContent = 'erro ao criar o cliente: ' + error.message; }
+    cli = { id: novo.id, nome: novo.nome };
+    CLILISTA.push(cli); CLILISTA.sort((a,b)=>a.nome.localeCompare(b.nome));
+  } else if (v('telefone')) {
+    /* cliente que já existia e ainda não tinha telefone: aproveita o que foi digitado */
+    await sb.from('cliente').update({ telefone: v('telefone'), whatsapp: v('telefone') })
+      .eq('id', cli.id).is('telefone', null);
+  }
+
+  const areaNome = (AREAS.find(a => a.id === v('area_id')) || {}).nome || null;
+  const { data: caso, error } = await sb.from('caso').insert({
+    escritorio_id: eid, cliente_id: cli.id,
+    titulo: v('titulo') || nome,
+    area_id: v('area_id'), area: areaNome,
+    coluna_id: v('coluna_id'), polo: v('polo'),
+    descricao: v('descricao'),
+  }).select('id').single();
+  if (error) { st.style.color='var(--crit)'; return st.textContent = 'erro ao criar o caso: ' + error.message; }
+  st.style.color = 'var(--ok)'; st.textContent = 'criado ✓';
+  location.hash = '#/caso/' + caso.id;
+};
+window.abrirNovoCaso = () => {
+  const d = document.getElementById('nc-form');
+  if (!d) return;
+  d.style.display = d.style.display === 'none' ? '' : 'none';
+  if (d.style.display !== 'none') d.querySelector('input[name="cliente"]')?.focus();
+};
+
 async function telaCasos(){
-  const [q, co, od] = await Promise.all([
+  const [q, co, od, ar] = await Promise.all([
     sb.from('caso_quadro').select('*'),
     sb.from('coluna_caso').select('*').order('ordem'),
     sb.from('caso').select('id,ordem'),          /* a ordem manual mora em caso, não na view */
+    sb.from('area_atuacao').select('id,nome').eq('ativo',true).order('ordem'),
   ]);
+  AREAS = ar.data || [];
+  await carregarClientes().catch(()=>{});
   if (q.error) return erro(q.error.message);
   QUADRO = q.data||[]; COLUNAS = co.data||[];
   CASOORD = {}; (od.data||[]).forEach(x => { CASOORD[x.id] = x.ordem; });
@@ -2973,6 +3031,8 @@ async function telaCasos(){
     <div class="kpi"><div class="n">${encerrados.length}</div><div class="l">encerrados</div></div>
   </div>
   <div class="card"><div style="padding:12px 18px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <button class="btn ok" onclick="abrirNovoCaso()">Abrir um caso</button>
+    <span style="width:1px;height:22px;background:var(--ln)"></span>
     <button class="btn ${CASOVISTA==='quadro'?'ok':''}" onclick="mudarVistaCasos('quadro')">Quadro</button>
     <button class="btn ${CASOVISTA==='lista'?'ok':''}" onclick="mudarVistaCasos('lista')">Lista</button>
     ${TAGS.length?`<span class="sub" style="margin:0 0 0 10px">etiquetas:</span>`:''}
@@ -2980,6 +3040,44 @@ async function telaCasos(){
     ${TAGFILTRO?`<button class="btn" onclick="filtrarTag('${TAGFILTRO}')">limpar filtro</button>`:''}
     ${TAGS.length?'':'<span class="sub" style="margin:0">nenhuma etiqueta criada ainda — crie a primeira dentro de um caso</span>'}
   </div></div>
+  <div class="card" id="nc-form" style="display:none"><h2>Abrir um caso</h2>
+    <p class="nota">Digite o nome do cliente. Se ele ainda não estiver cadastrado, o sistema
+      <b>cria o cliente junto</b> e ele passa a aparecer no menu Clientes — caso não nasce sem dono.
+      Se já existir alguém com esse nome, o caso é amarrado a quem já está lá, sem duplicar.</p>
+    <form onsubmit="novoCaso(event)" style="display:flex;gap:9px;flex-wrap:wrap;padding:0 18px 18px;align-items:flex-end">
+      <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:260px">
+        <span class="sub" style="margin:0">Nome do cliente</span>
+        <input name="cliente" required list="nc-clientes" placeholder="como deve aparecer no quadro e nas mensagens">
+        <datalist id="nc-clientes">${CLILISTA.map(c=>`<option value="${esc(c.nome)}">`).join('')}</datalist></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:150px">
+        <span class="sub" style="margin:0">Telefone</span>
+        <input name="telefone" placeholder="com DDD"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:130px">
+        <span class="sub" style="margin:0">Pessoa</span>
+        <select name="tipo"><option value="fisica">física</option><option value="juridica">jurídica</option></select></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:180px">
+        <span class="sub" style="margin:0">Área</span>
+        <select name="area_id"><option value="">— sem área —</option>
+          ${AREAS.map(a=>`<option value="${a.id}">${esc(a.nome)}</option>`).join('')}</select></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:150px">
+        <span class="sub" style="margin:0">Polo</span>
+        <select name="polo"><option value="">— não informado —</option>
+          <option>Reclamante</option><option>Reclamado</option><option>Autor</option><option>Réu</option></select></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:200px">
+        <span class="sub" style="margin:0">Etapa</span>
+        <select name="coluna_id">${COLUNAS.map((k,i)=>
+          `<option value="${k.id}" ${i===0?'selected':''}>${esc(k.nome)}</option>`).join('')}</select></label>
+      <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:100%">
+        <span class="sub" style="margin:0">Título do caso — deixe em branco para usar o nome do cliente</span>
+        <input name="titulo" placeholder="só preencha se o caso precisar de um nome diferente do cliente"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:100%">
+        <span class="sub" style="margin:0">Do que se trata</span>
+        <input name="descricao" placeholder="uma linha, para você reconhecer o caso depois"></label>
+      <button class="btn ok" type="submit">Criar o caso</button>
+      <button class="btn" type="button" onclick="abrirNovoCaso()">Cancelar</button>
+      <span class="sub" id="nc-st" style="margin:0"></span>
+    </form></div>
+
   ${CASOVISTA === 'lista' ? `<div class="card"><h2>Casos abertos</h2>
     <table><thead><tr><th>Cliente</th><th>Área</th><th>Etapa</th><th>Etiquetas</th><th>Próximo prazo</th><th>Processos</th><th></th></tr></thead>
     <tbody>${abertos.map(c=>{
@@ -3547,13 +3645,23 @@ async function telaCaso(id){
       <span class="sub" id="at-st" style="margin:0"></span>
     </form></div>
 
-  <div class="card"><h2>Cliente do caso</h2>
-    <p class="nota">O nome do cliente é o que aparece no quadro de casos, nas mensagens e nos relatórios.
-      Sem ele, o caso continua identificado pelo número do processo.</p>
+  <div class="card"><h2>Nome do cliente e título do caso</h2>
+    <p class="nota">Corrigir o <b>nome do cliente</b> aqui muda o cadastro dele — o nome novo aparece
+      no menu Clientes, nas mensagens e em todos os outros casos dessa mesma pessoa. O <b>título do caso</b>
+      é o rótulo deste caso só; quando os dois estão iguais, mudar o nome muda o título junto.</p>
+    <div style="padding:0 18px 14px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+      ${c.cliente_id ? `<label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:260px">
+        <span class="sub" style="margin:0">Nome do cliente</span>
+        <input id="ed-cliente" value="${esc(c.cliente?.nome || '')}"></label>` : ''}
+      <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:260px">
+        <span class="sub" style="margin:0">Título do caso</span>
+        <input id="ed-titulo" value="${esc(c.titulo || '')}"></label>
+      <button class="btn ok" onclick="salvarNomes('${c.id}', ${c.cliente_id ? `'${c.cliente_id}'` : 'null'})">Guardar</button>
+      <span class="sub" id="ed-st" style="margin:0"></span>
+    </div>
     <div style="padding:0 18px 18px;display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+      <span class="sub" style="margin:0">Cliente amarrado:</span>
       ${seletorCliente(c.id, c.cliente_id)}
-      ${c.cliente_id && c.titulo !== c.cliente?.nome
-        ? `<button class="btn" onclick="usarNomeDoCliente('${c.id}','${c.cliente_id}')">Usar o nome do cliente como título</button>` : ''}
       <a class="btn" href="#/semcliente">Ver todos os casos sem cliente</a>
     </div></div>
 
@@ -4591,6 +4699,12 @@ Duas visões, alternadas no topo:
 - **Lista** — tabela com cliente, área, etapa, etiquetas, próximo prazo e nº de processos. Boa para varrer tudo de uma vez.
 
 As **etiquetas** você cria dentro do caso e viram filtro aqui no topo.
+
+**Abrir um caso.** O botão no alto da tela abre um formulário curto: nome do cliente, telefone, área, polo, etapa e uma linha sobre o que é. O título fica em branco por padrão e assume o nome do cliente — só preencha se o caso precisar de nome diferente.
+
+Se o nome digitado **não existir** em Clientes, o sistema cadastra o cliente junto e ele passa a aparecer lá; caso não nasce sem dono. Se **já existir** alguém com aquele nome, o caso é amarrado a quem está lá, sem duplicar — a comparação ignora acento e maiúscula, então "MARIA JOSÉ" e "Maria Jose" são a mesma pessoa. Se o cliente já existia sem telefone e você digitar um, ele é aproveitado.
+
+**Corrigir o nome.** Dentro do caso, o quadro *Nome do cliente e título do caso* traz os dois campos lado a lado. Mudar o **nome do cliente** altera o cadastro dele — o nome novo aparece no menu Clientes, nas mensagens e em todos os outros casos daquela mesma pessoa. Mudar o **título do caso** altera só este caso. Quando os dois estavam iguais, corrigir o nome corrige o título junto, para o caso não ficar com o nome velho.
 
 ### Dentro de um caso
 
@@ -6117,6 +6231,39 @@ window.criarClienteAqui = async (casoId, campoId) => {
   SEMCLI = SEMCLI.filter(c => c.id !== casoId);
   pintarSemCliente();
 };
+/* Renomear o cliente é diferente de renomear o caso: o primeiro alcança tudo o
+   que aponta para aquela pessoa, o segundo é só o rótulo deste caso. Guardo os
+   dois de uma vez porque, na prática, quem corrige um quer corrigir o outro —
+   mas só arrasto o título junto quando ele espelhava o nome antigo. */
+window.salvarNomes = async (casoId, clienteId) => {
+  const st = document.getElementById('ed-st');
+  const vNome = (document.getElementById('ed-cliente')?.value || '').trim();
+  let  vTit   = (document.getElementById('ed-titulo')?.value || '').trim();
+  if (!vTit) { st.style.color='var(--crit)'; return st.textContent = 'o caso precisa de um título'; }
+  if (clienteId && !vNome) { st.style.color='var(--crit)'; return st.textContent = 'o cliente precisa de um nome'; }
+  st.style.color = 'var(--i3)'; st.textContent = 'guardando…';
+
+  const nomeAntes = CASO.cliente?.nome || '';
+  const titAntes  = CASO.titulo || '';
+  const mudouNome = clienteId && vNome !== nomeAntes;
+  /* título que era espelho do nome antigo acompanha a correção */
+  if (mudouNome && titAntes === nomeAntes && vTit === titAntes) vTit = vNome;
+
+  if (mudouNome) {
+    const e1 = (await sb.from('cliente')
+      .update({ nome: vNome, atualizado_em: new Date().toISOString() }).eq('id', clienteId)).error;
+    if (e1) { st.style.color='var(--crit)'; return st.textContent = 'erro no cliente: ' + e1.message; }
+    const ja = CLILISTA.find(x => x.id === clienteId); if (ja) ja.nome = vNome;
+  }
+  if (vTit !== titAntes) {
+    const e2 = (await sb.from('caso')
+      .update({ titulo: vTit, atualizado_em: new Date().toISOString() }).eq('id', casoId)).error;
+    if (e2) { st.style.color='var(--crit)'; return st.textContent = 'erro no caso: ' + e2.message; }
+  }
+  if (!mudouNome && vTit === titAntes) { st.style.color='var(--i3)'; return st.textContent = 'nada mudou'; }
+  telaCaso(casoId);
+};
+
 window.usarNomeDoCliente = async (casoId, clienteId) => {
   const c = CLILISTA.find(x => x.id === clienteId); if (!c) return;
   await sb.from('caso').update({ titulo: c.nome, atualizado_em: new Date().toISOString() }).eq('id', casoId);
