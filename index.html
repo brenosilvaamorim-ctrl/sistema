@@ -50,6 +50,7 @@ th{text-align:left;font-weight:600;color:var(--i3);font-size:11.3px;text-transfo
 td{padding:10px 11px;border-bottom:1px solid var(--ln);vertical-align:top}tr:last-child td{border-bottom:0}
 .sub{display:block;color:var(--i3);font-size:11.3px;margin-top:2px}
 .proc{font-variant-numeric:tabular-nums;font-size:12.3px;color:var(--i2);white-space:nowrap}
+table.mtab{margin:6px 0 14px;max-width:760px}table.mtab th{text-transform:none;font-size:11.6px;letter-spacing:0}table.mtab td{font-size:13px}
 .dt{white-space:nowrap;font-variant-numeric:tabular-nums}.q{color:var(--i2);font-style:italic;font-size:12.3px;display:block}
 .pill{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;font-size:11.3px;font-weight:600;white-space:nowrap;border:1px solid}
 .crit{color:var(--crit);border-color:var(--crit)}.ser{color:var(--ser);border-color:var(--ser)}
@@ -4769,7 +4770,7 @@ async function telaRegras(){
 /* ---------------------------------------------------------------- manual */
 const MANUAL_MD = `# Manual do sistema — Breno S. Amorim Advocacia
 
-Atualizado em 19 de agosto de 2026.
+Atualizado em 10 de setembro de 2026.
 
 Este manual explica o que cada menu faz, na ordem em que a coisa acontece no escritório: a publicação chega, vira prazo, vira tarefa, vira peça, vira dinheiro. No fim tem os limites do sistema e o que fazer quando algo der errado.
 
@@ -4785,13 +4786,78 @@ Três ideias sustentam tudo:
 
 **O robô traz, você decide.** Duas vezes por dia o sistema lê o DJEN e o DataJud, sugere prazos e classifica as publicações. Tudo o que ele conclui vem com um nível de confiança. A responsabilidade continua sendo sua — confira a data antes de aceitar.
 
-## 2. A rotina de cinco minutos
+## 2. A rotina do dia — para nada se perder e ninguém ficar sem notícia
 
-De manhã: abra **Início**. Ele mostra o que venceu, o que vence hoje, o que vem nos próximos sete dias, quantas publicações estão esperando conferência e como está o mês no dinheiro.
+Duas regras sustentam tudo o que vem abaixo. Se você seguir só elas, já não perde informação.
 
-Depois: **Prazos e publicações**. Confirme ou descarte os prazos sugeridos, clique em "Aplicar as regras" e trate as publicações que sobraram.
+**Regra do registro.** O que você sabe fora do sistema não existe. A ligação que você atendeu no carro, o que o juiz falou na audiência, o documento que o cliente mandou no WhatsApp: nada disso vale até estar dentro. O lugar é sempre a tela do caso, em *Registrar atividade neste caso*. Leva quinze segundos e é a diferença entre um escritório e uma memória.
 
-No fim do dia: marque o que foi feito. Prazo protocolado, tarefa concluída, audiência realizada. É esse clique que alimenta os relatórios — sem ele, a Métrica e a Jurimetria mostram zero.
+**Regra da baixa.** Prazo, audiência e tarefa só saem da sua frente quando você clicar em **Dar baixa**. Enquanto o botão estiver ali, o compromisso está em aberto — para o sistema e para a realidade. Não apague, não ignore: dê baixa. É esse clique que alimenta Métricas e Jurimetria; sem ele elas mostram zero.
+
+E uma consequência das duas: **quando algo muda, edite — não crie outro.** O juiz devolveu o prazo, a audiência foi redesignada, a tarefa ficou para a semana que vem: use o botão **Editar** no próprio item. Criar um segundo prazo sobre o mesmo assunto deixa dois registros, e um deles está mentindo.
+
+### De manhã — cinco a dez minutos
+
+**1. Início.** Os números do topo, na ordem em que doem: prazos já vencidos, prazos hoje, próximos sete dias, audiências da semana, publicações a conferir, assinaturas paradas. Número vermelho é coisa que já passou do ponto. Comece por ele.
+
+**2. Prazos e publicações.** Cada prazo sugerido pelo diário tem um botão *Conferir e confirmar*. Ele não é um "ok": é onde você escreve **do que trata** o prazo e o liga ao **caso** e ao **processo**. Prazo sem caso não aparece na ficha do cliente, não entra nos relatórios e não vira notícia para ninguém — é a forma mais comum de a informação se perder. Confira a data contra a publicação antes de confirmar: a leitura é automática, a responsabilidade é sua.
+
+**3. Agenda.** Olhe os **próximos sete dias**, não só hoje. Audiência que aparece com menos de uma semana já devia ter virado tarefa de preparação — se ainda não virou, crie a tarefa agora, ali mesmo.
+
+### Durante o dia — no momento em que acontece
+
+| Aconteceu | Onde entra |
+|---|---|
+| Falou com o cliente (ligação, WhatsApp, presencial) | Caso → Registrar atividade → **Contato com o cliente** |
+| Combinou de fazer alguma coisa | Caso → Registrar atividade → **Tarefa**, com data |
+| Saiu decisão, sentença, despacho relevante | Caso → Registrar atividade, e confira a **fase** do processo |
+| Audiência realizada | **Dar baixa** no item, e registre o que ficou combinado |
+| Cliente mandou documento | Caso → Documentos do cliente |
+| Chegou cliente novo ou indicação | **Captação**, com a ficha de atendimento |
+| Entrou ou saiu dinheiro do escritório | **Financeiro** |
+
+A regra prática: se você precisou guardar na cabeça, é porque devia ter ido para o sistema.
+
+### Fim do dia — três minutos
+
+Dê baixa no que foi feito. Depois olhe a Agenda de amanhã: você quer descobrir hoje, não amanhã de manhã, que precisa levar testemunha.
+
+### Uma vez por semana — o bloco que impede o cliente de ficar sem notícia
+
+Reserve vinte minutos numa segunda-feira. É o único momento fixo da semana e é o mais importante para a relação com o cliente.
+
+**Mensagens** é a tela desse bloco. Ela tem dois números que você deve tratar como cobrança:
+
+- **com novidade desde o último contato** — houve movimentação no processo depois da última vez que você falou com a pessoa. Ela ainda não sabe. Essa lista precisa chegar a zero toda semana; é literalmente a lista de clientes que estão no escuro.
+- **sem contato há mais de 30 dias** — nada aconteceu no processo, mas o silêncio já é longo demais. Um "seu processo está aguardando decisão, sem novidade até aqui" custa um minuto e vale meses de confiança.
+
+O sistema monta o texto, abre o WhatsApp e espera. Mas o relógio do cliente só reinicia quando você clica em **Registrar como enviado** — sem esse clique ele continua aparecendo como abandonado na semana seguinte. Mandou, registre.
+
+No mesmo bloco, mais três olhadas rápidas:
+
+- **Captação** — lead que entrou e não teve retorno. Captação sem resposta é cliente perdido em silêncio.
+- **Andamento** — processos parados há mais de 90 dias. Parado não é necessariamente problema, mas parado sem você saber por quê é.
+- **Agenda**, número "já passaram e seguem abertos" — item vencido que ninguém baixou. Ou foi feito e falta o clique, ou não foi feito e ninguém percebeu. Os dois casos precisam de você.
+
+### Uma vez por mês
+
+- **Métricas** — o card *Fora da contagem* lista processos sem data de distribuição. Enquanto estiverem lá, não contam em nenhum número.
+- **Financeiro** — baixa do que entrou e do que saiu no mês.
+- **Meu financeiro** — anexe os extratos e a fatura depois que a fatura fechar; é quando o mês está inteiro e a leitura sai completa de uma vez só.
+- **Início**, número *assinaturas paradas* — documento enviado há mais de cinco dias que ninguém assinou.
+
+### O termômetro
+
+Ao fim de um dia bem feito, estes números estão em zero:
+
+- prazos já vencidos
+- publicações a conferir
+- prazos sem caso
+- itens que já passaram e seguem abertos
+
+E ao fim de uma semana bem feita, mais um: **clientes com novidade desde o último contato**.
+
+Se algum deles vive teimando em não zerar, o problema não é falta de tempo — é que alguma etapa da rotina acima não está sendo feita. Vale identificar qual antes de tentar correr mais rápido.
 
 ## 3. Início
 
@@ -5129,8 +5195,29 @@ function mdHtml(t){
   const inline = x => esc(x)
     .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
     .replace(/(^|[\s(])\*([^*]+)\*/g, '$1<i>$2</i>');
-  for (const l of linhas) {
+  let emTab = false;
+  const fecharTab = () => { if (emTab) { out.push('</tbody></table>'); emTab = false; } };
+  const celulas = x => x.replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+  for (let li = 0; li < linhas.length; li++) {
+    const l = linhas[li];
     const t2 = l.trim();
+    /* Tabela: linha entre barras. A segunda linha, só de traços, é o separador
+       do markdown e não vira conteúdo. */
+    if (/^\|.*\|$/.test(t2)) {
+      const sep = /^\|[\s:|-]+\|$/.test((linhas[li+1]||'').trim());
+      if (!emTab) {
+        if (emLista) { out.push('</ul>'); emLista = false; }
+        out.push('<table class="mtab"><thead><tr>'
+          + celulas(t2).map(c => '<th>' + inline(c) + '</th>').join('') + '</tr></thead><tbody>');
+        emTab = true;
+        if (sep) li++;
+        continue;
+      }
+      if (sep) { li++; continue; }
+      out.push('<tr>' + celulas(t2).map(c => '<td>' + inline(c) + '</td>').join('') + '</tr>');
+      continue;
+    }
+    fecharTab();
     if (!t2) { if (emLista) { out.push('</ul>'); emLista = false; } continue; }
     if (t2 === '---') { if (emLista) { out.push('</ul>'); emLista = false; } out.push('<hr>'); continue; }
     const h = t2.match(/^(#{1,4})\s+(.*)$/);
@@ -5149,6 +5236,7 @@ function mdHtml(t){
     out.push('<p>' + inline(t2) + '</p>');
   }
   if (emLista) out.push('</ul>');
+  fecharTab();
   return out.join('\n');
 }
 function secoesManual(){
@@ -5186,7 +5274,10 @@ window.imprimirManual = () => {
   body{font:11pt/1.55 Georgia,'Times New Roman',serif;color:#1b1a17;max-width:760px;margin:0 auto}
   h2{font-size:14pt;margin:22px 0 6px;padding-top:10px;border-top:1px solid #ddd8cd;page-break-after:avoid}
   h3{font-size:12pt;margin:14px 0 4px;page-break-after:avoid}
-  p,li{margin:0 0 7px} ul{margin:0 0 8px 18px;padding:0} hr{border:0;border-top:1px solid #ddd8cd;margin:18px 0}</style>
+  p,li{margin:0 0 7px} ul{margin:0 0 8px 18px;padding:0} hr{border:0;border-top:1px solid #ddd8cd;margin:18px 0}
+  table.mtab{border-collapse:collapse;width:100%;margin:8px 0 12px;font-size:10pt;page-break-inside:avoid}
+  table.mtab th,table.mtab td{border:1px solid #ddd8cd;padding:5px 8px;text-align:left;vertical-align:top}
+  table.mtab th{background:#f6f3ec}</style>
   <h1 style="font-size:20pt;margin:0 0 6px">Manual do sistema — Breno S. Amorim Advocacia</h1>
   ${mdHtml(MANUAL_MD)}</html>`);
   w.document.close();
