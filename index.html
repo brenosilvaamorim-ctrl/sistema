@@ -5795,7 +5795,8 @@ async function telaMetricas(){
                    : '<span class="sub">sem caso</span>'}</td>
       <td class="sub">${esc(p.tribunal_sigla || '—')}${p.orgao ? ' · ' + esc(p.orgao) : ''}</td>
       <td><b>${a || '—'}</b></td>
-      <td><input type="date" ${a ? `min="${a}-01-01" max="${a}-12-31"` : ''} max="${hoje()}"
+      <td><input type="date" ${a ? `min="${a}-01-01"` : ''}
+            max="${a && a + '-12-31' < hoje() ? a + '-12-31' : hoje()}"
             style="font-size:12px;width:100%"
             title="${a ? 'o número indica ' + a + ' — a data precisa cair nesse ano' : 'data de distribuição'}"
             onchange="datarProcesso('${p.id}', this.value, this)"><span class="sub"></span></td>
