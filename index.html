@@ -225,7 +225,14 @@ function telaLogin(msg){
 }
 
 let ESC_NOME = 'Breno S. Amorim Advocacia', ESC_LOGO = null, ESC_ID = null, ESC_TOKEN = null;
-const MENU_PADRAO = [['inicio','Início'],['prazos','Prazos e publicações'],['agenda','Agenda'],['captacao','Captação'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['clientes','Clientes'],['mensageria','Mensagens'],['metricas','Métricas'],['jurimetria','Jurimetria'],['financeiro','Financeiro'],['parceiros','Parceiros'],['minutas','Minutas'],['playbook','Playbook'],['aprender','Aprender'],['dicionario','Dicionário'],['documentos','Documentos'],['tutoriais','Tutoriais'],['regras','Regras'],['importar','Importar antigos'],['manual','Manual'],['investir','Investir'],['pessoal','Meu financeiro'],['config','Configurações']];
+/* A ordem do menu segue o caminho que o trabalho faz no escritório: primeiro o
+   que é de hoje, depois quem chega, depois o que se abre para essa pessoa,
+   depois o que se escreve, depois a conta do escritório, e só no fim o sistema.
+   Quem já tinha mexido na ordem continua com a dele — a troca abaixo só alcança
+   quem nunca personalizou. */
+const MENU_PADRAO = [['inicio','Início'],['prazos','Prazos e publicações'],['agenda','Agenda'],['mensageria','Mensagens'],['captacao','Captação'],['clientes','Clientes'],['parceiros','Parceiros'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['minutas','Minutas'],['playbook','Playbook'],['documentos','Documentos'],['dicionario','Dicionário'],['aprender','Aprender'],['financeiro','Financeiro'],['metricas','Métricas'],['jurimetria','Jurimetria'],['pessoal','Meu financeiro'],['investir','Investir'],['manual','Manual'],['tutoriais','Tutoriais'],['regras','Regras'],['importar','Importar antigos'],['config','Configurações']];
+/* Ordem anterior, guardada só para reconhecer quem nunca mexeu no menu. */
+const MENU_ORDEM_ANTIGA = ['inicio','prazos','agenda','captacao','casos','processos','andamento','clientes','mensageria','metricas','jurimetria','financeiro','parceiros','minutas','playbook','aprender','dicionario','documentos','tutoriais','regras','importar','manual','investir','pessoal','config'];
 let MENUCFG = MENU_PADRAO.map(([k,r]) => ({ k, r, v:true }));
 let ROTULOS = {};
 const PALAVRAS = {"Telas e seções": ["Prazos", "Triagem", "Triagem das publicações", "O que chegou", "Agenda", "Captação", "Casos", "Processos", "Andamento", "Clientes", "Mensagens", "Métricas", "Financeiro", "Parceiros", "Delegar um servi\u00e7o", "Acompanhamento", "Quem s\u00e3o os parceiros", "Delegado a parceiro", "Minutas", "Aprender", "Dicionário", "Documentos", "Tutoriais", "Configurações", "Calendário", "Pela frente", "Vencidos e ainda abertos", "Linha do tempo", "Todos os processos", "Andamento dos processos", "Os mais parados primeiro", "Precedentes", "Teses", "Fila de aprovação", "Minutas recentes", "Análise prévia", "Modo juiz", "Marcar prazo, audiência ou tarefa", "Levar tudo para o Google Agenda", "Equipe e acessos", "Dados do escritório", "Áreas de atuação", "Origens de captação", "Categorias financeiras", "Dicionário de movimentações", "Cor do dia de hoje", "Cópias automáticas", "Casos sem cliente", "Cliente do caso", "Amarrar cliente", "Documentos a pedir", "Documentos do cliente", "Assinatura de documentos", "Tutoriais para clientes", "Ensinar uma peça ao banco", "Mensagem para o cliente", "Novo contato", "Novo lançamento", "Resultado da leitura"], "Colunas das tabelas": ["Feito", "Em trâmite", "Parado há", "Fase", "Situação e providência", "Aguardando até", "Chegou", "Documento", "Onde consigo", "Recebido em", "Vence", "Quando", "Situação", "Providência", "Cliente / vara", "Cliente / caso", "Processo", "Trecho lido e memória", "Conf.", "Ação", "Tipo", "O quê", "Descrição", "Origem", "Valor", "Vencimento", "Tribunal", "Relator", "Tema", "Órgão", "Área", "Nome", "Pessoa", "Perfil", "Ativo", "E-mail", "Telefone", "Telefone / WhatsApp", "Última movimentação", "Última atualização", "Encerrado em", "Motivo", "Resultado", "Vezes", "Cód."], "Números do topo": ["em aberto", "vencem em até 5 dias", "já vencidos", "aguardando confirmação", "compromissos à frente", "nos próximos 7 dias", "audiências", "já passaram e seguem abertos", "casos abertos", "casos ativos", "clientes", "processos", "pedindo providência", "merecendo conferência", "execuções com o prazo correndo", "tempo médio em trâmite", "em trâmite", "parado há", "sem telefone", "sem contato há mais de 30 dias", "parados há mais de 90 dias", "prescrevem em até 180 dias", "com prazo em até 5 dias", "com novidade desde o último contato", "teses no banco", "esperando sua decisão", "precedentes a conferir", "teses novas", "refinamentos", "tempo de leitura", "a pagar", "a receber", "saldo do mês", "recebido neste mês", "projeção para o ano"]};
@@ -287,6 +294,15 @@ async function carregarMenu(){
     const salvos = data.valor.filter(x => x && MENU_PADRAO.some(([k]) => k === x.k));
     const faltando = MENU_PADRAO.filter(([k]) => !salvos.some(x => x.k === k)).map(([k,r]) => ({ k, r, v:true }));
     if (salvos.length) MENUCFG = [...salvos, ...faltando];
+    /* Se a ordem guardada é exatamente a ordem antiga do sistema, ela não foi
+       escolhida por ninguém: foi só o que estava lá. Nesse caso adotamos a nova,
+       preservando os nomes que você trocou e o que está escondido. */
+    const igualAntiga = MENUCFG.length === MENU_ORDEM_ANTIGA.length
+      && MENUCFG.every((m, i) => m.k === MENU_ORDEM_ANTIGA[i]);
+    if (igualAntiga) MENUCFG = MENU_PADRAO.map(([k, r]) => {
+      const meu = MENUCFG.find(m => m.k === k);
+      return { k, r: meu?.r || r, v: meu ? meu.v !== false : true };
+    });
   }
 }
 async function gravarMenu(){
@@ -315,12 +331,28 @@ window.restaurarMenu = async () => {
   MENUCFG = MENU_PADRAO.map(([k,r]) => ({ k, r, v:true }));
   await gravarMenu(); telaConfig();
 };
+/* Diferente de "voltar ao padrão": aqui só a ordem muda. Os nomes que você
+   trocou e os itens que escondeu ficam como estão. */
+window.ordemSugerida = async () => {
+  MENUCFG = MENU_PADRAO.map(([k, r]) => {
+    const meu = MENUCFG.find(m => m.k === k);
+    return { k, r: meu?.r || r, v: meu ? meu.v !== false : true };
+  });
+  await gravarMenu(); telaConfig();
+};
+const grupoDe = k => (GRUPOS.find(([, ks]) => ks.includes(k)) || ['Outros'])[0];
+/* Os grupos contam a mesma história em voz alta: o dia, a pessoa que chega, o
+   caso que se abre, a peça que se escreve, a conta do escritório, o seu bolso e,
+   por último, o sistema. Cada grupo tem no máximo cinco itens, para caber no
+   olho de uma vez. */
 const GRUPOS = [
-  ['Rotina',    ['inicio','prazos','agenda','mensageria']],
-  ['Processos', ['casos','processos','andamento','minutas','playbook']],
-  ['Pessoas',   ['clientes','captacao','parceiros']],
-  ['Gestão',    ['metricas','jurimetria','financeiro','investir','pessoal']],
-  ['Sistema',   ['manual','aprender','dicionario','documentos','tutoriais','regras','importar','config']],
+  ['Meu dia',           ['inicio','prazos','agenda','mensageria']],
+  ['Pessoas',           ['captacao','clientes','parceiros']],
+  ['Casos e processos', ['casos','processos','andamento']],
+  ['Escrever',          ['minutas','playbook','documentos','dicionario','aprender']],
+  ['Escritório',        ['financeiro','metricas','jurimetria']],
+  ['Meu bolso',         ['pessoal','investir']],
+  ['Sistema',           ['manual','tutoriais','regras','importar','config']],
 ];
 window.abrirGrupo = (ev, nome) => {
   ev.preventDefault();
@@ -9204,18 +9236,26 @@ async function telaConfig(){
   <div class="card" style="margin-top:18px"><h2>Menu: nomes, ordem e o que aparece</h2>
     <p class="nota">O sistema é seu. Renomeie cada item para o nome que você usa no dia a dia,
       mude a ordem com as setas e desmarque o que não quiser ver. Nada é apagado: item escondido
-      continua acessível pelo endereço.</p>
+      continua acessível pelo endereço.<br>
+      A ordem sugerida acompanha o caminho do trabalho: <b>Meu dia</b> (o que vence hoje),
+      <b>Pessoas</b> (quem chega e vira cliente), <b>Casos e processos</b> (o que se abre para ela),
+      <b>Escrever</b> (a peça), <b>Escritório</b> (a conta e os números), <b>Meu bolso</b> e
+      <b>Sistema</b>. O grupo de cada item está na coluna ao lado; a ordem dentro do grupo é a
+      desta tabela. <b>Usar a ordem sugerida</b> mexe só na ordem e mantém os seus nomes;
+      <b>Voltar ao padrão</b> desfaz também os nomes.</p>
     <table><thead><tr><th style="width:90px">Ordem</th><th>Como aparece no menu</th>
-      <th style="width:150px">Tela</th><th style="width:90px">Mostrar</th></tr></thead>
+      <th style="width:150px">Grupo</th><th style="width:150px">Tela</th><th style="width:90px">Mostrar</th></tr></thead>
     <tbody>${MENUCFG.map((m,i)=>`<tr>
       <td><button class="btn" onclick="mexerMenu(${i},-1)" ${i===0?'disabled':''}>↑</button>
           <button class="btn" onclick="mexerMenu(${i},1)" ${i===MENUCFG.length-1?'disabled':''}>↓</button></td>
       <td><input type="text" id="mn${i}" value="${esc(m.r)}" style="width:240px"></td>
+      <td class="sub">${esc(grupoDe(m.k))}</td>
       <td class="sub">${esc(m.k)}</td>
       <td><input type="checkbox" id="mv${i}" ${m.v!==false?'checked':''}></td>
     </tr>`).join('')}</tbody></table>
-    <div style="padding:0 18px 18px;display:flex;gap:8px;align-items:center">
+    <div style="padding:0 18px 18px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <button class="btn ok" onclick="salvarMenu()">Salvar menu</button>
+      <button class="btn" onclick="ordemSugerida()">Usar a ordem sugerida</button>
       <button class="btn" onclick="restaurarMenu()">Voltar ao padrão</button>
       <span class="sub" id="mn-st" style="margin:0"></span></div></div>
 
