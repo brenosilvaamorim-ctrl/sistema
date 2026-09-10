@@ -3273,6 +3273,14 @@ window.vincularProcesso = async function(qual, ref, procId, el){
   const lista = qual === 'prazo' ? CASOPZ : CASOEV;
   const linha = lista.find(x => x.id === ref); if (linha) linha.processo_id = procId || null;
 };
+window.datarProcessoCaso = async (id, v, el) => {
+  const st = el.parentElement.querySelector('.sub');
+  if (st) { st.style.color='var(--i3)'; st.textContent = 'guardando…'; }
+  const { error } = await sb.from('processo').update({ data_ajuizamento: v || null }).eq('id', id);
+  if (error) { if (st) { st.style.color='var(--crit)'; st.textContent = 'erro'; } return; }
+  const p = CASOPROC.find(x => x.id === id); if (p) p.data_ajuizamento = v || null;
+  telaCaso(CASO.id);
+};
 window.mudarFaseCaso = async (id, v, el) => {
   const st = el.parentElement.querySelector('.sub');
   if (st) st.textContent = 'salvando…';
@@ -3543,7 +3551,11 @@ async function telaCaso(id){
         <td class="proc"><a class="lnk" href="#/processo/${p.id}">${esc(p.numero_formatado || cnjFormata(p.numero_cnj))}</a></td>
         <td>${esc(p.tribunal_sigla||'—')}${p.orgao?'<span class="sub">'+esc(p.orgao)+'</span>':''}</td>
         <td>${esc(p.classe||'—')}${p.grau?'<span class="sub">'+esc(p.grau)+'</span>':''}</td>
-        <td class="dt">${p.data_ajuizamento?br(p.data_ajuizamento):'—'}</td>
+        <td><input type="date" value="${p.data_ajuizamento||''}" max="${hoje()}"
+              style="font-size:11.5px;width:100%"
+              title="data de distribuição — é ela que faz o processo contar nas Métricas"
+              onchange="datarProcessoCaso('${p.id}', this.value, this)">
+            <span class="sub">${p.data_ajuizamento ? '' : 'sem data: fora das Métricas'}</span></td>
         <td class="dt">${humano(emTramite(p))}
           <select onchange="mudarFaseCaso('${p.id}', this.value, this)"
                   style="font-size:11.5px;margin-top:3px;width:100%">
@@ -4768,6 +4780,14 @@ Quem são os parceiros e o que foi delegado a cada um: tipo de serviço, valor c
 
 **Métricas** é a produção do escritório: audiências, prazos e tarefas realizados por período e por área. Só conta o que você marcou como concluído.
 
+A contagem do ano é feita pela **data de distribuição** de cada processo. A varredura noturna busca essa data no CNJ, mas nem sempre acha — processo antigo, ou cadastrado à mão, costuma chegar sem ela. **Sem data, o processo não entra em nenhum número da tela**: não conta no ano, não entra na média, não aparece por área nem por tribunal.
+
+Por isso a tela traz o quadro **Fora da contagem**, com os processos que estão nessa situação e um campo de data em cada um. Preenchendo, ele passa a contar na hora. Ao lado aparece o **ano lido do próprio número do CNJ** — no padrão do Conselho, os dígitos do meio são o ano da distribuição —, e o campo de data já vem limitado a esse ano, para não aceitar um ano que contradiga o número.
+
+Dia e mês o número não traz, e o sistema **não os inventa**. Se você não souber a data exata, deixe em branco: métrica com data inventada é pior do que métrica incompleta.
+
+A data também é editável dentro do caso, na tabela de Processos — é onde você costuma estar quando percebe que ela está errada. Quando todos os processos tiverem data, o quadro some e no lugar aparece a confirmação de que ninguém está de fora.
+
 **Jurimetria** é a leitura da carteira:
 
 - números por **tribunal**, **vara/órgão**, **comarca**, **classe**, **assunto** e **área** — com quantos processos, quantos encerrados, taxa de êxito e duração média;
@@ -5654,14 +5674,44 @@ async function telaJurimetria(){
   pintarPendentes();
 }
 
+/* ------------------------------------------------ processos fora da contagem
+   A métrica do ano lê `data_ajuizamento`, que normalmente vem do CNJ na varredura
+   noturna. Processo antigo, ou cadastrado à mão, chega sem essa data — e some da
+   contagem sem avisar. O quadro abaixo mostra quem está de fora e deixa você
+   informar a data.
+
+   O ano do número do CNJ é o ano da distribuição, então dá para exibi-lo como
+   pista. Mas dia e mês o número não traz: quem preenche é você. O sistema não
+   chuta data — métrica com data inventada é pior do que métrica incompleta. */
+const anoDoCnj = n => {
+  const d = String(n||'').replace(/\D/g,'');
+  if (d.length !== 20) return null;
+  const a = Number(d.slice(9,13));
+  return (a >= 1990 && a <= 2100) ? a : null;
+};
+let SEMDATA = [];
+
+window.datarProcesso = async (id, valor, el) => {
+  const st = el.parentElement.querySelector('.sub');
+  if (!valor) return;
+  if (st) { st.style.color='var(--i3)'; st.textContent = 'guardando…'; }
+  const { error } = await sb.from('processo').update({ data_ajuizamento: valor }).eq('id', id);
+  if (error) { if (st) { st.style.color='var(--crit)'; st.textContent = 'erro: ' + error.message; } return; }
+  telaMetricas();
+};
+
 async function telaMetricas(){
   const ano = new Date().getUTCFullYear();
-  const [pr, ar, cs, tot] = await Promise.all([
+  const [pr, ar, cs, tot, sd] = await Promise.all([
     sb.from('processo').select('id,caso_id,data_ajuizamento,tribunal_sigla,numero_formatado,numero_cnj,orgao,classe,grau,caso:caso_id(titulo, cliente:cliente_id(nome))').not('data_ajuizamento','is',null),
     sb.from('area_atuacao').select('id,nome'),
     sb.from('caso').select('id,area_id'),
     sb.from('processo').select('id', { count:'exact', head:true }),
+    sb.from('processo')
+      .select('id,numero_formatado,numero_cnj,tribunal_sigla,orgao,classe,caso:caso_id(id,titulo,cliente:cliente_id(nome))')
+      .is('data_ajuizamento', null).order('numero_cnj', { ascending:false }),
   ]);
+  SEMDATA = sd.data || [];
   if (pr.error) return erro(pr.error.message);
   const rotArea = new Map((ar.data||[]).map(x=>[x.id,x.nome]));
   const areaDoCaso = new Map((cs.data||[]).map(c=>[c.id, rotArea.get(c.area_id) || 'não informada']));
@@ -5722,9 +5772,36 @@ async function telaMetricas(){
     ${barras('Por tribunal', null, porTrib)}
   </div>
   <div class="aviso" style="border-color:var(--ln);margin-top:18px">
-    Só entram processos com data de distribuição vinda do CNJ — hoje
+    Só entram processos com data de distribuição — hoje
     <b>${(pr.data||[]).length} de ${tot.count ?? '—'}</b> processos já têm essa data.
-    Conforme a varredura noturna avança, o número do ano se completa sozinho.</div>
+    A varredura noturna busca no CNJ e completa o que consegue; o que ela não achar,
+    você informa no quadro abaixo.</div>
+
+  ${SEMDATA.length ? `<div class="card" style="margin-top:18px;border-left:3px solid var(--warn)">
+    <h2>Fora da contagem — ${SEMDATA.length} processo(s) sem data</h2>
+    <p class="nota">Sem data de distribuição, o processo <b>não entra em nenhum número desta tela</b>:
+      não conta no ano, não entra na média, não aparece por área nem por tribunal. Informe a data e ele
+      passa a contar na hora.
+      <br><br>O <b>ano</b> ao lado de cada um foi lido do próprio número do CNJ — no padrão do Conselho,
+      os dígitos do meio são o ano da distribuição. Dia e mês o número não traz, e o sistema
+      <b>não os inventa</b>: procure no PJe ou na sua pasta. Se você não tiver o dia exato,
+      é melhor deixar em branco do que registrar uma data que não aconteceu.</p>
+    <table><thead><tr><th>Processo</th><th>Cliente / caso</th><th>Tribunal e órgão</th>
+      <th style="width:90px">Ano do nº</th><th style="width:190px">Distribuído em</th></tr></thead><tbody>
+    ${SEMDATA.map(p=>{ const a = anoDoCnj(p.numero_cnj); return `<tr>
+      <td class="proc">${esc(p.numero_formatado || cnjFormata(p.numero_cnj) || '—')}
+        <span class="sub">${esc(p.classe || 'classe não informada')}</span></td>
+      <td>${p.caso ? `<a class="lnk" href="#/caso/${p.caso.id}">${esc(p.caso.cliente?.nome || p.caso.titulo)}</a>`
+                   : '<span class="sub">sem caso</span>'}</td>
+      <td class="sub">${esc(p.tribunal_sigla || '—')}${p.orgao ? ' · ' + esc(p.orgao) : ''}</td>
+      <td><b>${a || '—'}</b></td>
+      <td><input type="date" ${a ? `min="${a}-01-01" max="${a}-12-31"` : ''} max="${hoje()}"
+            style="font-size:12px;width:100%"
+            title="${a ? 'o número indica ' + a + ' — a data precisa cair nesse ano' : 'data de distribuição'}"
+            onchange="datarProcesso('${p.id}', this.value, this)"><span class="sub"></span></td>
+    </tr>`; }).join('')}
+    </tbody></table></div>` : `<div class="aviso" style="border-color:var(--ok);margin-top:18px">
+    <b>Todos os processos têm data de distribuição.</b> Nenhum está fora da contagem.</div>`}
 
   <div class="card" style="margin-top:18px"><h2>Processos protocolados</h2>
     <p class="nota">Um a um, do mais recente para o mais antigo. Clique no número para abrir o processo
