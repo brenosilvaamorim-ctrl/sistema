@@ -1778,6 +1778,140 @@ window.riscar = async (qual, id, el) => {
     else rota();
   }, 700);
 };
+
+/* ------------------------------------------------- editar item já marcado
+   Mudar a data é a coisa mais comum do escritório: o juiz devolve o prazo, a
+   audiência é redesignada, a tarefa fica para a semana que vem. Sem esta tela,
+   a única saída era criar outro item sobre o mesmo assunto — e ficavam dois,
+   um deles mentindo. Aqui se corrige o que já existe, sem duplicar. */
+let EDIT_CASOS = null, EDIT_PROCS = null;
+async function listasEdicao(){
+  if (EDIT_CASOS) return;
+  const [c, p] = await Promise.all([
+    sb.from('caso').select('id,titulo,cliente:cliente_id(id,nome)').order('titulo').limit(2000),
+    sb.from('processo').select('id,caso_id,numero_formatado,numero_cnj,orgao,tribunal_sigla').limit(3000),
+  ]);
+  EDIT_CASOS = c.data || []; EDIT_PROCS = p.data || [];
+}
+const rotEditCaso = c => (c.titulo || 'sem título')
+  + (c.cliente?.nome && c.cliente.nome !== c.titulo ? ' — ' + c.cliente.nome : '');
+const rotEditProc = p => (p.numero_formatado || cnjFormata(p.numero_cnj) || 'sem número')
+  + (p.orgao ? ' · ' + p.orgao : (p.tribunal_sigla ? ' · ' + p.tribunal_sigla : ''));
+/* Processo só faz sentido dentro do caso dele. Sem caso escolhido, mostramos
+   todos — quem escolhe o processo primeiro traz o caso junto. */
+function opcoesEditProc(casoId, atual){
+  const l = casoId ? EDIT_PROCS.filter(x => x.caso_id === casoId) : EDIT_PROCS;
+  return `<option value="">— o caso todo —</option>` + l.map(x =>
+    `<option value="${x.id}" ${atual === x.id ? 'selected' : ''}>${esc(rotEditProc(x))}</option>`).join('');
+}
+const SIT_PRAZO = [['confirmado','em aberto (confirmado)'],['sugerido','a confirmar'],
+  ['cumprido','cumprido'],['perdido','perdido'],['cancelado','cancelado']];
+const SIT_EVENTO = [['aberta','em aberto'],['em_andamento','em andamento'],
+  ['concluida','realizado'],['cancelada','cancelado']];
+
+window.trocarCasoEdicao = () => {
+  const cs = document.getElementById('ed-caso');
+  const ps = document.getElementById('ed-proc');
+  if (ps) ps.innerHTML = opcoesEditProc(cs.value || null, null);
+};
+window.fecharEdicao = () => {
+  const d = document.getElementById('ed-dlg');
+  if (d) { try { d.close(); } catch {} d.remove(); }
+};
+window.editarItem = async (qual, id) => {
+  await listasEdicao();
+  const { data: r, error } = await sb.from(qual).select('*').eq('id', id).maybeSingle();
+  if (error || !r) return alert('Não consegui abrir este item: ' + (error?.message || 'não encontrado'));
+  fecharEdicao();
+
+  const ehPrazo = qual === 'prazo';
+  const titulo  = ehPrazo ? (r.descricao || '') : (r.titulo || '');
+  const obs     = ehPrazo ? (r.providencia || '') : (r.descricao || '');
+  const data    = ehPrazo ? (r.data_fatal || '') : String(r.inicio || '').slice(0, 10);
+  const hora    = ehPrazo ? '' : String(r.inicio || '').slice(11, 16);
+  const sit     = r.situacao || (ehPrazo ? 'confirmado' : 'aberta');
+  const sits    = ehPrazo ? SIT_PRAZO : SIT_EVENTO;
+  const campo   = (rot, corpo, min) => `<label style="display:flex;flex-direction:column;gap:3px;min-width:${min||160}px;flex:1">
+    <span class="sub" style="margin:0">${rot}</span>${corpo}</label>`;
+
+  const d = document.createElement('dialog');
+  d.id = 'ed-dlg';
+  d.style.cssText = 'border:0;border-radius:12px;padding:0;max-width:860px;width:94vw;box-shadow:0 18px 50px rgba(0,0,0,.28)';
+  d.innerHTML = `<form id="ed-form" style="margin:0;background:var(--bg,#fff)">
+    <div style="padding:16px 20px 6px">
+      <h2 style="margin:0">Editar ${ehPrazo ? 'prazo' : 'compromisso'}</h2>
+      <p class="sub" style="margin:6px 0 0">Corrija aqui em vez de marcar outro igual. Data de hoje no
+        registro: <b>${br(data) || 'sem data'}</b>${hora ? ' às ' + hora : ''}.
+        ${r.origem === 'djen' || r.intimacao_id
+          ? 'Este prazo veio da leitura automática do diário — mudar a data aqui não muda o que o diário publicou.'
+          : ''}</p>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;padding:12px 20px;align-items:flex-end">
+      ${!ehPrazo ? campo('O que é', `<select name="tipo">${
+        [['tarefa','Tarefa'],['audiencia','Audiência'],['reuniao','Reunião'],['pericia','Perícia'],['outro','Outro']]
+        .map(([k,v2])=>`<option value="${k}" ${r.tipo===k?'selected':''}>${v2}</option>`).join('')}</select>`, 150) : ''}
+      ${campo('O quê', `<input name="titulo" type="text" required value="${esc(titulo)}">`, 260)}
+      ${campo('Quando', `<input name="data" type="date" required value="${esc(data)}">`, 150)}
+      ${!ehPrazo ? campo('Hora', `<input name="hora" type="time" value="${esc(hora || '09:00')}">`, 110) : ''}
+      ${!ehPrazo ? campo('Tipo de audiência <span class="sub" style="display:inline;margin:0">(só para audiência)</span>',
+        `<select name="subtipo"><option value="">— não se aplica —</option>${SUBAUD.map(x =>
+          `<option value="${esc(x)}" ${r.subtipo===x?'selected':''}>${esc(x)}</option>`).join('')}</select>`, 200) : ''}
+      ${campo('Urgência', `<select name="urgencia">${Object.entries(URG).map(([k,[rot]]) =>
+        `<option value="${k}" ${r.urgencia===k?'selected':''}>${rot}</option>`).join('')}</select>`, 160)}
+      ${campo('Situação', `<select name="situacao">${sits.map(([k,rot]) =>
+        `<option value="${k}" ${sit===k?'selected':''}>${rot}</option>`).join('')}</select>`, 180)}
+      ${campo('De qual caso', `<select name="caso" id="ed-caso" onchange="trocarCasoEdicao()">
+        <option value="">— nenhum —</option>${EDIT_CASOS.map(c =>
+          `<option value="${c.id}" ${r.caso_id===c.id?'selected':''}>${esc(rotEditCaso(c))}</option>`).join('')}</select>`, 260)}
+      ${campo('De qual processo', `<select name="processo" id="ed-proc">${
+        opcoesEditProc(r.caso_id || null, r.processo_id || null)}</select>`, 260)}
+      ${!ehPrazo ? campo('Onde', `<input name="local" type="text" value="${esc(r.local||'')}" placeholder="Vara, sala, endereço">`, 200) : ''}
+      ${!ehPrazo ? campo('Link da sala', `<input name="sala" type="url" value="${esc(r.link_sala||'')}" placeholder="Zoom, Meet ou PJe">`, 240) : ''}
+      ${campo(ehPrazo ? 'O que precisa ser feito' : 'Observações',
+        `<input name="obs" type="text" value="${esc(obs)}">`, 260)}
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;padding:6px 20px 18px;flex-wrap:wrap">
+      <button class="btn ok" type="submit">Salvar mudanças</button>
+      <button class="btn" type="button" onclick="fecharEdicao()">Sair sem salvar</button>
+      <span class="sub" id="ed-st" style="margin:0"></span>
+    </div></form>`;
+  document.body.appendChild(d);
+  d.addEventListener('close', () => d.remove());
+  d.addEventListener('click', e => { if (e.target === d) fecharEdicao(); });
+  d.querySelector('#ed-form').addEventListener('submit', e => salvarEdicao(e, qual, id));
+  d.showModal();
+};
+window.salvarEdicao = async (ev, qual, id) => {
+  ev.preventDefault();
+  const f = ev.target, v = n => { const x = f.elements[n]; return x ? (String(x.value).trim() || null) : null; };
+  const st = document.getElementById('ed-st');
+  st.style.color = 'var(--i3)'; st.textContent = 'salvando…';
+  const agora = new Date().toISOString();
+  const sit = v('situacao');
+  let campos;
+  if (qual === 'prazo') {
+    campos = { descricao: v('titulo'), data_fatal: v('data'), urgencia: v('urgencia'),
+      providencia: v('obs'), caso_id: v('caso'), processo_id: v('processo'), situacao: sit,
+      cumprido_em: sit === 'cumprido' ? agora : null };
+  } else {
+    campos = { tipo: v('tipo'), subtipo: v('tipo') === 'audiencia' ? v('subtipo') : null,
+      titulo: v('titulo'), descricao: v('obs'),
+      inicio: v('data') + 'T' + (v('hora') || '09:00') + ':00+00:00',
+      local: v('local'), link_sala: v('sala'), urgencia: v('urgencia'),
+      caso_id: v('caso'), processo_id: v('processo'), situacao: sit,
+      concluido_em: sit === 'concluida' ? agora : null };
+  }
+  let { error } = await sb.from(qual).update(campos).eq('id', id);
+  /* Bancos mais antigos podem não ter a coluna de baixa; o resto da edição não
+     pode ser perdido por causa dela. */
+  if (error && /column .* does not exist/i.test(error.message)) {
+    delete campos.cumprido_em; delete campos.concluido_em;
+    ({ error } = await sb.from(qual).update(campos).eq('id', id));
+  }
+  if (error) { st.style.color = 'var(--crit)'; st.textContent = 'erro: ' + error.message; return; }
+  st.style.color = 'var(--ok)'; st.textContent = 'salvo';
+  setTimeout(() => { fecharEdicao(); rota(); }, 500);
+};
 window.concluirEvento = async (id) => {
   await sb.from('evento').update({ situacao:'concluida', concluido_em: new Date().toISOString() }).eq('id', id);
   telaAgenda();
@@ -1908,6 +2042,8 @@ async function telaAgenda(){
       <td>${botaoSala(it.sala)}
         <a class="btn" href="${linkGoogle(it)}" target="_blank" rel="noreferrer" style="text-decoration:none">Google Agenda</a>
         ${it.convidado ? `<a class="btn" style="text-decoration:none" href="${linkEmail(it)}">Avisar ${esc(it.convidado.split('@')[0])}</a>` : ''}
+        ${it.ref ? `<button class="btn" title="mudar data, hora, caso, processo ou situação — sem criar outro item"
+             onclick="editarItem('${it.qual}','${it.ref}')">Editar</button>` : ''}
         ${it.qual === 'evento' ? `<button class="btn" onclick="cancelarEvento('${it.ref}')">Cancelar</button>` : ''}</td>
     </tr>`;
   };
@@ -3631,7 +3767,7 @@ async function telaCaso(id){
       : CASOPROC.length === 1
         ? 'Este caso tem um processo só. Se entrar outro depois, é aqui que você separa o que é de cada um.'
         : 'Este caso ainda não tem processo cadastrado. Cadastre um acima e ele passa a aparecer nesta coluna.'}</p>
-    <table><thead><tr><th>Quando</th><th>Tipo</th><th>O quê</th><th>De qual processo</th><th style="width:150px">Situação</th></tr></thead><tbody>
+    <table><thead><tr><th>Quando</th><th>Tipo</th><th>O quê</th><th>De qual processo</th><th style="width:210px">Situação</th></tr></thead><tbody>
     ${[...CASOPZ.map(x=>({q:'prazo', id:x.id, d:x.data_fatal, h:'', t:'prazo',
          nome:x.descricao, proc:x.processo_id, sit:x.situacao, fim:['cumprido','cancelado'].includes(x.situacao)})),
        ...CASOEV.map(x=>({q:'evento', id:x.id, d:String(x.inicio).slice(0,10), h:String(x.inicio).slice(11,16),
@@ -3646,11 +3782,14 @@ async function telaCaso(id){
           ? seletorProcesso(`onchange="vincularProcesso('${i.q}','${i.id}', this.value, this)"`, i.proc,
               'style="max-width:320px;font-size:12.4px"' + (i.proc ? '' : ' data-solto="1"'))
           : '<span class="sub">sem processo cadastrado</span>'}</td>
-        <td>${i.fim
+        <td style="white-space:nowrap">${i.fim
           ? `<span class="sub">${esc(SITCASO[i.sit] || i.sit || '')}</span>`
-          : `<button class="btn" style="font-size:11.6px;padding:4px 9px;white-space:nowrap"
+          : `<button class="btn" style="font-size:11.6px;padding:4px 9px"
                title="${i.q === 'prazo' ? 'marcar este prazo como cumprido' : 'marcar como realizado'} — sai da agenda"
-               onclick="riscar('${i.q}','${i.id}',this)">Dar baixa</button>`}</td></tr>`).join('')}
+               onclick="riscar('${i.q}','${i.id}',this)">Dar baixa</button>`}
+          <button class="btn" style="font-size:11.6px;padding:4px 9px"
+            title="mudar data, hora, processo ou situação deste item"
+            onclick="editarItem('${i.q}','${i.id}')">Editar</button></td></tr>`).join('')}
     </tbody></table></div>` : ''}
 
   <div class="card"><h2>Registrar atividade neste caso</h2>
