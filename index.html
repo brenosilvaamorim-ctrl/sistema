@@ -3191,7 +3191,8 @@ async function telaCasos(){
 
   app.innerHTML = menu('casos') + `
   <main><h1>Casos</h1>
-  <p class="meta">Cada caso numa etapa. Arraste o cartão para subir, descer ou mudar de etapa —
+  <p class="meta">Cada caso numa etapa. Clique no nome do cliente para abrir o caso.
+    Para reordenar ou mudar de etapa, arraste pela alça <b>⠿</b> no canto do cartão —
     a ordem fica gravada. As setas ▲▼ fazem o mesmo sem arrastar. Encerre com resultado registrado.</p>
   <div class="kpis">
     <div class="kpi"><div class="n">${abertos.length}</div><div class="l">casos abertos</div></div>
@@ -3298,16 +3299,34 @@ function cartaoDepoisDe(col, y){
   const outros = [...col.querySelectorAll('.cartao:not(.arrastando)')];
   return outros.find(el => { const r = el.getBoundingClientRect(); return y < r.top + r.height/2; }) || null;
 }
+/* Função nomeada de propósito: telaCasos roda a cada render e addEventListener
+   com a mesma referência não duplica o ouvinte. */
+function soltarCartoes(){
+  document.querySelectorAll('.quadro .cartao[draggable="true"]').forEach(c => { c.draggable = false; });
+}
 function ligarArrastoCasos(){
+  /* O cartão inteiro marcado como arrastável fazia o Chrome engolir o clique no
+     nome do cliente: o navegador entendia o toque no link como o começo de um
+     arrasto e a página do caso nunca abria — o botão "Abrir", por ser botão e
+     não link, escapava, o que deixava o defeito com cara de mistério. Agora o
+     cartão só vira arrastável enquanto a alça ⠿ está pressionada. Arrastar
+     continua igual; clicar no nome volta a funcionar. */
+  document.addEventListener('mouseup', soltarCartoes);
+  document.addEventListener('dragend', soltarCartoes);
   document.querySelectorAll('.quadro .cartao').forEach(el => {
-    el.draggable = true;
+    el.draggable = false;
+    const pega = el.querySelector('.pega');
+    if (pega) {
+      pega.addEventListener('mousedown', () => { el.draggable = true; });
+      pega.addEventListener('touchstart', () => { el.draggable = true; }, { passive: true });
+    }
     el.addEventListener('dragstart', e => {
       ARRASTA = el; el.classList.add('arrastando');
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', el.dataset.caso);
     });
     el.addEventListener('dragend', () => {
-      el.classList.remove('arrastando'); ARRASTA = null;
+      el.classList.remove('arrastando'); ARRASTA = null; el.draggable = false;
       document.querySelectorAll('.coluna.alvo').forEach(c=>c.classList.remove('alvo'));
     });
   });
