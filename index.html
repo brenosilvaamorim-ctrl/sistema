@@ -1582,6 +1582,9 @@ function vinculoAgenda(it, tam){
   const p = tam === 'mini' ? 'font-size:11px;padding:2px 5px;max-width:150px' : 'font-size:11.6px;padding:3px 6px;max-width:210px';
   if (it.caso_id) return `<a class="lnk" href="#/caso/${it.caso_id}" title="abrir o caso">${
     esc(it.cliente_nome || it.caso_nome || 'ver o caso')}</a>`;
+  /* Consulta de captação ainda não tem caso — e não deve ter: a pessoa ainda não
+     é cliente. Não é um item solto, é um item que ainda não chegou lá. */
+  if (it.lead_id) return `<a class="lnk" href="#/captacao" title="ver na captação">consulta de captação</a>`;
   if (!it.ref) return '';
   return `<select onchange="vincularAgenda('${it.qual}','${it.ref}', this.value, this)"
     title="este item não está ligado a nenhum caso" style="${p};border-color:var(--warn)">
@@ -1972,7 +1975,7 @@ function formEvento(){
 async function telaAgenda(){
   const colPz = c => 'id,descricao,data_fatal,dias,situacao,urgencia,caso_id' + c +
     ',intimacao:intimacao_id(numero_formatado,orgao),caso:caso_id(titulo,cliente_id,cliente:cliente_id(id,nome))';
-  const colEv = c => 'id,tipo,titulo,inicio,local,descricao,urgencia,situacao,link_sala,caso_id,cliente_id,subtipo' + c +
+  const colEv = c => 'id,tipo,titulo,inicio,local,descricao,urgencia,situacao,link_sala,caso_id,cliente_id,subtipo,lead_id' + c +
     ',cliente:cliente_id(id,nome),caso:caso_id(titulo,cliente_id,cliente:cliente_id(id,nome))';
   const extra = TEMCONV === false ? '' : ',convidado_email';
   let [pz, ev, cs, cl, ca] = await Promise.all([
@@ -2007,7 +2010,7 @@ async function telaAgenda(){
   for (const e of (ev.data||[])) AGE.push({
     id:'evento-'+e.id, ref:e.id, qual:'evento', tipo:e.tipo, data:String(e.inicio).slice(0,10), hora:String(e.inicio).slice(11,16),
     urgencia:e.urgencia, convidado:e.convidado_email,
-    subtipo:e.subtipo||null,
+    subtipo:e.subtipo||null, lead_id:e.lead_id||null,
     caso_id:e.caso_id||null, caso_nome:e.caso?.titulo||null,
     cliente_id:e.cliente?.id||e.caso?.cliente?.id||null,
     cliente_nome:e.cliente?.nome||e.caso?.cliente?.nome||null,
@@ -2064,7 +2067,7 @@ async function telaAgenda(){
        ['reunião','serie'],['tarefa','taref']].map(([r,c])=>
       `<span class="pill ${c}">${r}</span>`).join('')}
   </div>
-  ${(()=>{ const n = AGE.filter(i=>i.ref && !i.caso_id).length;
+  ${(()=>{ const n = AGE.filter(i=>i.ref && !i.caso_id && !i.lead_id).length;
     return n ? `<p class="nota"><b>${n} ${n>1?'itens estão soltos':'item está solto'}</b> — sem caso vinculado.
       Na coluna <b>Cliente / caso</b> há um seletor amarelo em cada um: escolha o caso e ele passa a
       aparecer na ficha do cliente, na linha do tempo e nas métricas.</p>` : ''; })()}
@@ -2267,6 +2270,9 @@ window.fecharLead = async (id) => {
   /* A ficha do atendimento segue o lead: sem isso, o que foi colhido na primeira
      conversa ficaria órfão justamente quando o caso começa. */
   await sb.from('ficha').update({ caso_id: caso.id, cliente_id: cli.id }).eq('lead_id', id);
+  /* E a consulta marcada também: ela deixa de ser um compromisso solto na agenda
+     e passa a aparecer na linha do tempo do caso. */
+  await sb.from('evento').update({ caso_id: caso.id, cliente_id: cli.id }).eq('lead_id', id);
   location.hash = '#/casos';
 };
 const VIAB = [
@@ -2300,6 +2306,53 @@ window.salvarViab = async (id) => {
   l.viabilidade = v; l.nota = n;
   if (st) { st.style.color='var(--good)'; st.textContent = 'nota ' + n + ' de 10'; }
 };
+/* --------------------------------------------------- consulta marcada
+   "Consulta marcada" era só uma coluna do quadro: dizia que existe uma
+   consulta, nunca quando. Consulta sem data e hora não chega à agenda, e o que
+   não está na agenda é o que se esquece. Aqui a consulta vira um compromisso de
+   verdade — o mesmo tipo de registro de uma reunião — já ligado ao lead. */
+let LEADEV = {};
+const rotConsulta = e => br(String(e.inicio).slice(0,10)) + ' às ' + String(e.inicio).slice(11,16);
+window.abrirConsulta = (id) => {
+  const el = document.getElementById('cs'+id); if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+};
+window.agendarConsulta = async (id) => {
+  const l = LEADS.find(x => x.id === id); if (!l) return;
+  const g = k => (document.getElementById('cs-'+k+'-'+id)?.value || '').trim();
+  const st = document.getElementById('cs-st-'+id);
+  const data = g('data');
+  if (!data) { st.style.color='var(--crit)'; return st.textContent = 'escolha o dia'; }
+  const hora = g('hora') || '09:00';
+  st.style.color = 'var(--i3)'; st.textContent = 'marcando…';
+
+  const campos = {
+    escritorio_id: await escritorioId(), lead_id: id, tipo: 'reuniao',
+    titulo: 'Consulta — ' + l.nome,
+    descricao: ['Consulta de captação.', l.resumo, g('obs')].filter(Boolean).join(' '),
+    inicio: data + 'T' + hora + ':00+00:00',
+    local: g('local') || null, link_sala: g('sala') || null, urgencia: 'normal',
+  };
+  const antiga = LEADEV[id];
+  let error;
+  if (antiga) ({ error } = await sb.from('evento').update(campos).eq('id', antiga.id));
+  else        ({ error } = await sb.from('evento').insert(campos));
+  if (error) { st.style.color='var(--crit)'; return st.textContent = 'erro: ' + error.message; }
+
+  /* A etapa acompanha o fato: marcou a consulta, o lead está em "Consulta
+     marcada". E o retorno passa a ser o dia dela. */
+  await sb.from('lead').update({ etapa:'consulta', proximo_contato: data,
+    atualizado_em: new Date().toISOString() }).eq('id', id);
+  telaCaptacao();
+};
+window.desmarcarConsulta = async (id) => {
+  const e = LEADEV[id]; if (!e) return;
+  if (!confirm('Desmarcar a consulta de ' + (LEADS.find(x=>x.id===id)?.nome || '') + '? Ela sai da agenda.')) return;
+  const { error } = await sb.from('evento')
+    .update({ situacao:'cancelada' }).eq('id', e.id);
+  if (error) return alert('Não deu: ' + error.message);
+  telaCaptacao();
+};
 function cartaoLead(l){
   const d = l.proximo_contato ? dias(l.proximo_contato) : null;
   const parado = Math.round((Date.now() - Date.parse(l.atualizado_em || l.criado_em))/864e5);
@@ -2312,8 +2365,37 @@ function cartaoLead(l){
     ${d !== null ? `<span class="pill ${d<0?'crit':(d<=1?'ser':'good')}">contato ${br(l.proximo_contato)}</span>` : ''}
     ${parado > 7 ? `<span class="pill ser">parado há ${parado} dias</span>` : ''}
     ${l.nota != null ? `<span class="pill ${corNota(l.nota)}">viabilidade ${l.nota}/10</span>` : ''}
-    <div style="margin-top:6px"><button class="btn" style="font-size:11.4px;padding:4px 8px"
-      onclick="abrirViab('${l.id}')">Viabilidade</button></div>
+    ${(() => { const e = LEADEV[l.id]; return e
+      ? `<div class="pill serie" title="${esc(e.local || e.link_sala || 'sem local informado')}"
+           >consulta ${rotConsulta(e)}</div>` : ''; })()}
+    <div style="margin-top:6px;display:flex;gap:5px;flex-wrap:wrap">
+      <button class="btn" style="font-size:11.4px;padding:4px 8px"
+        onclick="abrirViab('${l.id}')">Viabilidade</button>
+      <button class="btn ${LEADEV[l.id] ? '' : 'ok'}" style="font-size:11.4px;padding:4px 8px"
+        title="marca dia e hora e joga a consulta na agenda"
+        onclick="abrirConsulta('${l.id}')">${LEADEV[l.id] ? 'Remarcar' : 'Marcar consulta'}</button>
+      ${LEADEV[l.id] ? `<button class="btn" style="font-size:11.4px;padding:4px 8px"
+        onclick="desmarcarConsulta('${l.id}')">Desmarcar</button>` : ''}
+    </div>
+    ${(() => { const e = LEADEV[l.id] || null; const d = e ? String(e.inicio) : '';
+      return `<div id="cs${l.id}" style="display:none;margin-top:8px;border-top:1px solid var(--ln);padding-top:8px">
+      <div class="sub" style="margin:0 0 5px">A consulta entra na Agenda como compromisso e vai junto
+        para o Google. Se a pessoa fechar, ela segue para o caso.</div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
+        <input type="date" id="cs-data-${l.id}" value="${d.slice(0,10)}" style="font-size:11.4px">
+        <input type="time" id="cs-hora-${l.id}" value="${d ? d.slice(11,16) : '09:00'}" style="font-size:11.4px">
+      </div>
+      <input type="text" id="cs-local-${l.id}" placeholder="onde (escritório, endereço)"
+             value="${esc(e?.local || '')}" style="font-size:11.4px;width:100%;margin-top:4px">
+      <input type="url" id="cs-sala-${l.id}" placeholder="link, se for por vídeo"
+             value="${esc(e?.link_sala || '')}" style="font-size:11.4px;width:100%;margin-top:4px">
+      <input type="text" id="cs-obs-${l.id}" placeholder="o que levar, o que pedir para a pessoa trazer"
+             style="font-size:11.4px;width:100%;margin-top:4px">
+      <div style="margin-top:6px;display:flex;gap:6px;align-items:center">
+        <button class="btn ok" style="font-size:11.4px;padding:4px 8px"
+          onclick="agendarConsulta('${l.id}')">${e ? 'Guardar a nova data' : 'Marcar e pôr na agenda'}</button>
+        <span class="sub" id="cs-st-${l.id}" style="margin:0"></span></div>
+    </div>`; })()}
     <div id="vb${l.id}" style="display:none;margin-top:8px;border-top:1px solid var(--ln);padding-top:8px">
       ${VIAB.map(([k,r,peso])=>`<label style="display:flex;gap:6px;align-items:flex-start;margin-bottom:4px">
         <input type="checkbox" id="vb-${k}-${l.id}" ${l.viabilidade?.[k]?'checked':''}>
@@ -2931,12 +3013,15 @@ window.imprimirFicha = async function(){
 };
 
 async function telaCaptacao(){
-  const [le, ar, og] = await Promise.all([
+  const [le, ar, og, cs] = await Promise.all([
     sb.from('lead').select('*').order('criado_em', { ascending:false }),
     sb.from('area_atuacao').select('id,nome').eq('ativo',true).order('ordem'),
     sb.from('origem_captacao').select('id,nome').eq('ativo',true).order('nome'),
+    sb.from('evento').select('id,titulo,inicio,local,link_sala,situacao,lead_id')
+      .not('lead_id','is',null).not('situacao','in','("concluida","cancelada")'),
   ]);
   if (le.error) return erro(le.error.message);
+  LEADEV = {}; (cs.data||[]).forEach(e => { LEADEV[e.lead_id] = e; });
   AREAS = ar.data||[]; ORIGENS = og.data||[];
   const rotA = new Map(AREAS.map(a=>[a.id,a.nome])), rotO = new Map(ORIGENS.map(o=>[o.id,o.nome]));
   LEADS = (le.data||[]).map(l => ({ ...l, area_nome: rotA.get(l.area_id), origem_nome: rotO.get(l.origem_id) }));
@@ -4789,7 +4874,7 @@ async function telaRegras(){
 /* ---------------------------------------------------------------- manual */
 const MANUAL_MD = `# Manual do sistema — Breno S. Amorim Advocacia
 
-Atualizado em 10 de setembro de 2026.
+Atualizado em 18 de setembro de 2026.
 
 Este manual explica o que cada menu faz, na ordem em que a coisa acontece no escritório: a publicação chega, vira prazo, vira tarefa, vira peça, vira dinheiro. No fim tem os limites do sistema e o que fazer quando algo der errado.
 
@@ -5025,6 +5110,8 @@ Cadastro, ficha completa e histórico. **CPF e endereço são obrigatórios para
 O funil de quem chega: novo contato, em análise, proposta, fechado, perdido. Quando fecha, o cliente e o caso são criados sozinhos.
 
 **Viabilidade** — em cada cartão, o botão abre a triagem: dentro do prazo (3), prova documental (3), testemunha (1), a outra parte tem como pagar (2), relato coerente (1). Sai uma nota de 0 a 10 no cartão. Serve para decidir o que aceitar e para saber, depois, o que dava certo e o que não dava.
+
+**Marcar consulta** — no cartão do lead, o botão pede dia, hora, onde e, se for por vídeo, o link. A consulta entra na **Agenda** como compromisso e vai junto para o Google; o lead passa sozinho para a etapa *Consulta marcada* e o retorno vira o dia dela. *Remarcar* muda a data no mesmo compromisso, sem criar outro; *Desmarcar* tira da agenda. Na Agenda, esse item aparece como "consulta de captação" e não é contado entre os itens soltos — ele ainda não tem caso porque a pessoa ainda não é cliente. Quando ela fecha, a consulta segue para o caso, junto com a ficha de atendimento.
 
 Registre o contato **na hora em que a pessoa chama**. Sem isso a métrica de origem não existe.
 
