@@ -2014,7 +2014,9 @@ async function telaAgenda(){
     caso_id:e.caso_id||null, caso_nome:e.caso?.titulo||null,
     cliente_id:e.cliente?.id||e.caso?.cliente?.id||null,
     cliente_nome:e.cliente?.nome||e.caso?.cliente?.nome||null,
-    titulo:`${e.tipo === 'audiencia' ? 'Audiência' : e.tipo}: ${e.titulo}` +
+    /* O título já diz o que é quando a consulta vem da captação — repetir o tipo
+       na frente só polui ("reuniao: Consulta — Fulano"). */
+    titulo:(e.lead_id ? e.titulo : `${e.tipo === 'audiencia' ? 'Audiência' : e.tipo}: ${e.titulo}`) +
       (e.cliente?.nome ? ' — '+e.cliente.nome : (e.caso?.titulo ? ' — '+e.caso.titulo : '')),
     detalhe:e.descricao||'', local:e.local||'', sala:e.link_sala||'' });
   for (const c of (cs.data||[])) AGE.push({
