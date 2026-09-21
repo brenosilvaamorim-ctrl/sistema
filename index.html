@@ -5181,6 +5181,8 @@ Fica no grupo **Escritório**. Serve para a ideia que surge numa conversa não m
 
 **Linha do tempo.** O que foi conversado e decidido, com data e autor. Mudança de fase, de prazo final e de responsável entram sozinhas.
 
+Ao **descartar**, as tarefas ainda em aberto daquele projeto são canceladas e saem da agenda — o que já foi feito continua registrado.
+
 ## 14. Minutas, Aprender, Playbook e Dicionário
 
 **Minutas** — a peça redigida a partir dos fatos do caso e das teses do banco. Sai como minuta, nunca protocolada: a revisão e a assinatura são suas.
@@ -9455,6 +9457,16 @@ async function trocarFaseProjeto(id, fase, antes){
   const { error } = await sb.from('projeto').update(campos).eq('id', id);
   if (error) { alert('Não foi possível: ' + error.message); return false; }
   await notaProjeto(id, `Fase: ${rotFase(antes)} → ${rotFase(fase)}` + (motivo ? `. Motivo: ${motivo}` : ''), true);
+  /* Ideia descartada não pode deixar tarefa viva na agenda: cancela as que
+     estavam em aberto e registra quantas foram. As já feitas ficam como estão. */
+  if (fase === 'descartada') {
+    const { data: abertas } = await sb.from('evento').select('id')
+      .eq('projeto_id', id).not('situacao','in','("concluida","cancelada")');
+    if (abertas?.length) {
+      await sb.from('evento').update({ situacao:'cancelada' }).in('id', abertas.map(x => x.id));
+      await notaProjeto(id, `${abertas.length} tarefa${abertas.length>1?'s':''} em aberto cancelada${abertas.length>1?'s':''} junto com o descarte.`, true);
+    }
+  }
   return true;
 }
 window.moverProjeto = async (id, fase) => {
