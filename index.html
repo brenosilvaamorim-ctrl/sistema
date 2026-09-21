@@ -231,7 +231,7 @@ let ESC_NOME = 'Breno S. Amorim Advocacia', ESC_LOGO = null, ESC_ID = null, ESC_
    depois o que se escreve, depois a conta do escritório, e só no fim o sistema.
    Quem já tinha mexido na ordem continua com a dele — a troca abaixo só alcança
    quem nunca personalizou. */
-const MENU_PADRAO = [['inicio','Início'],['prazos','Prazos e publicações'],['agenda','Agenda'],['mensageria','Mensagens'],['captacao','Captação'],['clientes','Clientes'],['parceiros','Parceiros'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['minutas','Minutas'],['playbook','Playbook'],['documentos','Documentos'],['dicionario','Dicionário'],['aprender','Aprender'],['financeiro','Financeiro'],['metricas','Métricas'],['jurimetria','Jurimetria'],['pessoal','Meu financeiro'],['investir','Investir'],['manual','Manual'],['tutoriais','Tutoriais'],['regras','Regras'],['importar','Importar antigos'],['config','Configurações']];
+const MENU_PADRAO = [['inicio','Início'],['prazos','Prazos e publicações'],['agenda','Agenda'],['mensageria','Mensagens'],['captacao','Captação'],['clientes','Clientes'],['parceiros','Parceiros'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['minutas','Minutas'],['playbook','Playbook'],['documentos','Documentos'],['dicionario','Dicionário'],['aprender','Aprender'],['financeiro','Financeiro'],['metricas','Métricas'],['jurimetria','Jurimetria'],['projetos','Ideias e projetos'],['pessoal','Meu financeiro'],['investir','Investir'],['manual','Manual'],['tutoriais','Tutoriais'],['regras','Regras'],['importar','Importar antigos'],['config','Configurações']];
 /* Ordem anterior, guardada só para reconhecer quem nunca mexeu no menu. */
 const MENU_ORDEM_ANTIGA = ['inicio','prazos','agenda','captacao','casos','processos','andamento','clientes','mensageria','metricas','jurimetria','financeiro','parceiros','minutas','playbook','aprender','dicionario','documentos','tutoriais','regras','importar','manual','investir','pessoal','config'];
 let MENUCFG = MENU_PADRAO.map(([k,r]) => ({ k, r, v:true }));
@@ -298,8 +298,11 @@ async function carregarMenu(){
     /* Se a ordem guardada é exatamente a ordem antiga do sistema, ela não foi
        escolhida por ninguém: foi só o que estava lá. Nesse caso adotamos a nova,
        preservando os nomes que você trocou e o que está escondido. */
-    const igualAntiga = MENUCFG.length === MENU_ORDEM_ANTIGA.length
-      && MENUCFG.every((m, i) => m.k === MENU_ORDEM_ANTIGA[i]);
+    /* Compara só o que estava guardado: um item novo do sistema (como Ideias e
+       projetos) entra em "faltando" e não pode fazer uma ordem antiga parecer
+       personalizada. */
+    const igualAntiga = salvos.length === MENU_ORDEM_ANTIGA.length
+      && salvos.every((m, i) => m.k === MENU_ORDEM_ANTIGA[i]);
     if (igualAntiga) MENUCFG = MENU_PADRAO.map(([k, r]) => {
       const meu = MENUCFG.find(m => m.k === k);
       return { k, r: meu?.r || r, v: meu ? meu.v !== false : true };
@@ -351,7 +354,7 @@ const GRUPOS = [
   ['Pessoas',           ['captacao','clientes','parceiros']],
   ['Casos e processos', ['casos','processos','andamento']],
   ['Escrever',          ['minutas','playbook','documentos','dicionario','aprender']],
-  ['Escritório',        ['financeiro','metricas','jurimetria']],
+  ['Escritório',        ['financeiro','metricas','jurimetria','projetos']],
   ['Meu bolso',         ['pessoal','investir']],
   ['Sistema',           ['manual','tutoriais','regras','importar','config']],
 ];
@@ -1585,6 +1588,8 @@ function vinculoAgenda(it, tam){
   /* Consulta de captação ainda não tem caso — e não deve ter: a pessoa ainda não
      é cliente. Não é um item solto, é um item que ainda não chegou lá. */
   if (it.lead_id) return `<a class="lnk" href="#/captacao" title="ver na captação">consulta de captação</a>`;
+  /* Tarefa de projeto do escritório não pertence a caso nenhum — e está certo assim. */
+  if (it.projeto_id) return `<a class="lnk" href="#/projeto/${it.projeto_id}" title="abrir o projeto">projeto: ${esc(it.projeto_nome || 'ver')}</a>`;
   if (!it.ref) return '';
   return `<select onchange="vincularAgenda('${it.qual}','${it.ref}', this.value, this)"
     title="este item não está ligado a nenhum caso" style="${p};border-color:var(--warn)">
@@ -1975,8 +1980,8 @@ function formEvento(){
 async function telaAgenda(){
   const colPz = c => 'id,descricao,data_fatal,dias,situacao,urgencia,caso_id' + c +
     ',intimacao:intimacao_id(numero_formatado,orgao),caso:caso_id(titulo,cliente_id,cliente:cliente_id(id,nome))';
-  const colEv = c => 'id,tipo,titulo,inicio,local,descricao,urgencia,situacao,link_sala,caso_id,cliente_id,subtipo,lead_id' + c +
-    ',cliente:cliente_id(id,nome),caso:caso_id(titulo,cliente_id,cliente:cliente_id(id,nome))';
+  const colEv = c => 'id,tipo,titulo,inicio,local,descricao,urgencia,situacao,link_sala,caso_id,cliente_id,subtipo,lead_id,projeto_id' + c +
+    ',cliente:cliente_id(id,nome),caso:caso_id(titulo,cliente_id,cliente:cliente_id(id,nome)),projeto:projeto_id(titulo)';
   const extra = TEMCONV === false ? '' : ',convidado_email';
   let [pz, ev, cs, cl, ca] = await Promise.all([
     sb.from('prazo').select(colPz(extra)).in('situacao',['sugerido','confirmado']),
@@ -2011,12 +2016,15 @@ async function telaAgenda(){
     id:'evento-'+e.id, ref:e.id, qual:'evento', tipo:e.tipo, data:String(e.inicio).slice(0,10), hora:String(e.inicio).slice(11,16),
     urgencia:e.urgencia, convidado:e.convidado_email,
     subtipo:e.subtipo||null, lead_id:e.lead_id||null,
+    projeto_id:e.projeto_id||null, projeto_nome:e.projeto?.titulo||null,
     caso_id:e.caso_id||null, caso_nome:e.caso?.titulo||null,
     cliente_id:e.cliente?.id||e.caso?.cliente?.id||null,
     cliente_nome:e.cliente?.nome||e.caso?.cliente?.nome||null,
     /* O título já diz o que é quando a consulta vem da captação — repetir o tipo
        na frente só polui ("reuniao: Consulta — Fulano"). */
-    titulo:(e.lead_id ? e.titulo : `${e.tipo === 'audiencia' ? 'Audiência' : e.tipo}: ${e.titulo}`) +
+    titulo:(e.lead_id ? e.titulo
+      : e.projeto_id ? `Tarefa: ${e.titulo} — projeto ${e.projeto?.titulo || ''}`
+      : `${e.tipo === 'audiencia' ? 'Audiência' : e.tipo}: ${e.titulo}`) +
       (e.cliente?.nome ? ' — '+e.cliente.nome : (e.caso?.titulo ? ' — '+e.caso.titulo : '')),
     detalhe:e.descricao||'', local:e.local||'', sala:e.link_sala||'' });
   for (const c of (cs.data||[])) AGE.push({
@@ -2069,7 +2077,7 @@ async function telaAgenda(){
        ['reunião','serie'],['tarefa','taref']].map(([r,c])=>
       `<span class="pill ${c}">${r}</span>`).join('')}
   </div>
-  ${(()=>{ const n = AGE.filter(i=>i.ref && !i.caso_id && !i.lead_id).length;
+  ${(()=>{ const n = AGE.filter(i=>i.ref && !i.caso_id && !i.lead_id && !i.projeto_id).length;
     return n ? `<p class="nota"><b>${n} ${n>1?'itens estão soltos':'item está solto'}</b> — sem caso vinculado.
       Na coluna <b>Cliente / caso</b> há um seletor amarelo em cada um: escolha o caso e ele passa a
       aparecer na ficha do cliente, na linha do tempo e nas métricas.</p>` : ''; })()}
@@ -4367,7 +4375,7 @@ window.relatorioPlanilhaGeral = async () => {
   const st = document.getElementById('rel-st');
   if (st) { st.style.color='var(--i3)'; st.textContent = 'montando a planilha…'; }
   const tabelas = ['caso','cliente','processo','prazo','evento','movimentacao','intimacao',
-                   'lancamento','honorario','interacao','lead','minuta','tese','precedente'];
+                   'lancamento','honorario','interacao','lead','minuta','tese','precedente','projeto','projeto_nota'];
   const abas = [];
   for (const t of tabelas) {
     const { data, error } = await sb.from(t).select('*').limit(50000);
@@ -4876,7 +4884,7 @@ async function telaRegras(){
 /* ---------------------------------------------------------------- manual */
 const MANUAL_MD = `# Manual do sistema — Breno S. Amorim Advocacia
 
-Atualizado em 18 de setembro de 2026.
+Atualizado em 21 de setembro de 2026.
 
 Este manual explica o que cada menu faz, na ordem em que a coisa acontece no escritório: a publicação chega, vira prazo, vira tarefa, vira peça, vira dinheiro. No fim tem os limites do sistema e o que fazer quando algo der errado.
 
@@ -5160,6 +5168,18 @@ Número pequeno é indício, não estatística. A taxa de êxito só passa a val
 ## 13. Financeiro
 
 Contas a receber e a pagar, por caso, cliente e categoria. Honorário por êxito amarrado ao caso. Projeção do mês e do ano. A baixa é manual: marque quando entrar ou sair de verdade.
+
+## 13b. Ideias e projetos
+
+Fica no grupo **Escritório**. Serve para a ideia que surge numa conversa não morrer na conversa.
+
+**As fases.** Ideia → Em análise → Aprovada → Em execução → Concluída. Ou **Descartada** — e aí o sistema pede o motivo. Ele fica guardado na lista de descartadas, para que, quando alguém propuser a mesma coisa daqui a seis meses, a discussão comece de onde parou. Se o motivo deixou de valer, **Reabrir** devolve a ideia para análise com todo o histórico.
+
+**Registrar.** Anote a ideia crua, no momento em que ela aparece: o nome e o problema que ela resolve. Custo e retorno esperado são opcionais no começo e ajudam na hora de aprovar — o painel do projeto mostra *retorno menos custo*. Retorno em palavras existe porque nem todo retorno é dinheiro.
+
+**Dentro do projeto.** Responsável, prazo final, custo e retorno se editam no alto. Embaixo, as **tarefas**: cada uma é uma tarefa comum da Agenda, com data e hora, que vai para o Google e recebe **Dar baixa** e **Editar** como as outras. Na Agenda ela aparece como *projeto: nome* e não conta entre os itens soltos. Projeto sem próximo passo com data é só intenção.
+
+**Linha do tempo.** O que foi conversado e decidido, com data e autor. Mudança de fase, de prazo final e de responsável entram sozinhas.
 
 ## 14. Minutas, Aprender, Playbook e Dicionário
 
@@ -9382,6 +9402,347 @@ function projetar(clientesMes){
   for (const l of linhas){ acum += l.recebimento; if (payback === null && acum >= total) payback = l.m; }
   return { linhas, fundo, total, payback, recebido: acum };
 }
+/* ======================================================= IDEIAS E PROJETOS
+   Ideia boa que fica só na conversa morre na conversa. Aqui ela ganha um
+   lugar, uma fase e um dono: ideia → em análise → aprovada → em execução →
+   concluída — ou descartada, com o motivo escrito, para a mesma discussão não
+   recomeçar do zero seis meses depois.
+   As tarefas do projeto não são uma lista à parte: são tarefas comuns da
+   agenda, com projeto_id. Por isso entram no calendário, vão para o Google e
+   recebem baixa como qualquer outra — e o projeto não fica esquecido numa
+   tela que ninguém abre. */
+const FASEPROJ = [
+  ['ideia',      'Ideia',        'cin'],
+  ['analise',    'Em análise',   'warn'],
+  ['aprovada',   'Aprovada',     'serie'],
+  ['execucao',   'Em execução',  'ser'],
+  ['concluida',  'Concluída',    'good'],
+  ['descartada', 'Descartada',   'crit'],
+];
+const QUADROPROJ = ['ideia','analise','aprovada','execucao'];
+const rotFase = k => (FASEPROJ.find(f => f[0] === k) || [k, k])[1];
+const corFase = k => (FASEPROJ.find(f => f[0] === k) || [,, 'cin'])[2];
+let PROJ = [], PROJTAR = [], PJEQUIPE = [], PROJATUAL = null;
+
+async function carregarEquipe(){
+  if (PJEQUIPE.length) return;
+  const { data } = await sb.from('usuario').select('id,nome,email').order('nome');
+  PJEQUIPE = data || [];
+}
+const nomeEquipe = id => { const u = PJEQUIPE.find(x => x.id === id); return u ? (u.nome || u.email) : null; };
+const numOuNulo = v => { const t = String(v ?? '').replace(/\./g,'').replace(',', '.').trim(); return t === '' || isNaN(Number(t)) ? null : Number(t); };
+const tarefasDe = (id, lista) => (lista || PROJTAR).filter(t => t.projeto_id === id && t.situacao !== 'cancelada');
+const feita = t => t.situacao === 'concluida';
+const atrasada = t => !feita(t) && String(t.inicio).slice(0,10) < hoje();
+
+async function notaProjeto(projetoId, texto, automatica){
+  return sb.from('projeto_nota').insert({ escritorio_id: await escritorioId(),
+    projeto_id: projetoId, texto, automatica: !!automatica });
+}
+
+/* Mudar de fase é sempre registrado na linha do tempo. Descartar exige motivo:
+   é ele que evita reabrir a mesma ideia sem lembrar por que ela foi recusada. */
+async function trocarFaseProjeto(id, fase, antes){
+  let motivo = null;
+  if (fase === 'descartada') {
+    motivo = prompt('Por que esta ideia foi descartada? (fica registrado, para não reabrir a mesma discussão)');
+    if (motivo === null) return false;
+    motivo = motivo.trim() || 'sem motivo informado';
+  }
+  const campos = { fase, atualizado_em: new Date().toISOString(),
+    concluido_em: fase === 'concluida' ? new Date().toISOString() : null,
+    motivo_descarte: fase === 'descartada' ? motivo : null };
+  const { error } = await sb.from('projeto').update(campos).eq('id', id);
+  if (error) { alert('Não foi possível: ' + error.message); return false; }
+  await notaProjeto(id, `Fase: ${rotFase(antes)} → ${rotFase(fase)}` + (motivo ? `. Motivo: ${motivo}` : ''), true);
+  return true;
+}
+window.moverProjeto = async (id, fase) => {
+  const p = PROJ.find(x => x.id === id) || PROJATUAL;
+  await trocarFaseProjeto(id, fase, p?.fase);
+  rota();
+};
+
+window.novoProjeto = async (ev) => {
+  ev.preventDefault();
+  const f = ev.target, v = n => (f.elements[n]?.value || '').trim() || null;
+  const st = document.getElementById('pj-st');
+  st.style.color = 'var(--i3)'; st.textContent = 'gravando…';
+  const { data, error } = await sb.from('projeto').insert({
+    escritorio_id: await escritorioId(), titulo: v('titulo'), descricao: v('descricao'),
+    custo: numOuNulo(v('custo')), retorno_valor: numOuNulo(v('retorno_valor')),
+    retorno_obs: v('retorno_obs'), fase: 'ideia',
+  }).select('id').single();
+  if (error) { st.style.color = 'var(--crit)'; st.textContent = 'erro: ' + error.message; return; }
+  await notaProjeto(data.id, 'Ideia registrada.', true);
+  telaProjetos();
+};
+
+function cartaoProjeto(p){
+  const ts = tarefasDe(p.id), ok = ts.filter(feita).length, atr = ts.filter(atrasada).length;
+  const d = p.prazo_final ? dias(p.prazo_final) : null;
+  const resp = nomeEquipe(p.responsavel_id);
+  return `<div class="cartao">
+    <div class="tit"><a class="lnk" href="#/projeto/${p.id}">${esc(p.titulo)}</a></div>
+    ${p.descricao ? `<div class="sub" style="margin:2px 0 6px">${esc(p.descricao.slice(0,140))}${p.descricao.length>140?'…':''}</div>` : ''}
+    <div class="sub" style="margin:0 0 6px">${resp ? esc(resp) : 'sem responsável'}${
+      p.custo != null ? ' · custo ' + rs(p.custo) : ''}${p.retorno_valor != null ? ' · retorno ' + rs(p.retorno_valor) : ''}</div>
+    ${d !== null ? `<span class="pill ${d<0?'crit':(d<=7?'ser':'good')}">até ${br(p.prazo_final)}${d<0?' (passou)':''}</span>` : ''}
+    ${ts.length ? `<span class="pill ${ok===ts.length?'good':'cin'}">${ok} de ${ts.length} tarefas</span>` : ''}
+    ${atr ? `<span class="pill crit">${atr} atrasada${atr>1?'s':''}</span>` : ''}
+    <div style="margin-top:8px;display:flex;gap:5px;flex-wrap:wrap">
+      <select onchange="moverProjeto('${p.id}', this.value)" style="flex:1;min-width:130px;font-size:11.6px">
+        ${FASEPROJ.map(([k,r]) => `<option value="${k}" ${p.fase===k?'selected':''}>${r}</option>`).join('')}
+      </select>
+      <a class="btn" style="font-size:11.4px;padding:4px 8px;text-decoration:none" href="#/projeto/${p.id}">Abrir</a>
+    </div></div>`;
+}
+
+async function telaProjetos(){
+  const [pj, tr] = await Promise.all([
+    sb.from('projeto').select('*').order('criado_em', { ascending:false }),
+    sb.from('evento').select('id,projeto_id,situacao,inicio').not('projeto_id','is',null),
+  ]);
+  await carregarEquipe().catch(()=>{});
+  if (pj.error) return erro(pj.error.message.includes('projeto')
+    ? 'a tabela de projetos ainda não existe no banco (migração 25_projetos.sql).' : pj.error.message);
+  PROJ = pj.data || []; PROJTAR = tr.data || [];
+  const ano = hoje().slice(0,4);
+  const fila = PROJ.filter(p => ['ideia','analise'].includes(p.fase)).length;
+  const exec = PROJ.filter(p => p.fase === 'execucao').length;
+  const atrasadas = PROJTAR.filter(t => t.situacao !== 'cancelada' && atrasada(t)
+    && PROJ.some(p => p.id === t.projeto_id && !['concluida','descartada'].includes(p.fase))).length;
+  const concl = PROJ.filter(p => p.fase === 'concluida' && String(p.concluido_em||'').slice(0,4) === ano).length;
+  const concluidos = PROJ.filter(p => p.fase === 'concluida')
+    .sort((a,b) => String(b.concluido_em).localeCompare(String(a.concluido_em)));
+  const descartados = PROJ.filter(p => p.fase === 'descartada')
+    .sort((a,b) => String(b.atualizado_em).localeCompare(String(a.atualizado_em)));
+
+  app.innerHTML = menu('projetos') + `
+  <main><h1>Ideias e projetos</h1>
+  <p class="meta">Do que surgiu numa conversa até o que foi feito. Cada ideia tem fase, dono e prazo;
+    as tarefas de um projeto vão para a Agenda como as outras. Ideia descartada guarda o motivo.</p>
+  <div class="kpis">
+    <div class="kpi"><div class="n">${fila}</div><div class="l">ideias esperando decisão</div></div>
+    <div class="kpi"><div class="n">${exec}</div><div class="l">projetos em execução</div></div>
+    <div class="kpi ${atrasadas?'al':''}"><div class="n">${atrasadas}</div><div class="l">tarefas de projeto atrasadas</div></div>
+    <div class="kpi"><div class="n">${concl}</div><div class="l">concluídos em ${ano}</div></div>
+  </div>
+
+  <div class="card"><h2>Registrar uma ideia</h2>
+    <p class="nota">Anote no momento em que ela aparece — ainda crua. Amadurecer é o que a fase
+      <b>Em análise</b> faz. Custo e retorno são opcionais agora; ajudam quando for a hora de aprovar.</p>
+    <form onsubmit="novoProjeto(event)" style="display:flex;gap:8px;flex-wrap:wrap;padding:0 18px 18px;align-items:flex-end">
+      <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:240px">
+        <span class="sub" style="margin:0">A ideia, em poucas palavras</span>
+        <input name="titulo" required placeholder="Ex.: atendimento aos sábados em Juazeiro"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;flex:2;min-width:280px">
+        <span class="sub" style="margin:0">Por quê — o problema que ela resolve</span>
+        <input name="descricao" placeholder="uma ou duas linhas"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;width:130px">
+        <span class="sub" style="margin:0">Custo (R$)</span>
+        <input name="custo" inputmode="decimal" placeholder="opcional"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;width:150px">
+        <span class="sub" style="margin:0">Retorno esperado (R$)</span>
+        <input name="retorno_valor" inputmode="decimal" placeholder="opcional"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:220px">
+        <span class="sub" style="margin:0">Retorno em palavras</span>
+        <input name="retorno_obs" placeholder="nem todo retorno é dinheiro"></label>
+      <button class="btn ok" type="submit">Registrar</button>
+      <span class="sub" id="pj-st" style="margin:0"></span>
+    </form></div>
+
+  <div class="quadro">
+    ${QUADROPROJ.map(k => {
+      const meus = PROJ.filter(p => p.fase === k);
+      return `<div class="coluna">
+        <div class="cabcol" style="border-top:3px solid var(--${corFase(k) === 'cin' ? 'i3' : corFase(k)})">${rotFase(k)}
+          <span class="sub" style="display:inline;margin:0">${meus.length}</span></div>
+        ${meus.map(cartaoProjeto).join('') || '<div class="sub" style="padding:10px 2px">vazio</div>'}
+      </div>`;
+    }).join('')}
+  </div>
+
+  ${concluidos.length ? `<div class="card" style="margin-top:20px"><h2>Concluídos</h2>
+    <table><thead><tr><th>Projeto</th><th>Responsável</th><th>Custo</th><th>Retorno</th><th>Concluído em</th></tr></thead>
+    <tbody>${concluidos.slice(0,40).map(p => `<tr>
+      <td><a class="lnk" href="#/projeto/${p.id}"><b>${esc(p.titulo)}</b></a></td>
+      <td>${esc(nomeEquipe(p.responsavel_id) || '—')}</td>
+      <td>${p.custo != null ? rs(p.custo) : '—'}</td>
+      <td>${p.retorno_valor != null ? rs(p.retorno_valor) : ''}${p.retorno_obs ? `<span class="sub">${esc(p.retorno_obs)}</span>` : (p.retorno_valor == null ? '—' : '')}</td>
+      <td class="dt">${br(p.concluido_em)}</td></tr>`).join('')}</tbody></table></div>` : ''}
+
+  ${descartados.length ? `<div class="card" style="margin-top:20px"><h2>Descartadas</h2>
+    <p class="nota">Antes de propor de novo uma ideia parecida, leia o motivo. Se o motivo deixou de valer,
+      <b>Reabrir</b> devolve a ideia para análise com todo o histórico.</p>
+    <table><thead><tr><th>Ideia</th><th>Motivo</th><th>Quando</th><th></th></tr></thead>
+    <tbody>${descartados.slice(0,40).map(p => `<tr>
+      <td><a class="lnk" href="#/projeto/${p.id}"><b>${esc(p.titulo)}</b></a></td>
+      <td>${esc(p.motivo_descarte || '—')}</td>
+      <td class="dt">${br(p.atualizado_em)}</td>
+      <td><button class="btn" onclick="moverProjeto('${p.id}','analise')">Reabrir</button></td></tr>`).join('')}</tbody></table></div>` : ''}
+  </main>` + rodape();
+}
+
+/* ------------------------------------------------------- um projeto por dentro */
+async function telaProjeto(id){
+  const [p, tr, nt] = await Promise.all([
+    sb.from('projeto').select('*').eq('id', id).maybeSingle(),
+    sb.from('evento').select('id,titulo,inicio,situacao,descricao,projeto_id').eq('projeto_id', id).order('inicio'),
+    sb.from('projeto_nota').select('*').eq('projeto_id', id).order('criado_em', { ascending:false }),
+  ]);
+  await carregarEquipe().catch(()=>{});
+  if (p.error) return erro(p.error.message);
+  if (!p.data) return erro('projeto não encontrado');
+  const P = PROJATUAL = p.data;
+  const ts = (tr.data || []).filter(t => t.situacao !== 'cancelada');
+  const ok = ts.filter(feita).length;
+  const pct = ts.length ? Math.round(ok / ts.length * 100) : 0;
+  const saldo = (P.retorno_valor != null && P.custo != null) ? P.retorno_valor - P.custo : null;
+  const encerrado = ['concluida','descartada'].includes(P.fase);
+
+  app.innerHTML = menu('projetos') + `
+  <main><p class="meta"><a class="lnk" href="#/projetos">← voltar para ideias e projetos</a></p>
+  <h1>${esc(P.titulo)} <span class="pill ${corFase(P.fase)}" style="vertical-align:middle">${rotFase(P.fase)}</span></h1>
+  ${P.fase === 'descartada' ? `<div class="card" style="border-left:3px solid var(--crit)"><div style="padding:12px 18px">
+    <b>Descartada.</b> Motivo: ${esc(P.motivo_descarte || 'não informado')}
+    <div style="margin-top:8px"><button class="btn" onclick="moverProjeto('${P.id}','analise')">Reabrir para análise</button></div>
+  </div></div>` : ''}
+
+  <div class="kpis">
+    <div class="kpi"><div class="n">${ok}/${ts.length}</div><div class="l">tarefas feitas</div></div>
+    <div class="kpi ${ts.filter(atrasada).length?'al':''}"><div class="n">${ts.filter(atrasada).length}</div><div class="l">tarefas atrasadas</div></div>
+    <div class="kpi ${P.prazo_final && dias(P.prazo_final) < 0 && !encerrado ? 'al' : ''}"><div class="n" style="font-size:19px">${P.prazo_final ? br(P.prazo_final) : '—'}</div><div class="l">prazo final</div></div>
+    <div class="kpi"><div class="n" style="font-size:19px">${saldo != null ? rs(saldo) : '—'}</div><div class="l">retorno menos custo</div></div>
+  </div>
+  ${ts.length ? `<div style="height:6px;background:var(--ln);border-radius:4px;margin:-6px 0 16px;overflow:hidden">
+    <div style="height:100%;width:${pct}%;background:var(--good)"></div></div>` : ''}
+
+  <div class="card"><h2>O projeto</h2>
+    <form onsubmit="salvarProjeto(event, '${P.id}')" style="display:flex;gap:9px;flex-wrap:wrap;padding:0 18px 18px;align-items:flex-end">
+      <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:100%">
+        <span class="sub" style="margin:0">Nome</span>
+        <input name="titulo" required value="${esc(P.titulo)}"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:100%">
+        <span class="sub" style="margin:0">Do que se trata e por quê</span>
+        <textarea name="descricao" rows="3" style="width:100%">${esc(P.descricao || '')}</textarea></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:170px">
+        <span class="sub" style="margin:0">Fase</span>
+        <select name="fase">${FASEPROJ.map(([k,r]) => `<option value="${k}" ${P.fase===k?'selected':''}>${r}</option>`).join('')}</select></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:200px">
+        <span class="sub" style="margin:0">Responsável</span>
+        <select name="responsavel_id"><option value="">— ninguém ainda —</option>${PJEQUIPE.map(u =>
+          `<option value="${u.id}" ${P.responsavel_id===u.id?'selected':''}>${esc(u.nome || u.email)}</option>`).join('')}</select></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:150px">
+        <span class="sub" style="margin:0">Prazo final</span>
+        <input name="prazo_final" type="date" value="${P.prazo_final || ''}"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;width:130px">
+        <span class="sub" style="margin:0">Custo (R$)</span>
+        <input name="custo" inputmode="decimal" value="${P.custo ?? ''}"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;width:150px">
+        <span class="sub" style="margin:0">Retorno esperado (R$)</span>
+        <input name="retorno_valor" inputmode="decimal" value="${P.retorno_valor ?? ''}"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:240px">
+        <span class="sub" style="margin:0">Retorno em palavras</span>
+        <input name="retorno_obs" value="${esc(P.retorno_obs || '')}" placeholder="clientes novos, tempo poupado, reputação…"></label>
+      <button class="btn ok" type="submit">Salvar</button>
+      <span class="sub" id="pj-st" style="margin:0"></span>
+    </form></div>
+
+  <div class="card"><h2>Tarefas</h2>
+    <p class="nota">Cada tarefa entra na <b>Agenda</b> e no Google, e recebe baixa como qualquer outra.
+      Mudou a data? Use <b>Editar</b> — não crie outra.</p>
+    ${ts.length ? `<table><thead><tr><th>Quando</th><th>O quê</th><th>Situação</th><th style="width:190px"></th></tr></thead><tbody>
+      ${ts.map(t => { const d = String(t.inicio).slice(0,10), fim = feita(t);
+        return `<tr${fim ? ' style="opacity:.5"' : ''}>
+        <td class="dt"><b>${br(d)}</b>${String(t.inicio).slice(11,16) !== '09:00' ? ' ' + String(t.inicio).slice(11,16) : ''}
+          ${!fim ? `<span class="sub">${atrasada(t) ? 'atrasada' : (dias(d)===0 ? 'hoje' : 'em ' + dias(d) + 'd')}</span>` : ''}</td>
+        <td>${esc(t.titulo)}${t.descricao ? `<span class="sub">${esc(t.descricao)}</span>` : ''}</td>
+        <td>${fim ? '<span class="pill good">feita</span>' : (atrasada(t) ? '<span class="pill crit">atrasada</span>' : '<span class="pill cin">em aberto</span>')}</td>
+        <td style="white-space:nowrap">${fim ? '' : `<button class="btn" style="font-size:11.6px;padding:4px 9px"
+              onclick="riscar('evento','${t.id}',this)">Dar baixa</button>`}
+            <button class="btn" style="font-size:11.6px;padding:4px 9px" onclick="editarItem('evento','${t.id}')">Editar</button></td></tr>`; }).join('')}
+    </tbody></table>` : '<div class="vazio" style="padding:0 18px 12px">Nenhuma tarefa ainda. Projeto sem próximo passo com data é só intenção.</div>'}
+    <form onsubmit="novaTarefaProjeto(event, '${P.id}')" style="display:flex;gap:8px;flex-wrap:wrap;padding:6px 18px 18px;align-items:flex-end">
+      <label style="display:flex;flex-direction:column;gap:3px;flex:2;min-width:240px">
+        <span class="sub" style="margin:0">Próximo passo</span>
+        <input name="titulo" required placeholder="Ex.: pedir orçamento da sala"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:145px">
+        <span class="sub" style="margin:0">Quando</span>
+        <input name="data" type="date" required value="${hoje()}"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;width:105px">
+        <span class="sub" style="margin:0">Hora</span>
+        <input name="hora" type="time" value="09:00"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:200px">
+        <span class="sub" style="margin:0">Detalhe</span>
+        <input name="obs" placeholder="opcional"></label>
+      <button class="btn ok" type="submit">Pôr na agenda</button>
+      <span class="sub" id="pt-st" style="margin:0"></span>
+    </form></div>
+
+  <div class="card"><h2>Linha do tempo</h2>
+    <p class="nota">O que foi conversado e decidido, com data. Mudança de fase e de prazo entram sozinhas.</p>
+    <form onsubmit="novaNotaProjeto(event, '${P.id}')" style="display:flex;gap:8px;flex-wrap:wrap;padding:0 18px 12px;align-items:flex-end">
+      <textarea name="texto" required rows="2" style="flex:1;min-width:280px"
+        placeholder="Ex.: conversei com o contador — o custo real é o dobro do previsto"></textarea>
+      <button class="btn ok" type="submit">Anotar</button>
+      <span class="sub" id="pn-st" style="margin:0"></span>
+    </form>
+    <div style="padding:0 18px 16px">
+    ${(nt.data || []).map(n => `<div style="padding:8px 0;border-top:1px solid var(--ln)">
+      <span class="sub" style="margin:0">${br(n.criado_em)} ${String(n.criado_em).slice(11,16)}${
+        nomeEquipe(n.autor) ? ' · ' + esc(nomeEquipe(n.autor)) : ''}</span>
+      <div style="${n.automatica ? 'color:var(--i3);font-style:italic' : ''}">${esc(n.texto).replace(/\n/g,'<br>')}</div>
+    </div>`).join('') || '<div class="sub">Nada anotado ainda.</div>'}
+    </div></div>
+  </main>` + rodape();
+}
+
+window.salvarProjeto = async (ev, id) => {
+  ev.preventDefault();
+  const f = ev.target, v = n => (f.elements[n]?.value || '').trim() || null;
+  const st = document.getElementById('pj-st');
+  st.style.color = 'var(--i3)'; st.textContent = 'salvando…';
+  const P = PROJATUAL;
+  const fase = v('fase');
+  const campos = { titulo: v('titulo'), descricao: v('descricao'), responsavel_id: v('responsavel_id'),
+    prazo_final: v('prazo_final'), custo: numOuNulo(v('custo')), retorno_valor: numOuNulo(v('retorno_valor')),
+    retorno_obs: v('retorno_obs'), atualizado_em: new Date().toISOString() };
+  const { error } = await sb.from('projeto').update(campos).eq('id', id);
+  if (error) { st.style.color = 'var(--crit)'; st.textContent = 'erro: ' + error.message; return; }
+  /* O que muda o rumo do projeto fica na linha do tempo sem você precisar escrever. */
+  if ((P.prazo_final || null) !== campos.prazo_final)
+    await notaProjeto(id, `Prazo final: ${P.prazo_final ? br(P.prazo_final) : 'sem prazo'} → ${campos.prazo_final ? br(campos.prazo_final) : 'sem prazo'}`, true);
+  if ((P.responsavel_id || null) !== campos.responsavel_id)
+    await notaProjeto(id, `Responsável: ${nomeEquipe(P.responsavel_id) || 'ninguém'} → ${nomeEquipe(campos.responsavel_id) || 'ninguém'}`, true);
+  if (fase !== P.fase) { const foi = await trocarFaseProjeto(id, fase, P.fase); if (!foi) { telaProjeto(id); return; } }
+  telaProjeto(id);
+};
+
+window.novaTarefaProjeto = async (ev, id) => {
+  ev.preventDefault();
+  const f = ev.target, v = n => (f.elements[n]?.value || '').trim() || null;
+  const st = document.getElementById('pt-st');
+  st.style.color = 'var(--i3)'; st.textContent = 'gravando…';
+  const { error } = await sb.from('evento').insert({
+    escritorio_id: await escritorioId(), projeto_id: id, tipo: 'tarefa',
+    titulo: v('titulo'), descricao: v('obs'), urgencia: 'normal',
+    inicio: v('data') + 'T' + (v('hora') || '09:00') + ':00+00:00' });
+  if (error) { st.style.color = 'var(--crit)'; st.textContent = 'erro: ' + error.message; return; }
+  telaProjeto(id);
+};
+
+window.novaNotaProjeto = async (ev, id) => {
+  ev.preventDefault();
+  const t = (ev.target.elements.texto.value || '').trim(); if (!t) return;
+  const st = document.getElementById('pn-st');
+  st.style.color = 'var(--i3)'; st.textContent = 'gravando…';
+  const { error } = await notaProjeto(id, t, false);
+  if (error) { st.style.color = 'var(--crit)'; st.textContent = 'erro: ' + error.message; return; }
+  sb.from('projeto').update({ atualizado_em: new Date().toISOString() }).eq('id', id);
+  telaProjeto(id);
+};
+
 async function telaInvestir(){
   await carregarInvestir();
   const p = INV;
@@ -9685,7 +10046,7 @@ window.baixarCopia = async nome => {
 const TABELAS_BACKUP = ['escritorio','usuario','cliente','caso','processo','parte','prazo',
   'movimentacao','intimacao','evento','lancamento','honorario','interacao','lead','documento',
   'tese','tese_candidata','precedente','minuta','informativo_rascunho','preferencia',
-  'area_atuacao','origem_captacao','categoria_financeira'];
+  'area_atuacao','origem_captacao','categoria_financeira','projeto','projeto_nota'];
 window.baixarBackup = async () => {
   registrarAcao('baixou', 'backup', 'cópia completa baixada pela tela');
   const st = document.getElementById('bk-st');
@@ -9731,6 +10092,8 @@ async function rota(){
   if(h.startsWith('#/inicio'))     return telaInicio();
   if(h.startsWith('#/processo/')) return telaProcesso(h.slice('#/processo/'.length));
   if(h.startsWith('#/caso/'))      return telaCaso(h.slice('#/caso/'.length));
+  if(h.startsWith('#/projeto/'))  return telaProjeto(h.slice('#/projeto/'.length));
+  if(h.startsWith('#/projetos'))   return telaProjetos();
   if(h.startsWith('#/semcliente'))return telaSemCliente();
   if(h.startsWith('#/prazos'))     return telaPrazos();
   if(h.startsWith('#/triagem'))    return telaPrazos();   // endereço antigo, mantido
