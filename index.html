@@ -231,7 +231,7 @@ let ESC_NOME = 'Breno S. Amorim Advocacia', ESC_LOGO = null, ESC_ID = null, ESC_
    depois o que se escreve, depois a conta do escritório, e só no fim o sistema.
    Quem já tinha mexido na ordem continua com a dele — a troca abaixo só alcança
    quem nunca personalizou. */
-const MENU_PADRAO = [['inicio','Início'],['prazos','Prazos e publicações'],['agenda','Agenda'],['mensageria','Mensagens'],['captacao','Captação'],['clientes','Clientes'],['parceiros','Parceiros'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['minutas','Minutas'],['playbook','Playbook'],['documentos','Documentos'],['dicionario','Dicionário'],['aprender','Aprender'],['financeiro','Financeiro'],['metricas','Métricas'],['jurimetria','Jurimetria'],['projetos','Ideias e projetos'],['pessoal','Meu financeiro'],['investir','Investir'],['manual','Manual'],['tutoriais','Tutoriais'],['regras','Regras'],['importar','Importar antigos'],['config','Configurações']];
+const MENU_PADRAO = [['inicio','Início'],['prazos','Prazos e publicações'],['agenda','Agenda'],['mensageria','Mensagens'],['captacao','Captação'],['clientes','Clientes'],['parceiros','Parceiros'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['minutas','Minutas'],['playbook','Playbook'],['documentos','Documentos'],['dicionario','Dicionário'],['aprender','Aprender'],['financeiro','Financeiro'],['metricas','Métricas'],['jurimetria','Jurimetria'],['projetos','Ideias e projetos'],['pessoal','Casa e família ↗'],['investir','Investir'],['manual','Manual'],['tutoriais','Tutoriais'],['regras','Regras'],['importar','Importar antigos'],['config','Configurações']];
 /* Ordem anterior, guardada só para reconhecer quem nunca mexeu no menu. */
 const MENU_ORDEM_ANTIGA = ['inicio','prazos','agenda','captacao','casos','processos','andamento','clientes','mensageria','metricas','jurimetria','financeiro','parceiros','minutas','playbook','aprender','dicionario','documentos','tutoriais','regras','importar','manual','investir','pessoal','config'];
 let MENUCFG = MENU_PADRAO.map(([k,r]) => ({ k, r, v:true }));
@@ -382,7 +382,9 @@ function menu(atual){
       <span class="sub2">sistema interno</span></div></div>
     ${blocos.map(([nome, l]) => `<div class="grp ${l.some(m=>m.k===atual)?'tem':''}" data-g="${esc(nome)}">
       <button class="gbt" onclick="abrirGrupo(event, '${esc(nome)}')">${esc(nome)}<span class="seta">▾</span></button>
-      <div class="lista">${l.map(m=>`<a class="${atual===m.k?'on':''}" href="#/${m.k}">${esc(m.r)}</a>`).join('')}</div>
+      <div class="lista">${l.map(m => m.k === 'pessoal'
+        ? `<a href="familia/" title="área da família: contas de casa e a obra — porta separada do escritório">${esc(m.r)}</a>`
+        : `<a class="${atual===m.k?'on':''}" href="#/${m.k}">${esc(m.r)}</a>`).join('')}</div>
     </div>`).join('')}
     <span class="dir">${esc(USER.email)} · <a onclick="sb.auth.signOut().then(()=>location.reload())">sair</a></span></nav>`;
 }
@@ -4884,7 +4886,7 @@ async function telaRegras(){
 /* ---------------------------------------------------------------- manual */
 const MANUAL_MD = `# Manual do sistema — Breno S. Amorim Advocacia
 
-Atualizado em 21 de setembro de 2026.
+Atualizado em 25 de setembro de 2026.
 
 Este manual explica o que cada menu faz, na ordem em que a coisa acontece no escritório: a publicação chega, vira prazo, vira tarefa, vira peça, vira dinheiro. No fim tem os limites do sistema e o que fazer quando algo der errado.
 
@@ -4991,19 +4993,18 @@ O campo *o que a pessoa relatou* é o resumo de triagem, de uma linha. O relato 
 
 Se o atendimento foi presencial e a pessoa já preencheu e assinou o papel, o campo **Ficha em papel** anexa o PDF ou a foto (até 15 MB). O arquivo fica guardado junto das respostas, num armazenamento privado que só abre por link temporário, e vai junto com o caso quando o lead fechar. Dentro da ficha, o mesmo quadro permite anexar depois, abrir e tirar o arquivo.
 
-## 3b. Meu financeiro — ler extrato e fatura
+## 3b. Casa e família — uma porta separada
 
-O quadro **Ler extrato ou fatura** aceita o PDF do extrato da conta ou da fatura do cartão. O sistema lê, separa **créditos** de **débitos** e abre uma tela de conferência com todas as linhas.
+O que era **Meu financeiro** saiu do sistema do escritório e virou uma área própria, em
+**sistema.brenosamorimadvocacia.com.br/familia/**. No menu, em *Meu bolso*, o item **Casa e família ↗** leva até lá.
 
-**Nada entra na sua conta sozinho.** A tela mostra o que foi lido, com um seletor de categoria por linha, e você marca o que vai virar lançamento. Há botões para marcar tudo, só os débitos ou só os créditos. Só ao clicar em *Importar os marcados* é que os lançamentos são criados.
+Por que separar: as contas de casa são de duas pessoas, e o escritório é de uma só. Na área da família, quem tem acesso vê e lança tudo — dinheiro e obra — e **não vê nada do escritório**: nem processo, nem cliente, nem prazo. O contrário também vale: quem entra no sistema do escritório não enxerga nada da casa. São duas portas, cada uma com a sua chave, e a separação é feita no banco, não no menu.
 
-O sistema avisa quando uma linha **já parece lançada** — mesma data, mesmo valor, mesma descrição — mas não bloqueia, porque duas compras iguais no mesmo dia acontecem. E se o leitor descartar alguma linha por vir ilegível, ele diz quantas foram: confira o original nesse caso.
+O que foi junto: financiamento, reforma, despesas fixas, recorrentes, metas, categorias, lançamentos e a leitura de extratos e faturas. Nada foi recadastrado — as mesmas linhas passaram a pertencer à família em vez de a uma pessoa. O campo de quem lançou continua lá, agora como assinatura: dá para saber quem registrou o quê.
 
-**A armadilha da fatura de cartão.** As linhas de uma fatura são as compras. Quando você paga a fatura, o extrato da conta traz *um* débito com o total — é o mesmo dinheiro. Lance as compras **ou** o pagamento da fatura, nunca os dois. A tela avisa isso quando reconhece uma fatura.
+Quem entra: em *Quem somos*, dentro da área da família, cadastre o e-mail da pessoa. Ela entra sozinha pelo link que pede na tela de entrada — não há convite para aceitar nem senha para combinar.
 
-O arquivo lido fica guardado num armazenamento privado, por usuário, e abre por link temporário. *Desfazer a importação* apaga de uma vez os lançamentos que vieram daquele arquivo, sem apagar o arquivo.
-
-Leitura de PDF consome crédito da chave da Anthropic (item da tela Configurações). PDF grande é lido em blocos de dez páginas, e cada bloco é uma chamada.
+**A casa** é o menu da obra: ambientes (cozinha, quartos, área externa), o que falta em cada um, orçamentos com o papel do fornecedor anexado para comparar lado a lado, o que já foi pago por item e por ambiente, e as compras com data de entrega prometida — o que passou da data aparece em vermelho.
 
 ## 4. Prazos e publicações
 
@@ -10101,6 +10102,9 @@ async function rota(){
     vigiarRotulos();
   }
   const h = location.hash || '#/inicio';
+  /* O financeiro pessoal virou área da família, noutra porta: quem chega pelo
+     endereço antigo é levado para lá. */
+  if(h.startsWith('#/pessoal'))    return location.replace('familia/');
   if(h.startsWith('#/inicio'))     return telaInicio();
   if(h.startsWith('#/processo/')) return telaProcesso(h.slice('#/processo/'.length));
   if(h.startsWith('#/caso/'))      return telaCaso(h.slice('#/caso/'.length));
