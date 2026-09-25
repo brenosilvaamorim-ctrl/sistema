@@ -1314,7 +1314,7 @@ const TIPOITEM = { servico:'serviço', movel:'móvel', material:'material', elet
 const FORMAS = ['à vista','cartão de crédito','boleto','pix','financiado','a combinar'];
 /* Fechado = decidido e com dinheiro comprometido. É o que fica verde. */
 const FECHADO = ['contratado','comprado','entregue','pronto'];
-const fechado = i => FECHADO.includes(i.situacao);
+const fechado = i => FECHADO.includes(i.situacao) || !!i.pago_em;
 const corItem = s => ['pronto','entregue'].includes(s) ? 'good'
   : s === 'cancelado' ? 'cin' : s === 'a_orcar' ? 'warn' : s === 'orcado' ? 'serie' : 'good';
 const VERDE = 'background:rgba(12,163,12,.10);border-left:3px solid var(--good)';
@@ -1367,7 +1367,12 @@ const itensDoAmb = id => CASA.itens.filter(i => i.ambiente_id === id && i.situac
 const atrasadoItem = i => i.entrega_prevista && !i.entregue_em
   && !['entregue','pronto','cancelado'].includes(i.situacao) && i.entrega_prevista < hoje();
 /* Parcelamento ainda correndo: é o que compromete os meses à frente. */
-const pagando = i => i.parcelas && i.valor_parcela && i.ultima_parcela && i.ultima_parcela >= hoje();
+const pagando = i => !i.pago_em && i.parcelas && i.valor_parcela && i.ultima_parcela && i.ultima_parcela >= hoje();
+/* Quitado é decisão, não cálculo: você diz que acabou. A soma dos lançamentos
+   quase nunca bate com o orçado — houve desconto, houve frete, houve acerto —
+   e um item pago não pode ficar eternamente aparecendo como devendo. */
+const quitado = i => !!i.pago_em;
+const faltaItem = i => Math.max(0, previstoItem(i) - gastoItem(i.id));
 
 window.novoAmbiente = async (ev) => {
   ev.preventDefault();
@@ -1508,6 +1513,48 @@ window.gastoCasa = async (ev, itemId) => {
   if (error) { st.style.color='var(--crit)'; st.textContent = 'erro: ' + error.message; return; }
   telaItemCasa(itemId);
 };
+/* Dois caminhos, porque a vida tem os dois: ou o que falta passa agora pelo
+   caixa (e vira lançamento no Dinheiro), ou já saiu por fora e aqui só falta
+   registrar que acabou. */
+window.quitarItem = async (id, lancar) => {
+  const i = CASA.itens.find(x => x.id === id); if (!i) return;
+  const falta = faltaItem(i);
+  if (lancar && falta > 0.005) {
+    if (!confirm('Lançar ' + rs(falta) + ' como pago hoje e dar este item por quitado?')) return;
+    const { error } = await sb.from('pessoal_lancamento').insert({
+      familia_id: FAM.id, dono_id: FAM.uid, tipo:'saida', valor: falta, data: hoje(),
+      casa_item_id: id, descricao: 'Casa — ' + i.nome + ' (quitação)', origem:'casa' });
+    if (error) return alert('Não deu para lançar: ' + error.message);
+  } else if (!lancar) {
+    if (!confirm('Marcar "' + i.nome + '" como pago, sem lançar nada no Dinheiro?')) return;
+  }
+  const campos = { pago_em: hoje(), atualizado_em: new Date().toISOString() };
+  if (['a_orcar','orcado','contratado'].includes(i.situacao)) campos.situacao = 'comprado';
+  const { error } = await sb.from('casa_item').update(campos).eq('id', id);
+  if (error) return alert(error.message);
+  if (location.hash.startsWith('#/item/')) telaItemCasa(id);
+  else if (location.hash.startsWith('#/ambiente/')) telaAmbiente(i.ambiente_id);
+  else telaCasa();
+};
+window.desquitarItem = async (id) => {
+  const i = CASA.itens.find(x => x.id === id); if (!i) return;
+  if (!confirm('Tirar a marca de pago? Os lançamentos continuam onde estão.')) return;
+  await sb.from('casa_item').update({ pago_em: null, atualizado_em: new Date().toISOString() }).eq('id', id);
+  if (location.hash.startsWith('#/item/')) telaItemCasa(id);
+  else if (location.hash.startsWith('#/ambiente/')) telaAmbiente(i.ambiente_id);
+  else telaCasa();
+};
+/* Parcelado: lançar a parcela do mês num clique, com o valor já certo. */
+window.lancarParcela = async (id) => {
+  const i = CASA.itens.find(x => x.id === id); if (!i?.valor_parcela) return;
+  const n = (CASA.lancs[id] || []).filter(l => /parcela/i.test(l.descricao || '')).length + 1;
+  if (!confirm('Lançar a ' + n + 'ª parcela de ' + rs(i.valor_parcela) + ' como paga hoje?')) return;
+  const { error } = await sb.from('pessoal_lancamento').insert({
+    familia_id: FAM.id, dono_id: FAM.uid, tipo:'saida', valor: i.valor_parcela, data: hoje(),
+    casa_item_id: id, descricao: 'Casa — ' + i.nome + ' (' + n + 'ª parcela)', origem:'casa' });
+  if (error) return alert(error.message);
+  telaItemCasa(id);
+};
 window.tirarGastoCasa = async (id, itemId) => {
   if (!confirm('Apagar este pagamento? Ele sai também do Dinheiro.')) return;
   await sb.from('pessoal_lancamento').delete().eq('id', id);
@@ -1567,13 +1614,15 @@ async function telaItemCasa(id){
 
   app.innerHTML = menu('casa') + `
   <main><p class="meta"><a class="lnk" href="#/casa">← voltar para a casa</a></p>
-  <h1>${esc(i.nome)} <span class="pill ${corItem(i.situacao)}" style="vertical-align:middle">${SITITEM[i.situacao]||i.situacao}</span></h1>
+  <h1>${esc(i.nome)} <span class="pill ${corItem(i.situacao)}" style="vertical-align:middle">${SITITEM[i.situacao]||i.situacao}</span>${
+    quitado(i) ? ` <span class="pill good" style="vertical-align:middle">pago em ${br(i.pago_em)}</span>` : ''}</h1>
   <p class="meta">${TIPOITEM[i.tipo]||i.tipo}${amb ? ' · ' + esc(amb.nome) : ' · a casa toda'}${
     i.descricao ? ' · ' + esc(i.descricao) : ''}</p>
 
   <div class="kpis">
     <div class="kpi" ${fechado(i)?`style="${VERDE}"`:''}><div class="n" style="font-size:19px">${prev ? rs(prev) : '—'}</div><div class="l">${esc_ ? 'fechado por' : 'previsto'}</div></div>
-    <div class="kpi"><div class="n" style="font-size:19px">${pago ? rs(pago) : '—'}</div><div class="l">já pago</div></div>
+    <div class="kpi" ${quitado(i)?`style="${VERDE}"`:''}><div class="n" style="font-size:19px">${pago ? rs(pago) : '—'}</div>
+      <div class="l">${quitado(i) ? 'pago — quitado' : (faltaItem(i) > 0.005 ? 'pago · falta ' + rs(faltaItem(i)) : 'já pago')}</div></div>
     <div class="kpi"><div class="n" style="font-size:19px">${i.valor_parcela ? rs(i.valor_parcela) : '—'}</div><div class="l">${i.parcelas ? 'parcela (de ' + i.parcelas + ')' : 'sem parcelamento'}</div></div>
     <div class="kpi ${atrasadoItem(i)?'al':''}"><div class="n" style="font-size:19px">${i.ultima_parcela ? br(i.ultima_parcela) : (i.entrega_prevista ? br(i.entrega_prevista) : '—')}</div><div class="l">${i.ultima_parcela ? 'última parcela' : 'entrega prevista'}</div></div>
   </div>
@@ -1683,7 +1732,19 @@ async function telaItemCasa(id){
       total de <b>${rs(Number(i.entrada||0) + Number(i.parcelas)*Number(i.valor_parcela))}</b>${
       i.ultima_parcela ? `, última em <b>${br(i.ultima_parcela)}</b>` : ''}.</p>` : ''}</div>
 
-  <div class="card"><h2>O que já foi pago</h2>
+  <div class="card" ${quitado(i)?`style="${VERDE}"`:''}><h2>O que já foi pago</h2>
+    <div style="padding:0 18px 12px;display:flex;gap:9px;flex-wrap:wrap;align-items:center">
+      ${quitado(i)
+        ? `<b style="color:var(--good)">Item pago em ${br(i.pago_em)}.</b>
+           <button class="btn" onclick="desquitarItem('${i.id}')">Não está pago</button>`
+        : `${faltaItem(i) > 0.005
+             ? `<span class="sub" style="margin:0">Falta <b>${rs(faltaItem(i))}</b> para fechar o que foi orçado.</span>
+                <button class="btn ok" onclick="quitarItem('${i.id}', true)">Marcar como pago (lançar ${rs(faltaItem(i))})</button>
+                <button class="btn" onclick="quitarItem('${i.id}', false)">só marcar, sem lançar</button>`
+             : `<span class="sub" style="margin:0">Os pagamentos já cobrem o valor fechado.</span>
+                <button class="btn ok" onclick="quitarItem('${i.id}', false)">Marcar como pago</button>`}
+           ${i.valor_parcela ? `<button class="btn" onclick="lancarParcela('${i.id}')">Lançar parcela de ${rs(i.valor_parcela)}</button>` : ''}`}
+    </div>
     ${pagamentos.length ? `<table><thead><tr><th>Quando</th><th>O quê</th><th>Valor</th><th></th></tr></thead><tbody>
       ${pagamentos.map(l=>`<tr><td class="dt">${br(l.data)}</td><td>${esc(l.descricao||'—')}</td>
         <td class="dt">${rs(l.valor)}</td>
@@ -1718,10 +1779,14 @@ function linhaItemCasa(i){
     <td class="dt">${prev ? rs(prev) : '—'}<span class="sub">${orcs.length ? orcs.length + ' proposta' + (orcs.length>1?'s':'') : 'sem proposta'}</span></td>
     <td class="dt">${i.valor_parcela ? parcelaTexto(i) : '—'}${
       i.ultima_parcela ? `<span class="sub">até ${br(i.ultima_parcela)}</span>` : ''}</td>
-    <td class="dt">${gas ? rs(gas) : '—'}${prev && gas > prev + 0.005 ? '<span class="sub" style="color:var(--crit)">passou do fechado</span>' : ''}</td>
+    <td class="dt">${gas ? rs(gas) : '—'}${quitado(i) ? '<span class="pill good">pago</span>'
+      : (prev && gas > prev + 0.005 ? '<span class="sub" style="color:var(--crit)">passou do fechado</span>'
+      : (faltaItem(i) > 0.005 ? `<span class="sub">falta ${rs(faltaItem(i))}</span>` : ''))}</td>
     <td class="dt">${i.entrega_prevista ? br(i.entrega_prevista) : '—'}
       ${atrasadoItem(i) ? '<span class="pill crit">atrasado</span>' : ''}</td>
-    <td><a class="btn" href="#/item/${i.id}" style="text-decoration:none;font-size:11.4px;padding:4px 8px">Abrir</a></td>
+    <td style="white-space:nowrap"><a class="btn" href="#/item/${i.id}" style="text-decoration:none;font-size:11.4px;padding:4px 8px">Abrir</a>
+      ${quitado(i) || i.situacao === 'cancelado' ? '' : `<button class="btn ok" style="font-size:11.4px;padding:4px 8px"
+        title="dar este item por quitado" onclick="quitarItem('${i.id}', ${faltaItem(i) > 0.005})">Pago</button>`}</td>
   </tr>`;
 }
 
