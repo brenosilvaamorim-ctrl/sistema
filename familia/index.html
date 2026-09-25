@@ -1319,7 +1319,7 @@ const corItem = s => ['pronto','entregue'].includes(s) ? 'good'
   : s === 'cancelado' ? 'cin' : s === 'a_orcar' ? 'warn' : s === 'orcado' ? 'serie' : 'good';
 const VERDE = 'background:rgba(12,163,12,.10);border-left:3px solid var(--good)';
 
-let CASA = { amb:[], itens:[], orc:[], gastos:{}, lancs:{} }, CASAFILTRO = null;
+let CASA = { amb:[], itens:[], orc:[], gastos:{}, lancs:{} };
 
 const addMeses = (d, n) => {
   if (!d) return null;
@@ -1379,9 +1379,9 @@ window.novoAmbiente = async (ev) => {
   telaCasa();
 };
 window.mudarAmbiente = async (id, campo, valor) => {
-  const { error } = await sb.from('casa_ambiente').update({ [campo]: valor }).eq('id', id);
+  const { error } = await sb.from('casa_ambiente').update({ [campo]: valor === '' ? null : valor }).eq('id', id);
   if (error) return alert(error.message);
-  telaCasa();
+  if (location.hash.startsWith('#/ambiente/')) telaAmbiente(id); else telaCasa();
 };
 window.tirarAmbiente = async (id) => {
   const a = CASA.amb.find(x => x.id === id); if (!a) return;
@@ -1389,7 +1389,7 @@ window.tirarAmbiente = async (id) => {
   if (n) return alert('Este ambiente ainda tem ' + n + ' item(ns). Mova ou cancele antes de apagar.');
   if (!confirm('Apagar o ambiente "' + a.nome + '"?')) return;
   await sb.from('casa_ambiente').delete().eq('id', id);
-  telaCasa();
+  if (location.hash.startsWith('#/ambiente/')) location.hash = '#/casa'; else telaCasa();
 };
 window.novoItemCasa = async (ev) => {
   ev.preventDefault();
@@ -1411,7 +1411,9 @@ window.mudarItem = async (id, campo, valor) => {
   }
   const { error } = await sb.from('casa_item').update(campos).eq('id', id);
   if (error) return alert(error.message);
-  if (location.hash.startsWith('#/item/')) telaItemCasa(id); else telaCasa();
+  if (location.hash.startsWith('#/item/')) telaItemCasa(id);
+  else if (location.hash.startsWith('#/ambiente/')) telaAmbiente(location.hash.slice('#/ambiente/'.length));
+  else telaCasa();
 };
 window.tirarItem = async (id) => {
   const i = CASA.itens.find(x => x.id === id);
@@ -1511,7 +1513,6 @@ window.tirarGastoCasa = async (id, itemId) => {
   await sb.from('pessoal_lancamento').delete().eq('id', id);
   telaItemCasa(itemId);
 };
-window.filtrarAmb = (id) => { CASAFILTRO = (CASAFILTRO === id ? null : id); telaCasa(); };
 
 /* ------------------------------------------------- um item por dentro */
 async function telaItemCasa(id){
@@ -1706,6 +1707,115 @@ async function telaItemCasa(id){
 }
 
 /* ------------------------------------------------------------- a casa toda */
+function linhaItemCasa(i){
+  const prev = previstoItem(i), gas = gastoItem(i.id), orcs = orcDoItem(i.id);
+  const amb = CASA.amb.find(a => a.id === i.ambiente_id);
+  return `<tr style="${fechado(i)?VERDE:''}${i.situacao==='cancelado'?';opacity:.45':''}">
+    <td><a class="lnk" href="#/item/${i.id}"><b>${esc(i.nome)}</b></a>
+      <span class="sub">${TIPOITEM[i.tipo]||i.tipo}${amb ? ' · ' + esc(amb.nome) : ''}${
+        i.fornecedor ? ' · ' + esc(i.fornecedor) : ''}</span></td>
+    <td><span class="pill ${corItem(i.situacao)}">${SITITEM[i.situacao]||i.situacao}</span></td>
+    <td class="dt">${prev ? rs(prev) : '—'}<span class="sub">${orcs.length ? orcs.length + ' proposta' + (orcs.length>1?'s':'') : 'sem proposta'}</span></td>
+    <td class="dt">${i.valor_parcela ? parcelaTexto(i) : '—'}${
+      i.ultima_parcela ? `<span class="sub">até ${br(i.ultima_parcela)}</span>` : ''}</td>
+    <td class="dt">${gas ? rs(gas) : '—'}${prev && gas > prev + 0.005 ? '<span class="sub" style="color:var(--crit)">passou do fechado</span>' : ''}</td>
+    <td class="dt">${i.entrega_prevista ? br(i.entrega_prevista) : '—'}
+      ${atrasadoItem(i) ? '<span class="pill crit">atrasado</span>' : ''}</td>
+    <td><a class="btn" href="#/item/${i.id}" style="text-decoration:none;font-size:11.4px;padding:4px 8px">Abrir</a></td>
+  </tr>`;
+}
+
+/* --------------------------------------------------- um ambiente por dentro
+   Cada cômodo é uma obra pequena dentro da obra grande: tem o próprio
+   orçamento, o próprio gasto e a própria lista do que falta. Por isso ele
+   abre numa página, e não num filtro — dá para mandar o endereço para alguém
+   e a pessoa cai direto na cozinha. */
+async function telaAmbiente(id){
+  await carregarCasa();
+  const a = CASA.amb.find(x => x.id === id);
+  if (!a) return erro('ambiente não encontrado');
+  const its = CASA.itens.filter(i => i.ambiente_id === id);
+  const vivos = its.filter(i => i.situacao !== 'cancelado');
+  const prev = vivos.reduce((x,i)=>x+previstoItem(i),0);
+  const pago = vivos.reduce((x,i)=>x+gastoItem(i.id),0);
+  const fe = vivos.filter(fechado).length;
+  const emParcelas = vivos.filter(pagando);
+  const mensal = emParcelas.reduce((x,i)=>x+Number(i.valor_parcela),0);
+  const atrasados = vivos.filter(atrasadoItem);
+  const tudo = vivos.length && fe === vivos.length;
+
+  app.innerHTML = menu('casa') + `
+  <main><p class="meta"><a class="lnk" href="#/casa">← voltar para a casa</a></p>
+  <h1>${esc(a.nome)} <span class="pill ${a.situacao==='pronto'?'good':(a.situacao==='andamento'?'serie':'warn')}"
+    style="vertical-align:middle">${SITAMB[a.situacao]||a.situacao}</span></h1>
+  <p class="meta">${vivos.length ? `${fe} de ${vivos.length} ite${vivos.length>1?'ns':'m'} já fechado${fe===1?'':'s'}.` : 'Nada cadastrado neste ambiente ainda.'}
+    ${tudo ? ' <b style="color:var(--good)">Este ambiente está resolvido.</b>' : ''}</p>
+
+  <div class="kpis">
+    <div class="kpi" ${tudo?`style="${VERDE}"`:''}><div class="n" style="font-size:19px">${prev ? rs(prev) : '—'}</div><div class="l">orçado aqui</div></div>
+    <div class="kpi"><div class="n" style="font-size:19px">${pago ? rs(pago) : '—'}</div><div class="l">já pago</div></div>
+    <div class="kpi"><div class="n" style="font-size:19px">${prev - pago > 0.005 ? rs(prev-pago) : '—'}</div><div class="l">falta pagar</div></div>
+    <div class="kpi ${mensal?'al':''}"><div class="n" style="font-size:19px">${mensal ? rs(mensal) : '—'}</div><div class="l">em parcelas por mês</div></div>
+    <div class="kpi ${atrasados.length?'al':''}"><div class="n">${atrasados.length}</div><div class="l">entregas atrasadas</div></div>
+  </div>
+  ${prev ? `<div style="height:8px;background:var(--ln);border-radius:5px;margin:-6px 0 16px;overflow:hidden">
+    <div style="height:100%;width:${Math.min(100, Math.round(pago/prev*100))}%;background:${pago>prev?'var(--crit)':'var(--good)'}"></div></div>` : ''}
+
+  <div class="card"><h2>O que falta em ${esc(a.nome)}</h2>
+    <p class="nota">Clique no nome do item para ver as propostas lado a lado, o parcelamento e os pagamentos.
+      <b style="color:var(--good)">Verde</b> é o que já está contratado ou comprado.</p>
+    ${its.length ? `<table><thead><tr><th>O quê</th><th style="width:120px">Situação</th><th>Fechado por</th>
+      <th>Parcelas</th><th>Pago</th><th>Entrega</th><th></th></tr></thead><tbody>
+      ${its.map(linhaItemCasa).join('')}</tbody></table>`
+    : '<div class="vazio" style="padding:0 18px 12px">Nada aqui ainda. Comece pelo que você já sabe que precisa.</div>'}
+    <form onsubmit="novoItemCasa(event)" style="display:flex;gap:8px;flex-wrap:wrap;padding:10px 18px 18px;align-items:flex-end">
+      <input type="hidden" name="ambiente" value="${a.id}">
+      <label style="display:flex;flex-direction:column;gap:3px;flex:2;min-width:220px">
+        <span class="sub" style="margin:0">O quê</span>
+        <input name="nome" required placeholder="Ex.: armários planejados"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:140px">
+        <span class="sub" style="margin:0">Tipo</span>
+        <select name="tipo">${Object.entries(TIPOITEM).map(([k,r])=>`<option value="${k}">${r}</option>`).join('')}</select></label>
+      <label style="display:flex;flex-direction:column;gap:3px;width:130px">
+        <span class="sub" style="margin:0">Estimativa (R$)</span>
+        <input name="previsto" inputmode="decimal" placeholder="se já tiver"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:150px">
+        <span class="sub" style="margin:0">Comprar até</span>
+        <input name="comprar_ate" type="date"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:150px">
+        <span class="sub" style="margin:0">Entrega prometida</span>
+        <input name="entrega" type="date"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:200px">
+        <span class="sub" style="margin:0">Observação</span>
+        <input name="descricao" placeholder="medidas, cor, referência…"></label>
+      <button class="btn ok" type="submit">Acrescentar e abrir</button>
+      <span class="sub" id="ci-st" style="margin:0"></span>
+    </form></div>
+
+  ${emParcelas.length ? `<div class="card"><h2>Sendo pago neste ambiente</h2>
+    <table><thead><tr><th>O quê</th><th>Com quem</th><th>Parcela</th><th>Última</th></tr></thead><tbody>
+    ${emParcelas.map(i=>`<tr style="${VERDE}"><td><a class="lnk" href="#/item/${i.id}">${esc(i.nome)}</a></td>
+      <td>${esc(i.fornecedor||'—')}</td><td class="dt">${parcelaTexto(i)}</td>
+      <td class="dt">${br(i.ultima_parcela)}</td></tr>`).join('')}
+    </tbody></table></div>` : ''}
+
+  <div class="card"><h2>O ambiente</h2>
+    <div style="display:flex;gap:9px;flex-wrap:wrap;padding:0 18px 18px;align-items:flex-end">
+      <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:220px">
+        <span class="sub" style="margin:0">Nome</span>
+        <input value="${esc(a.nome)}" onchange="mudarAmbiente('${a.id}','nome',this.value)"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:170px">
+        <span class="sub" style="margin:0">Como está</span>
+        <select onchange="mudarAmbiente('${a.id}','situacao',this.value)">
+          ${Object.entries(SITAMB).map(([k,r])=>`<option value="${k}" ${a.situacao===k?'selected':''}>${r}</option>`).join('')}</select></label>
+      <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:220px">
+        <span class="sub" style="margin:0">Observação</span>
+        <input value="${esc(a.obs||'')}" onchange="mudarAmbiente('${a.id}','obs',this.value)"></label>
+      <button class="btn" onclick="tirarAmbiente('${a.id}')">Apagar ambiente</button>
+    </div></div>
+  </main>` + rodape();
+}
+
 async function telaCasa(){
   await carregarCasa();
   const vivos = CASA.itens.filter(i => i.situacao !== 'cancelado');
@@ -1716,27 +1826,9 @@ async function telaCasa(){
   const emParcelas = vivos.filter(pagando);
   const mensal = emParcelas.reduce((a,i)=>a+Number(i.valor_parcela),0);
   const ultimaGeral = emParcelas.map(i=>i.ultima_parcela).sort().pop();
-  const lista = CASAFILTRO ? CASA.itens.filter(i => i.ambiente_id === CASAFILTRO) : CASA.itens;
+  const lista = CASA.itens;
   const compras = vivos.filter(i => (i.comprar_ate || i.entrega_prevista) && !['entregue','pronto'].includes(i.situacao))
     .sort((a,b) => String(a.entrega_prevista||a.comprar_ate).localeCompare(String(b.entrega_prevista||b.comprar_ate)));
-
-  const linha = i => {
-    const prev = previstoItem(i), gas = gastoItem(i.id), orcs = orcDoItem(i.id);
-    const amb = CASA.amb.find(a => a.id === i.ambiente_id);
-    return `<tr style="${fechado(i)?VERDE:''}${i.situacao==='cancelado'?';opacity:.45':''}">
-      <td><a class="lnk" href="#/item/${i.id}"><b>${esc(i.nome)}</b></a>
-        <span class="sub">${TIPOITEM[i.tipo]||i.tipo}${amb ? ' · ' + esc(amb.nome) : ''}${
-          i.fornecedor ? ' · ' + esc(i.fornecedor) : ''}</span></td>
-      <td><span class="pill ${corItem(i.situacao)}">${SITITEM[i.situacao]||i.situacao}</span></td>
-      <td class="dt">${prev ? rs(prev) : '—'}<span class="sub">${orcs.length ? orcs.length + ' proposta' + (orcs.length>1?'s':'') : 'sem proposta'}</span></td>
-      <td class="dt">${i.valor_parcela ? parcelaTexto(i) : '—'}${
-        i.ultima_parcela ? `<span class="sub">até ${br(i.ultima_parcela)}</span>` : ''}</td>
-      <td class="dt">${gas ? rs(gas) : '—'}${prev && gas > prev + 0.005 ? '<span class="sub" style="color:var(--crit)">passou do fechado</span>' : ''}</td>
-      <td class="dt">${i.entrega_prevista ? br(i.entrega_prevista) : '—'}
-        ${atrasadoItem(i) ? '<span class="pill crit">atrasado</span>' : ''}</td>
-      <td><a class="btn" href="#/item/${i.id}" style="text-decoration:none;font-size:11.4px;padding:4px 8px">Abrir</a></td>
-    </tr>`;
-  };
 
   app.innerHTML = menu('casa') + `
   <main><h1>A casa</h1>
@@ -1758,15 +1850,15 @@ async function telaCasa(){
     Enquanto não tiverem, o total acima está menor do que a realidade.</p>` : ''}
 
   <div class="card"><h2>Ambientes</h2>
-    <p class="nota">Clique no nome para ver só o que é dele.</p>
+    <p class="nota">Clique no nome do ambiente para abri-lo: lá dentro ficam os itens, o orçado e o pago só dele.</p>
     ${CASA.amb.length ? `<table><thead><tr><th>Ambiente</th><th style="width:160px">Como está</th>
       <th>Orçado</th><th>Pago</th><th>Falta</th><th>Itens</th><th>Fechados</th><th></th></tr></thead><tbody>
       ${CASA.amb.map(a => { const its = itensDoAmb(a.id);
         const p = its.reduce((x,i)=>x+previstoItem(i),0), g = its.reduce((x,i)=>x+gastoItem(i.id),0);
         const fe = its.filter(fechado).length;
         const tudo = its.length && fe === its.length;
-        return `<tr style="${tudo||a.situacao==='pronto'?VERDE:''}${CASAFILTRO===a.id?';outline:2px solid var(--serie)':''}">
-        <td><a class="lnk" style="cursor:pointer" onclick="filtrarAmb('${a.id}')"><b>${esc(a.nome)}</b></a></td>
+        return `<tr style="${tudo||a.situacao==='pronto'?VERDE:''}">
+        <td><a class="lnk" href="#/ambiente/${a.id}"><b>${esc(a.nome)}</b></a></td>
         <td><select style="font-size:11.6px" onchange="mudarAmbiente('${a.id}','situacao',this.value)">
           ${Object.entries(SITAMB).map(([k,r])=>`<option value="${k}" ${a.situacao===k?'selected':''}>${r}</option>`).join('')}
           </select></td>
@@ -1774,20 +1866,19 @@ async function telaCasa(){
         <td class="dt">${p - g > 0.005 ? rs(p-g) : '—'}</td>
         <td>${its.length}</td>
         <td>${its.length ? `${fe} de ${its.length}` : '—'}</td>
-        <td><button class="btn" style="font-size:11.4px;padding:3px 7px" onclick="tirarAmbiente('${a.id}')">×</button></td></tr>`; }).join('')}
+        <td><a class="btn" href="#/ambiente/${a.id}" style="text-decoration:none;font-size:11.4px;padding:4px 8px">Abrir</a></td></tr>`; }).join('')}
     </tbody></table>` : '<div class="vazio" style="padding:0 18px 12px">Nenhum ambiente ainda.</div>'}
     <form onsubmit="novoAmbiente(event)" style="display:flex;gap:8px;flex-wrap:wrap;padding:10px 18px 18px;align-items:flex-end">
       <input name="nome" required placeholder="Ex.: cozinha, quarto do casal, área externa" style="flex:1;min-width:260px">
       <button class="btn ok" type="submit">Acrescentar ambiente</button>
-      ${CASAFILTRO ? `<button class="btn" type="button" onclick="filtrarAmb('${CASAFILTRO}')">ver todos os itens</button>` : ''}
       <span class="sub" id="ca-st" style="margin:0"></span>
     </form></div>
 
-  <div class="card"><h2>O que falta${CASAFILTRO ? ' — ' + esc(CASA.amb.find(a=>a.id===CASAFILTRO)?.nome||'') : ''}</h2>
+  <div class="card"><h2>Tudo o que falta na casa</h2>
     <p class="nota">Clique no nome para abrir o item: é lá que ficam as propostas lado a lado, o parcelamento e os pagamentos.</p>
     ${lista.length ? `<table><thead><tr><th>O quê</th><th style="width:120px">Situação</th><th>Fechado por</th>
       <th>Parcelas</th><th>Pago</th><th>Entrega</th><th></th></tr></thead><tbody>
-      ${lista.map(linha).join('')}</tbody></table>`
+      ${lista.map(linhaItemCasa).join('')}</tbody></table>`
     : '<div class="vazio" style="padding:0 18px 12px">Nada cadastrado ainda.</div>'}
     <form onsubmit="novoItemCasa(event)" style="display:flex;gap:8px;flex-wrap:wrap;padding:10px 18px 18px;align-items:flex-end">
       <label style="display:flex;flex-direction:column;gap:3px;flex:2;min-width:220px">
@@ -1799,7 +1890,7 @@ async function telaCasa(){
       <label style="display:flex;flex-direction:column;gap:3px;min-width:180px">
         <span class="sub" style="margin:0">Ambiente</span>
         <select name="ambiente"><option value="">— a casa toda —</option>
-          ${CASA.amb.map(a=>`<option value="${a.id}" ${CASAFILTRO===a.id?'selected':''}>${esc(a.nome)}</option>`).join('')}</select></label>
+          ${CASA.amb.map(a=>`<option value="${a.id}">${esc(a.nome)}</option>`).join('')}</select></label>
       <label style="display:flex;flex-direction:column;gap:3px;width:130px">
         <span class="sub" style="margin:0">Estimativa (R$)</span>
         <input name="previsto" inputmode="decimal" placeholder="se já tiver"></label>
@@ -1859,6 +1950,7 @@ async function rota(){
   }
   const h = location.hash || '#/dinheiro';
   if (h.startsWith('#/item/'))    return telaItemCasa(h.slice('#/item/'.length));
+  if (h.startsWith('#/ambiente/')) return telaAmbiente(h.slice('#/ambiente/'.length));
   if (h.startsWith('#/casa'))     return telaCasa();
   if (h.startsWith('#/familia'))  return telaFamiliaTela();
   if (h.startsWith('#/extrato'))  return telaPessoal();
