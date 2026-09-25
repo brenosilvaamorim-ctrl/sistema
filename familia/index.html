@@ -1,0 +1,1635 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nossa casa</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{color-scheme:light;--s0:#f4f3f0;--s1:#fcfcfb;--ln:#e3e1dc;--ink:#0b0b0b;--i2:#52514e;--i3:#78766f;
+--good:#0ca30c;--warn:#fab219;--ser:#ec835a;--crit:#d03b3b;--serie:#2a78d6;--hoje:#2a78d6;--presc:#7b3fb0;--taref:#2f8f7f}
+@media(prefers-color-scheme:dark){:root{color-scheme:dark;--s0:#111110;--s1:#1a1a19;--ln:#33332f;--ink:#fff;--i2:#c3c2b7;--i3:#8f8e85;--serie:#3987e5;--presc:#a973dd;--taref:#45b39e}}
+*{box-sizing:border-box}body{margin:0;background:var(--s0);color:var(--ink);font:15px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
+a{color:inherit}
+nav{display:flex;gap:2px;align-items:center;padding:0 20px;background:var(--s1);border-bottom:1px solid var(--ln);
+  flex-wrap:wrap;position:sticky;top:0;z-index:9}
+nav a{color:var(--i2);text-decoration:none;font-size:13.6px;cursor:pointer;padding:15px 11px;
+  border-bottom:2px solid transparent;white-space:nowrap}
+nav a.on{color:var(--ink);border-bottom-color:var(--serie);font-weight:600}
+.grp{position:relative}
+.grp>.gbt{background:none;border:0;color:var(--i2);font:inherit;font-size:13.6px;cursor:pointer;
+  padding:15px 11px;border-bottom:2px solid transparent;white-space:nowrap}
+.grp>.gbt:hover{color:var(--ink)}
+.grp.tem>.gbt{color:var(--ink);border-bottom-color:var(--serie);font-weight:600}
+.grp>.gbt .seta{font-size:9px;opacity:.5;margin-left:3px}
+.grp .lista{display:none;position:absolute;top:100%;left:0;min-width:190px;z-index:60;
+  background:var(--s1);border:1px solid var(--ln);border-radius:11px;padding:6px;
+  box-shadow:0 10px 28px rgba(0,0,0,.13)}
+.grp:hover .lista,.grp.aberto .lista{display:block}
+.grp .lista a{display:block;padding:8px 11px;border-radius:8px;font-size:13.4px;border:0;color:var(--i2)}
+.grp .lista a:hover{background:var(--s0);color:var(--ink)}
+.grp .lista a.on{color:var(--serie);font-weight:600;background:var(--s0)}
+nav a:hover{color:var(--ink)}nav .dir{margin-left:auto;font-size:12.3px;color:var(--i3);padding:15px 0}
+.marca{display:flex;align-items:center;gap:9px;padding:11px 18px 11px 0;margin-right:10px;border-right:1px solid var(--ln)}
+.marca .sigla{width:31px;height:31px;border-radius:7px;background:var(--ink);color:var(--s1);display:grid;
+  place-items:center;font:600 12.5px/1 ui-sans-serif,sans-serif;letter-spacing:.02em;flex:none}
+.marca img{width:31px;height:31px;object-fit:contain;border-radius:6px;flex:none}
+.marca .nome{font:600 14.2px/1.15 Georgia,'Times New Roman',serif;letter-spacing:.01em;color:var(--ink)}
+.marca .sub2{display:block;font:400 10.5px/1.3 ui-sans-serif,sans-serif;color:var(--i3);
+  text-transform:uppercase;letter-spacing:.09em;margin-top:2px}
+h1{font-family:Georgia,'Times New Roman',serif;font-weight:600;letter-spacing:-.005em}
+footer{max-width:1180px;margin:0 auto;padding:0 18px 40px;color:var(--i3);font-size:11.6px;line-height:1.7}
+footer b{color:var(--i2);font-weight:600}
+main{max-width:1180px;margin:0 auto;padding:24px 18px 70px}
+h1{font-size:21px;margin:0 0 3px}.meta{color:var(--i2);font-size:13.5px;margin-bottom:20px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:11px;margin-bottom:22px}
+.kpi{background:var(--s1);border:1px solid var(--ln);border-radius:12px;padding:14px 16px}
+.kpi .n{font-size:29px;font-weight:650;line-height:1.1;letter-spacing:-.02em}
+.kpi .l{color:var(--i2);font-size:12.5px;margin-top:2px}.kpi.al .n{color:var(--crit)}
+.card{background:var(--s1);border:1px solid var(--ln);border-radius:12px;margin-bottom:18px;overflow:hidden}
+h2{font-size:14.5px;margin:15px 18px 3px}.nota{margin:0 18px 12px;color:var(--i2);font-size:12.8px;max-width:78ch}
+table{width:100%;border-collapse:collapse;font-size:13.4px}
+th{text-align:left;font-weight:600;color:var(--i3);font-size:11.3px;text-transform:uppercase;letter-spacing:.05em;padding:9px 11px;border-bottom:1px solid var(--ln)}
+td{padding:10px 11px;border-bottom:1px solid var(--ln);vertical-align:top}tr:last-child td{border-bottom:0}
+.sub{display:block;color:var(--i3);font-size:11.3px;margin-top:2px}
+.proc{font-variant-numeric:tabular-nums;font-size:12.3px;color:var(--i2);white-space:nowrap}
+table.mtab{margin:6px 0 14px;max-width:760px}table.mtab th{text-transform:none;font-size:11.6px;letter-spacing:0}table.mtab td{font-size:13px}
+.dt{white-space:nowrap;font-variant-numeric:tabular-nums}.q{color:var(--i2);font-style:italic;font-size:12.3px;display:block}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;font-size:11.3px;font-weight:600;white-space:nowrap;border:1px solid}
+.crit{color:var(--crit);border-color:var(--crit)}.ser{color:var(--ser);border-color:var(--ser)}
+.warn{color:var(--warn);border-color:var(--warn)}.good{color:var(--good);border-color:var(--good)}
+.cin{color:var(--i3);border-color:var(--ln)}
+.serie{color:var(--serie);border-color:var(--serie)}
+.presc{color:var(--presc);border-color:var(--presc)}
+.taref{color:var(--taref);border-color:var(--taref)}
+button,input,select,textarea{font:inherit}
+.btn{font-size:12.3px;font-weight:600;padding:5px 11px;border-radius:8px;border:1px solid var(--ln);background:var(--s0);color:var(--ink);cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--i3)}.btn.ok{border-color:var(--good);color:var(--good)}
+.acoes{display:flex;flex-direction:column;gap:5px}.acoes form{display:flex;gap:4px}
+input[type=date],input[type=email],input[type=search],input[type=text],select,textarea{padding:5px 9px;border-radius:8px;border:1px solid var(--ln);background:var(--s0);color:var(--ink);font-size:12.5px}
+textarea{width:100%;resize:vertical;line-height:1.45}
+.aviso{background:var(--s1);border:1px solid var(--crit);border-left-width:3px;border-radius:8px;padding:12px 15px;margin-bottom:18px;font-size:13.4px;color:var(--i2)}
+.aviso b{color:var(--ink)}.vazio{padding:28px;text-align:center;color:var(--i3)}
+.login{max-width:400px;margin:12vh auto;background:var(--s1);border:1px solid var(--ln);border-radius:14px;padding:28px}
+.login h1{font-size:19px;margin-bottom:6px}.login p{color:var(--i2);font-size:13.5px;margin:0 0 18px}
+.login input{width:100%;margin-bottom:10px;padding:9px 11px}.login .btn{width:100%;padding:9px}
+.filtros{display:flex;gap:8px;align-items:center;margin:0 18px 12px;flex-wrap:wrap}
+.filtros input[type=search]{flex:1;min-width:200px;padding:7px 11px}
+.lnk{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--ln)}.lnk:hover{border-color:var(--i3)}
+.volta{display:inline-block;color:var(--i2);font-size:13px;text-decoration:none;margin-bottom:14px;cursor:pointer}
+.ficha{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:2px 20px;padding:4px 18px 16px;font-size:13.2px}
+.ficha div{padding:6px 0;border-bottom:1px solid var(--ln)}.ficha .r{color:var(--i3);font-size:11.3px;display:block}
+.tl{list-style:none;margin:0;padding:6px 18px 20px}
+.tl li{position:relative;padding:0 0 20px 26px;border-left:2px solid var(--ln)}
+.tl li:last-child{border-left-color:transparent;padding-bottom:4px}
+.tl li::before{content:"";position:absolute;left:-6px;top:5px;width:10px;height:10px;border-radius:99px;background:var(--i3);border:2px solid var(--s1)}
+.tl li.rel::before{background:var(--ser)}.tl li.mkr::before{background:var(--good)}
+.tl .d{font-size:11.5px;color:var(--i3);font-variant-numeric:tabular-nums}
+.tl .t{font-size:13.6px;margin-top:1px}.tl .o{font-size:11.8px;color:var(--i3);margin-top:2px}
+.tl li.esc{opacity:.55}
+.bars{padding:6px 18px 18px}
+.bar{display:grid;grid-template-columns:minmax(96px,180px) 1fr minmax(86px,auto);gap:10px;align-items:center;padding:3.5px 0;font-size:12.9px}
+.bar .rot{color:var(--i2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar .trilho{background:var(--ln);height:13px;border-radius:4px;overflow:hidden}
+.bar .barra{height:100%;background:var(--serie);border-radius:4px}
+.bar .val{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink);font-weight:600;white-space:nowrap}
+.duas{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px}
+.duas .card{margin-bottom:0}
+.calnav{display:flex;gap:10px;align-items:baseline;margin-bottom:14px}
+.calnav .mes{font:600 19px/1 Georgia,serif;color:var(--ink);letter-spacing:-.01em}
+.calnav .ano{font-size:15px;color:var(--i3)}
+.calnav .nav{margin-left:auto;display:flex;gap:6px}
+.calnav .nav button{border:1px solid var(--ln);background:var(--s1);color:var(--i2);border-radius:7px;
+  padding:5px 11px;font-size:13px;cursor:pointer;line-height:1.2}
+.calnav .nav button:hover{border-color:var(--i3);color:var(--ink)}
+.calmes{display:grid;grid-template-columns:1.6fr 1fr;gap:16px;align-items:start}
+@media(max-width:860px){.calmes{grid-template-columns:1fr}}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--ln);
+  border:1px solid var(--ln);border-radius:10px;overflow:hidden}
+.cabdia{background:var(--s0);padding:7px 8px;font-size:10.4px;color:var(--i3);
+  text-transform:uppercase;letter-spacing:.07em;text-align:center;font-weight:600}
+.dia{background:var(--s1);min-height:74px;padding:6px 5px 5px;cursor:pointer;transition:background .12s}
+.dia:hover{background:var(--s0)}
+.dia.fora{opacity:.32;cursor:default}.dia.fora:hover{background:var(--s1)}
+.dia.sel{background:var(--s0);box-shadow:inset 0 0 0 2px var(--serie)}
+.dia .num{font-size:12.5px;color:var(--i2);font-variant-numeric:tabular-nums;
+  width:22px;height:22px;display:flex;align-items:center;justify-content:center;
+  border-radius:99px;margin:0 auto 4px}
+.dia.hoje{background:var(--s0)}
+.dia.hoje .num{background:var(--hoje);color:#fff;font-weight:700;
+  box-shadow:0 0 0 3px color-mix(in srgb, var(--hoje) 22%, transparent)}
+.pontos{display:flex;gap:3px;justify-content:center;flex-wrap:wrap;min-height:7px}
+.pt{width:6px;height:6px;border-radius:99px;background:var(--i3)}
+.pt.prazo{background:var(--ser)}.pt.audiencia{background:var(--crit)}
+.pt.prescricao{background:var(--presc)}.pt.pericia{background:var(--warn)}
+.pt.reuniao{background:var(--serie)}.pt.tarefa{background:var(--taref)}
+.dia .qtd{font-size:9.5px;color:var(--i3);text-align:center;margin-top:2px}
+.legenda{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:11.4px;color:var(--i3)}
+.legenda span{display:flex;gap:5px;align-items:center}
+.legenda .pt{display:inline-block}
+.diadet{background:var(--s1);border:1px solid var(--ln);border-radius:10px;padding:14px 16px}
+.diadet h3{font:600 14px/1.3 ui-sans-serif,sans-serif;margin:0 0 3px;color:var(--ink)}
+.diadet .quando{font-size:11.6px;color:var(--i3);margin-bottom:12px}
+.item{border-left:3px solid var(--i3);padding:2px 0 2px 11px;margin-bottom:13px}
+.item.prazo{border-color:var(--ser)}.item.audiencia{border-color:var(--crit)}
+.item.prescricao{border-color:var(--presc)}.item.pericia{border-color:var(--warn)}
+.item.reuniao{border-color:var(--serie)}.item.tarefa{border-color:var(--taref)}
+.item.outro{border-color:var(--ln)}
+.item .tt{font-size:13.2px;line-height:1.4;color:var(--ink)}
+.item .mt{font-size:11.4px;color:var(--i3);margin-top:3px}
+.item a{font-size:11.4px;color:var(--i2);text-decoration:none;border-bottom:1px solid var(--ln)}
+.item a:hover{color:var(--ink);border-color:var(--i3)}
+.faixa{display:flex;gap:10px;overflow-x:auto;padding:2px 0 8px;margin-bottom:4px}
+.prox{flex:0 0 190px;background:var(--s1);border:1px solid var(--ln);border-top-width:3px;
+  border-radius:9px;padding:11px 13px}
+.prox.prazo{border-top-color:var(--ser)}.prox.audiencia{border-top-color:var(--crit)}
+.prox.prescricao{border-top-color:var(--presc)}.prox.pericia{border-top-color:var(--warn)}
+.prox.reuniao{border-top-color:var(--serie)}.prox.tarefa{border-top-color:var(--taref)}
+.prox .qd{font-size:10.6px;color:var(--i3);text-transform:uppercase;letter-spacing:.05em}
+.prox .dd{font:600 15px/1.2 ui-sans-serif,sans-serif;color:var(--ink);margin:3px 0 5px;
+  font-variant-numeric:tabular-nums}
+.prox .tx{font-size:11.9px;line-height:1.35;color:var(--i2)}
+.prox.urg .dd{color:var(--crit)}
+.quadro{display:flex;gap:12px;overflow-x:auto;padding-bottom:10px;align-items:flex-start}
+.coluna{flex:0 0 268px;background:var(--s1);border:1px solid var(--ln);border-radius:12px;padding:10px}
+.cabcol{font-size:12.4px;font-weight:600;padding:8px 4px 10px;margin:-10px -10px 8px;
+  border-bottom:1px solid var(--ln);padding-left:12px;border-radius:12px 12px 0 0}
+.cartao{background:var(--s0);border:1px solid var(--ln);border-radius:9px;padding:9px 10px;margin-bottom:8px}
+.quadro .cartao{cursor:grab}
+.quadro .cartao:active{cursor:grabbing}
+.cartao.arrastando{opacity:.45;border-style:dashed}
+.coluna.alvo{background:var(--ln)}
+.cartao .pega{float:right;color:var(--i3);font-size:13px;letter-spacing:1px;user-select:none;cursor:grab}
+.cartao .tit{font-size:13px;font-weight:600;line-height:1.25}
+.cartao .pill{margin:0 4px 3px 0}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
+.chk{display:block;border:1px solid var(--lin);border-radius:8px;padding:8px 10px;cursor:pointer;font-size:13px}
+.chk .sub{display:block;margin-top:2px}
+.pre{white-space:pre-wrap;font-family:inherit;font-size:13px;margin:6px 0 0}
+@media(max-width:800px){.grid2{grid-template-columns:1fr}}
+.area{border:1px solid var(--lin);border-radius:9px;margin:8px 0;overflow:hidden}
+.areatit{display:flex;align-items:center;gap:9px;width:100%;padding:11px 14px;background:var(--f2);
+  border:0;cursor:pointer;font:inherit;text-align:left;color:inherit}
+.areatit:hover{background:var(--f3,#eee)}
+.areatit .seta{display:inline-block;transition:transform .15s;color:var(--i3);font-size:13px}
+.area.aberta .seta{transform:rotate(90deg)}
+.areatit .cnt{margin-left:auto;font-size:12px;color:var(--i3)}
+.areatit .sel2{font-size:12px;color:var(--good);font-weight:600}
+.areacorpo{display:none;padding:10px 14px 14px}
+.area.aberta .areacorpo{display:block}
+.fchip{border:1px solid var(--lin);background:transparent;border-radius:999px;padding:4px 11px;
+  font:inherit;font-size:12px;cursor:pointer;color:var(--i3)}
+.fchip:hover{border-color:var(--i2)}
+.fchip.on{background:var(--i1,#111);color:#fff;border-color:var(--i1,#111)}
+.tl{display:grid;grid-template-columns:118px 16px 1fr;gap:0;align-items:start;padding:2px 0}
+.tldata{font-size:12px;color:var(--i3);padding-top:9px;text-align:right;padding-right:12px}
+.tldata .sub{display:block;margin:0;font-size:11px}
+.tlponto{position:relative}
+.tlponto::before{content:'';position:absolute;left:3px;top:13px;width:8px;height:8px;border-radius:50%;
+  background:var(--i3)}
+.tlponto::after{content:'';position:absolute;left:6.5px;top:21px;bottom:-6px;width:1px;background:var(--lin)}
+.tl:last-child .tlponto::after{display:none}
+.tl.fut .tlponto::before{background:var(--ser,#b45309)}
+.tlcorpo{padding:7px 0 11px 6px;border-bottom:1px solid var(--lin)}
+.tlcorpo b{display:block;margin-top:2px}
+</style></head><body>
+<div id="app"><div class="vazio">Carregando…</div></div>
+<script>
+const SB_URL = "https://wrdfyudabvvpvfcrvvzd.supabase.co";
+const SB_KEY = "sb_publishable_EfdAshQdw1P1-lAXtlO9Hw_O8yoP3y5";
+const sb = window.supabase.createClient(SB_URL, SB_KEY);
+const app = document.getElementById('app');
+const br = s => s ? String(s).slice(0,10).split('-').reverse().join('/') : '—';
+const hoje = () => new Date().toISOString().slice(0,10);
+const dias = d => Math.round((Date.parse(d+'T00:00:00Z') - Date.parse(hoje()+'T00:00:00Z'))/864e5);
+const esc = s => String(s??'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const so = s => String(s??'').replace(/\D/g,'');
+const nomeProprio = s => String(s||'').toLowerCase().replace(/(^|\s|')\p{L}/gu, c => c.toUpperCase());
+const rs = v => Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+function sit(r){ if(r<0) return ['crit','▲','Vencido']; if(r<=2) return ['crit','▲','Urgente'];
+  if(r<=5) return ['ser','●','Atenção']; if(r<=10) return ['warn','●','Próximo']; return ['good','●','No prazo']; }
+let USER = null, ESC_CARREGADO = false;
+
+/* ------------------------------------------------------------------ login */
+
+/* =========================================================== A NOSSA CASA
+   Área da família: o dinheiro de casa e a obra, fora do sistema do escritório.
+   Mesma estrutura, mesma entrada por link de e-mail — mas quem entra aqui não
+   vê processo nenhum, e quem entra no escritório não vê nada daqui.
+   A regra do banco é uma só: a linha pertence à família, e quem é da família vê. */
+let FAM = { id:null, nome:'Nossa casa', uid:null, membros:[] };
+
+const numOuNulo = v => { const t = String(v ?? '').replace(/\./g,'').replace(',', '.').trim();
+  return t === '' || isNaN(Number(t)) ? null : Number(t); };
+
+function telaLogin(msg){
+  app.innerHTML = `<div class="login">
+    <h1 style="font-family:Georgia,'Times New Roman',serif">Nossa casa</h1>
+    <p>As contas da casa e a obra. Entre com seu e-mail — enviamos um link de acesso,
+      sem senha para decorar.</p>
+    <input id="em" type="email" placeholder="seu@email.com" autocomplete="email">
+    <button class="btn ok" id="go">Receber link de acesso</button>
+    <p id="msg" style="margin-top:12px">${msg||''}</p></div>`;
+  document.getElementById('go').onclick = async () => {
+    const email = document.getElementById('em').value.trim();
+    if (!email) return;
+    document.getElementById('msg').textContent = 'Enviando…';
+    const { error } = await sb.auth.signInWithOtp({ email,
+      options:{ emailRedirectTo: location.origin + location.pathname }});
+    document.getElementById('msg').textContent = error ? ('Erro: ' + error.message)
+      : 'Link enviado. Confira seu e-mail.';
+  };
+}
+
+const MENUCASA = [['dinheiro','Dinheiro'],['casa','A casa'],['familia','Quem somos']];
+function menu(atual){
+  return `<nav>
+    <div class="marca"><div class="sigla">🏠</div><div><span class="nome">${esc(FAM.nome)}</span>
+      <span class="sub2">contas e obra da família</span></div></div>
+    ${MENUCASA.map(([k,r]) => `<a class="${atual===k?'on':''}" href="#/${k}"
+      style="padding:11px 13px;text-decoration:none">${r}</a>`).join('')}
+    <span class="dir">${esc(USER?.email||'')} · <a onclick="sb.auth.signOut().then(()=>location.reload())">sair</a></span></nav>`;
+}
+function rodape(){
+  return `<footer><b>${esc(FAM.nome)}</b> · área da família.
+    Separada do sistema do escritório: aqui não há processo, cliente nem prazo, e nada daqui
+    aparece lá. Cada lançamento guarda quem o fez.</footer>`;
+}
+const erro = m => app.innerHTML = menu('') + '<main><div class="card"><div class="vazio">Erro ao carregar: '+esc(m)+'</div></div></main>';
+
+async function carregarFamilia(){
+  const { data:{ user } } = await sb.auth.getUser();
+  FAM.uid = user.id;
+  /* Gruda o login no convite, se for o primeiro acesso desta pessoa. */
+  const { data: fid } = await sb.rpc('entrar_na_familia');
+  const [f, m] = await Promise.all([
+    sb.from('familia').select('*').limit(1).maybeSingle(),
+    sb.from('familia_membro').select('*').order('criado_em'),
+  ]);
+  if (f.data) { FAM.id = f.data.id; FAM.nome = f.data.nome || 'Nossa casa'; }
+  else if (fid) FAM.id = fid;
+  FAM.membros = m.data || [];
+  return FAM;
+}
+const quemE = uid => {
+  const m = FAM.membros.find(x => x.usuario_auth === uid);
+  return m ? (m.nome || m.email) : null;
+};
+
+window.convidarMembro = async (ev) => {
+  ev.preventDefault();
+  const f = ev.target, email = (f.elements.email.value||'').trim().toLowerCase();
+  const nome = (f.elements.nome.value||'').trim() || null;
+  const st = document.getElementById('mb-st');
+  if (!email) return;
+  st.style.color = 'var(--i3)'; st.textContent = 'gravando…';
+  const { error } = await sb.from('familia_membro').insert({ familia_id: FAM.id, email, nome });
+  if (error) { st.style.color='var(--crit)'; st.textContent = 'erro: ' + error.message; return; }
+  telaFamiliaTela();
+};
+window.tirarMembro = async (id) => {
+  const m = FAM.membros.find(x => x.id === id); if (!m) return;
+  if (m.papel === 'titular') return alert('O titular não pode ser removido por aqui.');
+  if (!confirm('Tirar ' + (m.nome || m.email) + ' da área da família? Ela deixa de ver tudo isto.')) return;
+  await sb.from('familia_membro').delete().eq('id', id);
+  telaFamiliaTela();
+};
+window.renomearFamilia = async (ev) => {
+  ev.preventDefault();
+  const nome = (ev.target.elements.nome.value||'').trim(); if (!nome) return;
+  await sb.from('familia').update({ nome }).eq('id', FAM.id);
+  FAM.nome = nome; telaFamiliaTela();
+};
+
+async function telaFamiliaTela(){
+  await carregarFamilia();
+  app.innerHTML = menu('familia') + `
+  <main><h1>Quem somos</h1>
+  <p class="meta">Quem entra nesta área. O acesso é pelo e-mail: basta cadastrar aqui e a pessoa
+    entra pelo link que ela mesma pede na tela de entrada — sem senha, sem convite para aceitar.</p>
+
+  <div class="card"><h2>Pessoas</h2>
+    <table><thead><tr><th>Nome</th><th>E-mail</th><th>Papel</th><th>Já entrou?</th><th></th></tr></thead><tbody>
+    ${FAM.membros.map(m => `<tr>
+      <td><b>${esc(m.nome || '—')}</b></td>
+      <td>${esc(m.email)}</td>
+      <td>${m.papel === 'titular' ? '<span class="pill serie">titular</span>' : 'membro'}</td>
+      <td>${m.usuario_auth ? '<span class="pill good">sim</span>' : '<span class="sub" style="margin:0">ainda não</span>'}</td>
+      <td>${m.papel === 'titular' ? '' : `<button class="btn" onclick="tirarMembro('${m.id}')">Tirar</button>`}</td>
+    </tr>`).join('')}
+    </tbody></table>
+    <form onsubmit="convidarMembro(event)" style="display:flex;gap:8px;flex-wrap:wrap;padding:12px 18px 18px;align-items:flex-end">
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:180px">
+        <span class="sub" style="margin:0">Nome</span><input name="nome" placeholder="como chamar"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:240px">
+        <span class="sub" style="margin:0">E-mail</span>
+        <input name="email" type="email" required placeholder="o e-mail que ela usa"></label>
+      <button class="btn ok" type="submit">Dar acesso</button>
+      <span class="sub" id="mb-st" style="margin:0"></span>
+    </form>
+    <p class="nota" style="padding-top:0">Quem recebe acesso vê e lança tudo desta área — dinheiro e obra.
+      <b>Não vê nada do escritório:</b> processos, clientes e prazos ficam de fora, numa porta separada.</p></div>
+
+  <div class="card"><h2>O nome da casa</h2>
+    <form onsubmit="renomearFamilia(event)" style="display:flex;gap:8px;flex-wrap:wrap;padding:0 18px 18px;align-items:flex-end">
+      <input name="nome" value="${esc(FAM.nome)}" style="flex:1;min-width:240px">
+      <button class="btn ok" type="submit">Salvar</button>
+    </form></div>
+
+  <div class="card"><h2>O endereço desta área</h2>
+    <p class="nota">É este: <b>${location.origin + location.pathname}</b> — guarde nos favoritos do celular.
+      A porta do escritório é outra e não dá passagem para cá.</p></div>
+  </main>` + rodape();
+}
+
+
+async function carregarPdfLib(){
+  if (window.PDFLib) return window.PDFLib;
+  await new Promise((ok, err) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js';
+    s.onload = ok; s.onerror = () => err(new Error('não consegui carregar o divisor de PDF'));
+    document.head.appendChild(s);
+  });
+  return window.PDFLib;
+}
+async function fatiarPdf(file, porBloco){
+  const { PDFDocument } = await carregarPdfLib();
+  const doc = await PDFDocument.load(await file.arrayBuffer(), { ignoreEncryption: true });
+  const n = doc.getPageCount();
+  const partes = [];
+  for (let i = 0; i < n; i += porBloco) {
+    const novo = await PDFDocument.create();
+    const idx = [];
+    for (let k = 0; k < porBloco && i + k < n; k++) idx.push(i + k);
+    const pgs = await novo.copyPages(doc, idx);
+    pgs.forEach(pg => novo.addPage(pg));
+    partes.push({ b64: await novo.saveAsBase64(), de: i + 1, ate: i + idx.length });
+  }
+  return { paginas: n, partes };
+}
+
+/* ---------- FINANCEIRO PESSOAL DO SÓCIO ----------
+   Aba privada. A trava não é o menu: é a regra do banco (dono_id = auth.uid()).
+   Ninguém mais do escritório lê estas tabelas. O que atravessa a fronteira é só
+   a distribuição — um lançamento de saída do escritório marcado com o seu nome. */
+let PESMES = new Date().toISOString().slice(0,7);
+let PESEDIT = null;   /* id do lançamento aberto para edição */
+let PES = null;
+const mesBr = m => { const [a,b]=m.split('-'); return ['','janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'][+b] + ' de ' + a; };
+const mesMais = (m,n) => { const [a,b]=m.split('-').map(Number); const d=new Date(a, b-1+n, 1); return d.toISOString().slice(0,7); };
+const pct = (a,b) => b>0 ? Math.min(100, Math.round(a/b*100)) : 0;
+
+/* Tabela de amortização. PRICE tem parcela fixa; SAC amortiza sempre igual e a
+   parcela cai com o tempo. O saldo devedor é o que sobra depois de cada parcela. */
+function tabelaFin(f, aporteExtra){
+  const i = Number(f.taxa_mes||0)/100, n = Number(f.parcelas), P = Number(f.valor_financiado);
+  const seg = Number(f.seguro_mes||0) + Number(f.taxa_adm||0), extra = Number(aporteExtra||0);
+  const linhas = []; let saldo = P;
+  const parcPrice = i > 0 ? P*i/(1-Math.pow(1+i,-n)) : P/n;
+  for (let k = 1; k <= n && saldo > 0.005; k++){
+    const juros = saldo*i;
+    let amort = f.sistema === 'SAC' ? P/n : parcPrice - juros;
+    if (amort + extra > saldo) amort = saldo - extra > 0 ? saldo - extra : saldo;
+    const abate = Math.min(saldo, amort + extra);
+    linhas.push({ k, parcela: amort + juros + seg, juros, amort, extra: abate - amort, saldo: saldo - abate });
+    saldo -= abate;
+  }
+  return linhas;
+}
+/* Enquanto a obra corre, o banco libera aos poucos e você paga só juros sobre o
+   que já saiu, mais seguro e taxa. Nada disso abate o saldo: é custo puro. */
+function emObra(f, mes){
+  if (f.obra_ate) return (mes+'-01') < f.obra_ate;
+  /* Sem data de entrega informada: continua em obra enquanto o extrato só trouxer
+     parcelas de fase "obra". Melhor assumir o que o banco disse do que inventar prazo. */
+  return (PES?.parcelasFin || []).some(x => x.financiamento_id === f.id && x.fase === 'obra');
+}
+function parcelaLida(f, mes){
+  const L = (PES?.parcelasFin || []).filter(x => x.financiamento_id === f.id);
+  if (!L.length) return null;
+  if (mes) { const exata = L.find(x => String(x.competencia||'').slice(0,7) === mes); if (exata) return exata; }
+  return L.slice().sort((a,b) => String(a.competencia).localeCompare(String(b.competencia))).pop();
+}
+/* O extrato manda. A conta abaixo é só estimativa para o mês que ainda não chegou:
+   ela não sabe a correção monetária, que em agosto sozinha valeu R$ 424,23. */
+function jurosDeObraEstimado(f){
+  const i = Number(f.taxa_mes||0)/100;
+  const liberado = Number(f.liberado||0);
+  return liberado * i + Number(f.seguro_mes||0) + Number(f.taxa_adm||0);
+}
+function jurosDeObra(f, mes){
+  const lida = parcelaLida(f, mes);
+  if (lida && Number(lida.valor_pago)) return Number(lida.valor_pago);
+  return jurosDeObraEstimado(f);
+}
+function mesesDeObra(f, mes){
+  if (!f.obra_ate) return 0;
+  const [ay,am] = f.primeira.slice(0,7).split('-').map(Number);
+  const [by,bm] = mes.split('-').map(Number);
+  return Math.max(0, (by-ay)*12 + (bm-am) + 1);
+}
+function parcelasPagas(f, ate){
+  const [ay,am] = f.primeira.slice(0,7).split('-').map(Number);
+  const [by,bm] = ate.split('-').map(Number);
+  return Math.max(0, Math.min(Number(f.parcelas), (by-ay)*12 + (bm-am) + 1));
+}
+
+async function carregarPessoal(){
+  const { data:{ user } } = await sb.auth.getUser();
+  const uid = user.id;
+  const ini = PESMES + '-01';
+  const fim = mesMais(PESMES,1) + '-01';
+  const [ct, cg, fi, pj, rc, mt, lc, ds] = await Promise.all([
+    sb.from('pessoal_conta').select('*').eq('ativo',true).order('nome'),
+    sb.from('pessoal_categoria').select('*').eq('ativo',true).order('grupo').order('ordem').order('nome'),
+    sb.from('pessoal_financiamento').select('*').eq('ativo',true).order('nome'),
+    sb.from('pessoal_projeto').select('*').order('situacao').order('nome'),
+    sb.from('pessoal_recorrente').select('*').eq('ativo',true).order('dia'),
+    sb.from('pessoal_meta').select('*').order('tipo').order('nome'),
+    sb.from('pessoal_lancamento').select('*').gte('data',ini).lt('data',fim).order('data',{ascending:false}),
+    sb.from('lancamento').select('id,descricao,valor,vencimento,pagamento,situacao')
+      .eq('distribuicao_para', uid).gte('vencimento', ini).lt('vencimento', fim),
+  ]);
+  /* Saídas do escritório ainda não marcadas: é daqui que a distribuição vira receita sua. */
+  const { data: cand } = await sb.from('lancamento')
+    .select('id,descricao,valor,vencimento,contraparte,situacao')
+    .eq('tipo','saida').is('distribuicao_para', null)
+    .gte('vencimento', ini).lt('vencimento', fim).order('vencimento');
+  /* Projeto não cabe num mês: o realizado é a soma de tudo, desde o começo. */
+  const { data: tp } = await sb.from('pessoal_lancamento').select('projeto_id,valor')
+    .not('projeto_id','is',null).limit(5000);
+  const { data: fp } = await sb.from('pessoal_fin_parcela').select('*').order('competencia');
+  const { data: ex } = await sb.from('pessoal_extrato')
+    .select('id,arquivo_nome,tipo,banco,conta,periodo_ini,periodo_fim,situacao,linhas')
+    .order('criado_em', { ascending:false }).limit(12);
+  EXTRATOS = ex || [];
+  const projTot = {};
+  (tp||[]).forEach(l => { projTot[l.projeto_id] = (projTot[l.projeto_id]||0) + Number(l.valor); });
+  PES = { uid, fam: FAM.id, contas: ct.data||[], cats: cg.data||[], fins: fi.data||[], projs: pj.data||[],
+          recs: rc.data||[], metas: mt.data||[], lancs: lc.data||[], distrib: ds.data||[],
+          candidatos: cand||[], parcelasFin: fp||[], __projTot: projTot };
+  return PES;
+}
+
+function contasPessoal(){
+  const L = PES.lancs;
+  const distribuicao = PES.distrib.filter(d=>d.situacao!=='cancelado').reduce((a,d)=>a+Number(d.valor),0)
+    + L.filter(l=>l.tipo==='entrada').reduce((a,l)=>a+Number(l.valor),0);
+  const mesRef = PESMES;
+  const parcelasMes = PES.fins.map(f => {
+    if (emObra(f, mesRef)) {
+      const j = jurosDeObra(f, mesRef);
+      return j > 0 ? { f, k: mesesDeObra(f, mesRef), obra: true, linha: { parcela: j, juros: j, amort: 0 } } : null;
+    }
+    const k = parcelasPagas(f, mesRef);
+    if (k < 1 || k > f.parcelas) return null;
+    const t = tabelaFin(f);
+    return { f, k, linha: t[k-1] };
+  }).filter(Boolean);
+  const dividas = parcelasMes.reduce((a,x)=>a+x.linha.parcela,0);
+  const catDe = id => PES.cats.find(c=>c.id===id);
+  const saidas = L.filter(l=>l.tipo==='saida');
+
+  /* Uma saída pertence a UM balde só, nesta ordem. Antes, o que não tinha categoria
+     caía em "variáveis" — e uma despesa fixa lançada sem categoria aparecia como
+     variável que não existia em lugar nenhum. Agora sem categoria é balde próprio. */
+  const balde = l => {
+    if (l.meta_id)        return 'guardado';
+    if (l.projeto_id)     return 'projeto';
+    if (l.financiamento_id) return 'divida';
+    const c = catDe(l.categoria_id);
+    if (c && c.grupo === 'fixa')     return 'fixa';
+    if (c && c.grupo === 'variavel') return 'variavel';
+    if (l.origem === 'recorrente')   return 'fixa';
+    return 'sem';
+  };
+  const soma = nome => saidas.filter(l=>balde(l)===nome).reduce((a,l)=>a+Number(l.valor),0);
+
+  /* Fixa do mês = o que já foi lançado + as recorrentes ativas ainda não lançadas.
+     Assim, editar o lançamento muda o total; e nada é contado duas vezes. */
+  const fixasLancadas = soma('fixa');
+  const pendentes = recorrentesDoMes(mesRef).filter(r => !lancamentoDaRecorrente(r));
+  const fixas = fixasLancadas + pendentes.reduce((a,r)=>a+Number(r.valor),0);
+
+  const variaveis = soma('variavel');
+  const semCategoria = soma('sem');
+  const emProjeto = soma('projeto');
+  const guardado = soma('guardado');
+  const comprometido = dividas + fixas;
+  const gastoTotal = saidas.reduce((a,l)=>a+Number(l.valor),0);
+  return { distribuicao, dividas, fixas, fixasLancadas, pendentes, comprometido, variaveis,
+           semCategoria, emProjeto, guardado, gastoTotal,
+           sobra: distribuicao - comprometido - variaveis - semCategoria - emProjeto - guardado,
+           parcelasMes };
+}
+/* Recorrentes que valem no mês: ativas e dentro da janela de início/fim. */
+function recorrentesDoMes(mes){
+  return PES.recs.filter(r => r.ativo !== false && r.inicio <= mes+'-28' && (!r.fim || r.fim >= mes+'-01'));
+}
+/* O lançamento gerado por uma recorrente neste mês, se existir. */
+function lancamentoDaRecorrente(r){
+  return PES.lancs.find(l => l.origem === 'recorrente' && l.descricao === r.descricao);
+}
+
+
+/* ============================================================ EXTRATOS
+   Ler extrato bancário e fatura de cartão, separar entrada de saída, e só
+   então — depois de você conferir linha a linha — virar lançamento.
+
+   A regra de ouro deste bloco: NADA entra na sua conta sozinho. O leitor
+   devolve o que está escrito no arquivo; o que decide é você, na tela. Foi
+   assim que o financiamento da Caixa entrou certo, e é o único jeito de o
+   sistema não passar a inventar número. */
+
+let EXT = null, EXTMARCA = new Set(), EXTCAT = {}, EXTRATOS = [];
+
+/* Impressão digital de um movimento: mesma data, mesmo valor, mesma descrição
+   reduzida ao essencial. Serve para AVISAR que a linha já foi lançada — nunca
+   para bloquear, porque duas compras iguais no mesmo dia acontecem. */
+const digital = (data, valor, desc) =>
+  String(data) + '|' + Number(valor).toFixed(2) + '|' +
+  String(desc||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .replace(/[^a-z0-9]/g,'').slice(0,28);
+
+/* Preço do Sonnet 5 em 04/09/2026 e câmbio do dia. Se qualquer um dos dois mudar,
+   é aqui que se corrige — em um lugar só. */
+const PRECO_ENTRADA = 2, PRECO_SAIDA = 10, DOLAR = 5.10;
+function custoLeitura(uso){
+  const usd = (Number(uso.entrada||0)/1e6)*PRECO_ENTRADA + (Number(uso.saida||0)/1e6)*PRECO_SAIDA;
+  return 'US$ ' + usd.toFixed(4) + ' (cerca de ' + rs(usd * DOLAR) + ')';
+}
+async function mandarAoLeitorExtrato(b64, mime, nome){
+  const { data: { session } } = await sb.auth.getSession();
+  const cats = (PES?.cats || []).filter(c=>c.ativo!==false).map(c=>c.nome);
+  const r = await fetch(SB_URL + '/functions/v1/ler-extrato', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', apikey: SB_KEY,
+               Authorization: 'Bearer ' + session.access_token },
+    body: JSON.stringify({ arquivo: b64, mime, nome, categorias: cats }),
+  });
+  return r.json();
+}
+
+window.lerExtrato = async (input) => {
+  const f = input.files?.[0]; if (!f) return;
+  const st = document.getElementById('ex-st');
+  const ehPdf = /pdf/i.test(f.type) || /\.pdf$/i.test(f.name);
+  if (!ehPdf && f.size > 6*1024*1024) { st.style.color='var(--crit)';
+    return st.textContent = 'foto grande demais (máx. 6 MB). Reduza a imagem.'; }
+  if (f.size > 60*1024*1024) { st.style.color='var(--crit)';
+    return st.textContent = 'arquivo acima de 60 MB. Divida em duas partes.'; }
+  st.style.color='var(--i3)'; st.textContent = 'lendo o arquivo…';
+
+  try {
+    let doc = null, linhas = [], obs = [], descartadas = 0;
+    const uso = { entrada: 0, saida: 0 };
+    if (ehPdf && f.size > 3*1024*1024) {
+      const { paginas, partes } = await fatiarPdf(f, 10);
+      for (let i = 0; i < partes.length; i++) {
+        const p = partes[i];
+        st.textContent = `lendo páginas ${p.de} a ${p.ate} de ${paginas}…`;
+        const r = await mandarAoLeitorExtrato(p.b64, 'application/pdf', `${f.name} (p. ${p.de}-${p.ate})`);
+        if (r.erro) { st.style.color='var(--crit)';
+          return st.textContent = `erro nas páginas ${p.de}-${p.ate}: ${r.erro}`; }
+        doc = doc || r.documento;
+        if (r.documento?.total_fatura && !doc.total_fatura) doc.total_fatura = r.documento.total_fatura;
+        if (r.documento?.saldo_final) doc.saldo_final = r.documento.saldo_final;
+        linhas = linhas.concat(r.lancamentos || []);
+        descartadas += Number(r.descartadas || 0);
+        uso.entrada += Number(r.uso?.entrada || 0); uso.saida += Number(r.uso?.saida || 0);
+        if (r.observacao) obs.push(`p. ${p.de}-${p.ate}: ${r.observacao}`);
+      }
+    } else {
+      const b64 = await new Promise(res => {
+        const rd = new FileReader();
+        rd.onload = () => res(String(rd.result).split(',')[1]);
+        rd.readAsDataURL(f);
+      });
+      st.textContent = 'lendo…';
+      const r = await mandarAoLeitorExtrato(b64, f.type || 'application/pdf', f.name);
+      if (r.erro) { st.style.color='var(--crit)'; return st.textContent = 'erro: ' + r.erro; }
+      doc = r.documento; linhas = r.lancamentos || [];
+      descartadas = Number(r.descartadas || 0);
+      uso.entrada = Number(r.uso?.entrada || 0); uso.saida = Number(r.uso?.saida || 0);
+      if (r.observacao) obs.push(r.observacao);
+    }
+
+    if (!linhas.length) { st.style.color='var(--crit)';
+      return st.textContent = 'não encontrei nenhuma linha de movimento neste arquivo.'; }
+
+    st.textContent = 'guardando o arquivo…';
+    /* O arquivo fica guardado para você poder voltar e comparar. */
+    const reg = (await sb.from('pessoal_extrato').insert({
+      dono_id: PES.uid, familia_id: PES.fam, arquivo_nome: f.name, tipo: doc?.tipo || 'extrato',
+      banco: doc?.banco || null, conta: doc?.conta || null,
+      periodo_ini: doc?.periodo_inicio || null, periodo_fim: doc?.periodo_fim || null,
+      saldo_final: doc?.saldo_final ?? null, total_fatura: doc?.total_fatura ?? null,
+      vencimento: doc?.vencimento || null,
+      linhas, observacao: obs.join(' · ') || null,
+    }).select('id').maybeSingle()).data;
+
+    if (reg) {
+      const caminho = `${PES.fam}/${reg.id}/${Date.now()}-${f.name.replace(/[^A-Za-z0-9._-]/g,'-').slice(-70)}`;
+      const up = await sb.storage.from('financeiro').upload(caminho, f, { upsert:false });
+      if (!up.error) await sb.from('pessoal_extrato').update({ arquivo_path: caminho }).eq('id', reg.id);
+    }
+    st.textContent = '';
+    telaExtrato(reg?.id, { doc, linhas, obs: obs.join(' · '), descartadas, arquivo: f.name, uso });
+  } catch (e) {
+    st.style.color='var(--crit)'; st.textContent = 'erro: ' + (e.message || e);
+  }
+};
+
+window.abrirExtrato = async (id) => {
+  const r = (await sb.from('pessoal_extrato').select('*').eq('id', id).maybeSingle()).data;
+  if (!r) return alert('Extrato não encontrado.');
+  telaExtrato(id, { doc: { tipo:r.tipo, banco:r.banco, conta:r.conta, periodo_inicio:r.periodo_ini,
+    periodo_fim:r.periodo_fim, saldo_final:r.saldo_final, total_fatura:r.total_fatura, vencimento:r.vencimento },
+    linhas: r.linhas || [], obs: r.observacao, descartadas: 0, arquivo: r.arquivo_nome, situacao: r.situacao,
+    path: r.arquivo_path });
+};
+
+window.verArquivoExtrato = async (caminho) => {
+  const { data, error } = await sb.storage.from('financeiro').createSignedUrl(caminho, 300);
+  if (error) return alert('Não deu para abrir: ' + error.message);
+  window.open(data.signedUrl, '_blank');
+};
+
+window.marcarLinha = (i, el) => { if (el.checked) EXTMARCA.add(i); else EXTMARCA.delete(i); pintarResumoExt(); };
+window.catLinha    = (i, v) => { EXTCAT[i] = v || null; };
+window.marcarTodas = (quais) => {
+  EXT.linhas.forEach((l, i) => {
+    const limpa = !EXT.jaLancado[i] && !EXT.choque[i];
+    const cabe = quais === 'tudo' ? limpa
+               : quais === 'saidas'   ? (l.tipo === 'saida'   && limpa)
+               : quais === 'entradas' ? (l.tipo === 'entrada' && limpa) : false;
+    if (cabe) EXTMARCA.add(i);
+  });
+  telaExtrato(EXT.id, EXT.bruto, true);
+};
+window.desmarcarTodas = () => { EXTMARCA.clear(); telaExtrato(EXT.id, EXT.bruto, true); };
+
+function pintarResumoExt(){
+  const alvo = document.getElementById('ex-resumo'); if (!alvo || !EXT) return;
+  const m = [...EXTMARCA].map(i => EXT.linhas[i]).filter(Boolean);
+  const ent = m.filter(l=>l.tipo==='entrada').reduce((a,l)=>a+Number(l.valor),0);
+  const sai = m.filter(l=>l.tipo==='saida').reduce((a,l)=>a+Number(l.valor),0);
+  alvo.innerHTML = `<b>${m.length}</b> linha(s) marcada(s) · entradas ${rs(ent)} · saídas ${rs(sai)}`;
+}
+
+window.importarExtrato = async () => {
+  if (!EXTMARCA.size) return alert('Marque as linhas que você quer lançar.');
+  const st = document.getElementById('ex-imp');
+  st.style.color='var(--i3)'; st.textContent = 'lançando…';
+  const catId = nome => (PES.cats.find(c=>c.nome===nome) || {}).id || null;
+  const novos = [...EXTMARCA].map(i => {
+    const l = EXT.linhas[i]; if (!l) return null;
+    return { dono_id: PES.uid, familia_id: PES.fam, data: l.data, tipo: l.tipo, valor: l.valor,
+             descricao: l.descricao,
+             categoria_id: EXTCAT[i] !== undefined ? EXTCAT[i] : catId(l.categoria_sugerida),
+             situacao: 'pago', origem: 'extrato', extrato_id: EXT.id || null,
+             hash_origem: digital(l.data, l.valor, l.descricao) };
+  }).filter(Boolean);
+  const { error } = await sb.from('pessoal_lancamento').insert(novos);
+  if (error) { st.style.color='var(--crit)'; return st.textContent = 'erro: ' + error.message; }
+  if (EXT.id) await sb.from('pessoal_extrato').update({ situacao:'importado' }).eq('id', EXT.id);
+  st.style.color='var(--ok)';
+  st.textContent = `${novos.length} lançamento(s) entraram. Abrindo o mês…`;
+  const primeiro = novos.map(n=>n.data).sort()[0];
+  if (primeiro) PESMES = primeiro.slice(0,7);
+  setTimeout(()=>{ location.hash = '#/dinheiro'; }, 900);
+};
+
+window.desfazerImportacao = async (id) => {
+  const n = (await sb.from('pessoal_lancamento').select('id').eq('extrato_id', id)).data?.length || 0;
+  if (!n) return alert('Nenhum lançamento deste arquivo para desfazer.');
+  if (!confirm(`Apagar os ${n} lançamento(s) que vieram deste arquivo?\n\nO arquivo continua guardado.`)) return;
+  await sb.from('pessoal_lancamento').delete().eq('extrato_id', id);
+  await sb.from('pessoal_extrato').update({ situacao:'lido' }).eq('id', id);
+  abrirExtrato(id);
+};
+
+async function telaExtrato(id, bruto, manterMarcas){
+  if (!PES) await carregarPessoal();
+  if (!manterMarcas) { EXTMARCA = new Set(); EXTCAT = {}; }
+  const linhas = bruto.linhas || [];
+
+  /* O que já está lançado no seu financeiro, para avisar antes de duplicar. */
+  const datas = linhas.map(l=>l.data).sort();
+  const ja = datas.length ? (await sb.from('pessoal_lancamento')
+      .select('hash_origem,data,valor,descricao')
+      .gte('data', datas[0]).lte('data', datas[datas.length-1])).data || [] : [];
+  const vistos = new Set(ja.map(x => x.hash_origem || digital(x.data, x.valor, x.descricao)));
+  const jaLancado = linhas.map(l => vistos.has(digital(l.data, l.valor, l.descricao)));
+
+  /* ------------------------------------------------------------------
+     O painel já conta sozinho duas coisas que TAMBÉM aparecem no extrato:
+     a parcela do financiamento (que vem da tabela de parcelas, não de
+     lançamento) e as despesas recorrentes ativas ainda não lançadas.
+     Importar essas linhas conta a mesma despesa duas vezes. Aqui elas são
+     reconhecidas pelo valor e avisadas — e ficam de fora do "marcar tudo". */
+  const perto = (a,b) => b > 0 && Math.abs(a-b) / b < 0.02;
+  const choque = linhas.map(l => {
+    if (l.tipo !== 'saida') return null;
+    const mes = String(l.data).slice(0,7);
+    for (const f of (PES.fins || [])) {
+      const v = emObra(f, mes) ? jurosDeObra(f, mes)
+              : (tabelaFin(f)[parcelasPagas(f, mes) - 1] || {}).parcela;
+      if (v && perto(Number(l.valor), Number(v)))
+        return { tipo:'financiamento', nome: f.nome, valor: Number(v) };
+    }
+    for (const r of (PES.recs || [])) {
+      if (r.ativo === false) continue;
+      if (perto(Number(l.valor), Number(r.valor)))
+        return { tipo:'recorrente', nome: r.descricao, valor: Number(r.valor) };
+    }
+    return null;
+  });
+
+  EXT = { id, linhas, bruto, jaLancado, choque };
+  const d = bruto.doc || {};
+  const ent = linhas.filter(l=>l.tipo==='entrada').reduce((a,l)=>a+Number(l.valor),0);
+  const sai = linhas.filter(l=>l.tipo==='saida').reduce((a,l)=>a+Number(l.valor),0);
+  const dup = jaLancado.filter(Boolean).length;
+  const nChoque = choque.filter(Boolean).length;
+  const ehFatura = d.tipo === 'fatura';
+  const cats = PES.cats.filter(c=>c.ativo!==false);
+
+  app.innerHTML = menu('dinheiro') + `
+  <main>
+  <p class="meta"><a class="lnk" href="#/dinheiro">← voltar para o Dinheiro</a></p>
+  <h1>${ehFatura ? 'Fatura de cartão' : 'Extrato'} — conferência</h1>
+  <p class="meta">${esc(bruto.arquivo || '')}${d.banco?' · '+esc(d.banco):''}${d.conta?' · '+esc(d.conta):''}
+    ${d.periodo_inicio?' · '+br(d.periodo_inicio)+' a '+br(d.periodo_fim||d.periodo_inicio):''}</p>
+
+  <div class="aviso"><b>Nada foi lançado ainda.</b> O sistema leu o arquivo e separou as linhas;
+    quem decide o que entra na sua conta é você. Marque o que for lançar, ajuste a categoria,
+    e só então clique em importar.</div>
+
+  <div class="kpis">
+    <div class="kpi"><div class="n">${linhas.length}</div><div class="l">linhas lidas</div></div>
+    <div class="kpi"><div class="n">${rs(ent)}</div><div class="l">créditos</div></div>
+    <div class="kpi"><div class="n">${rs(sai)}</div><div class="l">débitos</div></div>
+    <div class="kpi ${dup?'al':''}"><div class="n">${dup}</div><div class="l">já parecem lançados</div></div>
+    ${nChoque?`<div class="kpi al"><div class="n">${nChoque}</div><div class="l">o painel já conta sozinho</div></div>`:''}
+  </div>
+
+  ${nChoque?`<div class="aviso" style="border-color:var(--crit)">
+    <b>${nChoque} linha(s) o painel já conta por outro caminho</b> — a parcela do financiamento vem da tabela
+    de parcelas, e as despesas recorrentes entram sozinhas todo mês. Elas ficam <b>fora</b> do "marcar tudo";
+    se você marcar mesmo assim, a despesa vai contar em dobro.</div>`:''}
+
+  ${ehFatura ? `<div class="aviso" style="border-color:var(--warn)">
+    <b>Isto é uma fatura de cartão.</b> As linhas abaixo são as compras. Quando a fatura for paga na
+    conta corrente, o extrato do banco vai trazer <i>um</i> débito com o total
+    ${d.total_fatura ? 'de <b>'+rs(d.total_fatura)+'</b> ' : ''}— é o mesmo dinheiro.
+    Lance as compras <b>ou</b> o pagamento da fatura, nunca os dois, senão a despesa conta em dobro.</div>` : ''}
+
+  ${bruto.uso && bruto.uso.entrada ? `<div class="card">
+    <div style="padding:12px 18px" class="sub">Esta leitura custou
+      <b>${custoLeitura(bruto.uso)}</b> — ${bruto.uso.entrada.toLocaleString('pt-BR')} tokens de entrada e
+      ${bruto.uso.saida.toLocaleString('pt-BR')} de saída, ao preço do Sonnet 5
+      (US$ 2 e US$ 10 por milhão), convertidos a R$ 5,10 por dólar.
+      É o valor real desta chamada, não estimativa.</div></div>` : ''}
+  ${bruto.obs ? `<div class="card" style="border-left:3px solid var(--warn)">
+    <div style="padding:12px 18px" class="sub"><b>O que o leitor não conseguiu ler:</b> ${esc(bruto.obs)}</div></div>` : ''}
+  ${bruto.descartadas ? `<div class="card" style="border-left:3px solid var(--crit)">
+    <div style="padding:12px 18px" class="sub"><b>${bruto.descartadas} linha(s) foram descartadas</b> por virem
+      sem data, sem valor ou sem descrição legível. Confira o arquivo original: elas não estão na lista abaixo.</div></div>` : ''}
+
+  <div class="card"><div style="padding:12px 18px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <button class="btn" onclick="marcarTodas('tudo')">Marcar tudo</button>
+    <button class="btn" onclick="marcarTodas('saidas')">Só os débitos</button>
+    <button class="btn" onclick="marcarTodas('entradas')">Só os créditos</button>
+    <button class="btn" onclick="desmarcarTodas()">Desmarcar</button>
+    <span class="sub" id="ex-resumo" style="margin:0"></span>
+    <span style="flex:1"></span>
+    ${bruto.path ? `<button class="btn" onclick="verArquivoExtrato('${esc(bruto.path)}')">Ver o arquivo</button>` : ''}
+    ${bruto.situacao === 'importado' ? `<button class="btn" onclick="desfazerImportacao('${id}')">Desfazer a importação</button>` : ''}
+    <button class="btn ok" onclick="importarExtrato()">Importar os marcados</button>
+    <span class="sub" id="ex-imp" style="margin:0"></span>
+  </div></div>
+
+  ${bruto.situacao === 'importado' ? `<div class="aviso" style="border-color:var(--ok)">
+    Este arquivo já foi importado uma vez. Marcar de novo cria lançamentos repetidos —
+    use <i>Desfazer a importação</i> antes, se quiser refazer.</div>` : ''}
+
+  <div class="card"><h2>Linha a linha</h2>
+    <table><thead><tr><th style="width:40px"></th><th style="width:100px">Data</th><th>Descrição</th>
+      <th style="width:120px">Valor</th><th style="width:90px">Tipo</th><th style="width:210px">Categoria</th></tr></thead>
+    <tbody>${linhas.map((l,i)=>`<tr${jaLancado[i]?' style="background:var(--f2)"':''}>
+      <td style="text-align:center"><input type="checkbox" ${EXTMARCA.has(i)?'checked':''}
+        onchange="marcarLinha(${i}, this)"></td>
+      <td class="dt">${br(l.data)}</td>
+      <td>${esc(l.descricao)}
+        ${l.parcela?`<span class="sub">parcela ${l.parcela}${l.total_parcelas?' de '+l.total_parcelas:''}</span>`:''}
+        ${jaLancado[i]?'<span class="sub" style="color:var(--warn)">▲ já existe um lançamento igual neste dia e valor</span>':''}
+        ${choque[i]?`<span class="sub" style="color:var(--crit)">▲ o painel já conta isto sozinho:
+          ${choque[i].tipo==='financiamento' ? 'parcela do financiamento <b>'+esc(choque[i].nome)+'</b>'
+            : 'despesa recorrente <b>'+esc(choque[i].nome)+'</b>'} (${rs(choque[i].valor)}).
+          Lançar aqui conta a mesma despesa duas vezes.</span>`:''}</td>
+      <td class="dt" style="text-align:right;white-space:nowrap">${rs(l.valor)}</td>
+      <td><span class="pill ${l.tipo==='entrada'?'good':'ser'}">${l.tipo==='entrada'?'crédito':'débito'}</span></td>
+      <td><select onchange="catLinha(${i}, this.value)" style="font-size:12px;width:100%">
+        <option value="">— sem categoria —</option>
+        ${cats.map(c=>`<option value="${c.id}" ${c.nome===l.categoria_sugerida?'selected':''}>${esc(c.nome)}</option>`).join('')}
+      </select></td></tr>`).join('')}
+    </tbody></table></div>
+  </main>` + rodape();
+  linhas.forEach((l,i)=>{ if (EXTCAT[i] === undefined) {
+    const c = cats.find(x=>x.nome===l.categoria_sugerida); if (c) EXTCAT[i] = c.id; } });
+  pintarResumoExt();
+}
+
+async function telaPessoal(){
+  await carregarPessoal();
+  const c = contasPessoal();
+  const compPct = pct(c.comprometido, c.distribuicao);
+  const catDe = id => PES.cats.find(x=>x.id===id);
+  const gastoCat = id => PES.lancs.filter(l=>l.tipo==='saida'&&l.categoria_id===id).reduce((a,l)=>a+Number(l.valor),0);
+  const gastoProj = id => PES.lancs.filter(l=>l.projeto_id===id).reduce((a,l)=>a+Number(l.valor),0);
+  const vars = PES.cats.filter(x=>x.grupo==='variavel' && x.tipo!=='entrada');
+
+  app.innerHTML = menu('dinheiro') + `
+  <main><h1>Dinheiro da casa</h1>
+  <p class="meta">As contas de casa, vistas pelos dois. Cada lançamento guarda quem o fez. Nada daqui
+    aparece no sistema do escritório, e nada de lá aparece aqui.</p>
+
+  <div class="calnav">
+    <button class="btn" onclick="PESMES='${mesMais(PESMES,-1)}';telaPessoal()">◀</button>
+    <b style="font-size:17px">${mesBr(PESMES)}</b>
+    <button class="btn" onclick="PESMES='${mesMais(PESMES,1)}';telaPessoal()">▶</button>
+    ${PESMES !== new Date().toISOString().slice(0,7) ? `<button class="btn" onclick="PESMES='${new Date().toISOString().slice(0,7)}';telaPessoal()">hoje</button>` : ''}
+  </div>
+
+  <div class="kpis">
+    <div class="kpi"><div class="n">${rs(c.distribuicao)}</div><div class="l">distribuição no mês</div></div>
+    <div class="kpi ${compPct>70?'al':''}"><div class="n">${compPct}%</div><div class="l">já comprometido</div></div>
+    <div class="kpi"><div class="n">${rs(c.variaveis)}</div><div class="l">variáveis do mês</div></div>
+    <div class="kpi ${c.sobra<0?'al':''}"><div class="n">${rs(c.sobra)}</div><div class="l">sobra</div></div>
+  </div>
+
+  <div class="card"><h2>Ler extrato ou fatura</h2>
+    <p class="nota">Mande o PDF do extrato da conta ou da fatura do cartão. O sistema lê, separa
+      <b>créditos</b> de <b>débitos</b> e mostra linha a linha para você conferir.
+      <b>Nada entra na sua conta sozinho</b> — só o que você marcar. PDF grande é lido em blocos de
+      dez páginas. Foto também serve, até 6 MB.</p>
+    <div style="padding:0 18px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <input type="file" accept="application/pdf,image/*" onchange="lerExtrato(this)">
+      <span class="sub" id="ex-st" style="margin:0"></span>
+    </div>
+    ${EXTRATOS.length ? `<table><thead><tr><th>Arquivo</th><th>Tipo</th><th>Período</th>
+      <th>Linhas</th><th>Situação</th><th></th></tr></thead><tbody>
+      ${EXTRATOS.map(x=>`<tr>
+        <td>${esc(x.arquivo_nome||'—')}<span class="sub">${esc(x.banco||'')}${x.conta?' · '+esc(x.conta):''}</span></td>
+        <td><span class="pill ${x.tipo==='fatura'?'ser':'cin'}">${x.tipo==='fatura'?'fatura':'extrato'}</span></td>
+        <td class="dt">${x.periodo_ini?br(x.periodo_ini)+' a '+br(x.periodo_fim||x.periodo_ini):'—'}</td>
+        <td>${(x.linhas||[]).length}</td>
+        <td class="sub">${x.situacao === 'importado' ? 'importado' : 'lido, aguardando conferência'}</td>
+        <td><a class="lnk" href="#/extrato/${x.id}">abrir</a></td></tr>`).join('')}
+      </tbody></table>` : ''}
+  </div>
+
+  <div class="card"><h2>Para onde vai a distribuição</h2>
+  <p class="meta">Dívida e despesa fixa vencem quer você queira ou não — é o que nasce comprometido.
+    O que estiver abaixo disso é onde você ainda decide.</p>
+  <div class="bars">
+    ${[['Parcelas de financiamento',c.dividas],['Despesas fixas',c.fixas],['Variáveis',c.variaveis],
+       ['Sem categoria',c.semCategoria],
+       ['Reforma e projetos',c.emProjeto],['Guardado',c.guardado],['Sobra',Math.max(0,c.sobra)]]
+      .filter(([r,v]) => v > 0 || r === 'Sobra')
+      .map(([r,v])=>`<div class="bar"><div class="rot">${r}</div>
+        <div class="trilho"><div class="barra" style="width:${pct(v, Math.max(c.distribuicao,1))}%"></div></div>
+        <div class="val">${rs(v)}</div></div>`).join('')}
+  </div>
+  ${c.distribuicao === 0 ? `<p class="nota">Nenhuma distribuição registrada neste mês. No financeiro do escritório,
+     marque o lançamento de saída como distribuição para você — ele aparece aqui sozinho.</p>` : ''}
+  ${c.semCategoria > 0 ? `<p class="nota"><b>${rs(c.semCategoria)} sem categoria.</b>
+     No extrato, use o seletor ao lado do valor. Enquanto não tiver categoria, esse dinheiro
+     não entra em nenhum teto e não aparece em fixas nem em variáveis.</p>` : ''}
+  ${c.sobra < 0 ? `<p class="nota" style="color:var(--crit)"><b>O mês fechou no vermelho em ${rs(-c.sobra)}.</b>
+     Ou entrou menos do que o previsto, ou os variáveis passaram do que a distribuição comporta.</p>` : ''}
+  </div>
+
+  <div class="card"><h2>Financiamentos</h2>
+  <p class="meta">Parcela do mês, quanto já foi pago e quanto ainda se deve. O saldo devedor é o número que
+    interessa quando você pensa em amortizar.</p>
+  ${PES.fins.length ? PES.fins.map(f=>{
+    const obra = emObra(f, PESMES);
+    const t = tabelaFin(f), k = parcelasPagas(f, PESMES);
+    const atual = t[Math.min(Math.max(k,1),t.length)-1];
+    const pagas = obra ? 0 : Math.max(0, Math.min(k, t.length));
+    const saldo = obra ? Number(f.liberado||0) : (pagas>0 ? t[pagas-1].saldo : Number(f.valor_financiado));
+    const pagoObra = PES.parcelasFin.filter(x=>x.financiamento_id===f.id && x.fase==='obra')
+                       .reduce((a,x)=>a+Number(x.valor_pago||0),0);
+    const jurosPagos = obra ? pagoObra : t.slice(0,pagas).reduce((a,x)=>a+x.juros,0);
+    const jurosTotal = t.reduce((a,x)=>a+x.juros,0);
+    return `<div style="padding:12px 18px;border-top:1px solid var(--ln)">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <b>${esc(f.nome)}</b>${f.credor?`<span class="sub" style="margin:0">${esc(f.credor)}</span>`:''}
+        <span class="pill cin">${esc(f.sistema)} · ${Number(f.taxa_mes)}% a.m.</span>
+        ${obra ? `<span class="pill warn">em obra — juros até ${br(f.obra_ate)}</span>`
+               : `<span class="pill ${pagas>=f.parcelas?'good':'cin'}">${pagas} de ${f.parcelas} parcelas</span>`}
+      </div>
+      ${obra ? `<p class="nota">Na fase de obra você paga juros sobre o que já foi liberado, mais seguro e taxa.
+        <b>Isso não abate nada do saldo</b> — é custo puro. ${f.obra_ate
+          ? `A amortização começa em ${br(f.obra_ate)}, e é dali que as ${f.parcelas} parcelas passam a correr.`
+          : `A data de entrega ainda não foi informada, então o sistema não anuncia quando a parcela cheia começa.`}</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin:8px 0 2px">
+        <label style="display:flex;flex-direction:column;gap:3px">
+          <span class="sub" style="margin:0">Entrega da casa (deixe vazio enquanto não souber)</span>
+          <input type="date" id="ob-${f.id}" value="${f.obra_ate||''}"></label>
+        <button class="btn" onclick="salvarEntrega('${f.id}')">Guardar a data</button>
+        <span class="sub" id="obst-${f.id}" style="margin:0"></span>
+      </div>` : ''}
+      <div class="kpis" style="margin:10px 0 6px">
+        <div class="kpi"><div class="n">${rs(obra ? jurosDeObra(f, PESMES) : (atual?atual.parcela:0))}</div>
+          <div class="l">${obra ? (parcelaLida(f, PESMES) ? 'pago no mês (do extrato)'
+                : (parcelaLida(f) ? 'estimado — último extrato lido: '+br(parcelaLida(f).competencia) : 'juros de obra estimados'))
+              : 'parcela deste mês'}</div></div>
+        <div class="kpi"><div class="n">${rs(saldo)}</div><div class="l">${obra?'liberado até agora':'saldo devedor'}</div></div>
+        <div class="kpi ${obra?'al':''}"><div class="n">${rs(jurosPagos)}</div>
+          <div class="l">${obra?'já pago sem abater':'juros já pagos'}</div></div>
+        <div class="kpi"><div class="n">${rs(obra ? (t[0]?.parcela||0) : jurosTotal)}</div>
+          <div class="l">${obra?'1ª parcela quando amortizar':'juros até o fim'}</div></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:6px">
+        <label style="display:flex;flex-direction:column;gap:3px">
+          <span class="sub" style="margin:0">E se eu amortizar por mês</span>
+          <input type="number" id="ap-${f.id}" step="50" min="0" placeholder="R$ extra" style="width:140px"></label>
+        <button class="btn" onclick="simularAmortizacao('${f.id}')">Simular</button>
+        <button class="btn" onclick="tirarFinanciamento('${f.id}')">arquivar</button>
+        <span class="sub" id="sim-${f.id}" style="margin:0"></span>
+      </div></div>`;
+  }).join('') : '<div class="vazio">Nenhum financiamento cadastrado.</div>'}
+  <div style="padding:12px 18px;border-top:1px solid var(--ln)">
+    <label class="sub" style="margin:0">Cadastrar financiamento</label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:5px">
+      <input id="fn-nome" placeholder="ex.: Casa — Caixa" style="min-width:180px">
+      <input id="fn-credor" placeholder="credor" style="width:130px">
+      <input id="fn-valor" type="number" step="0.01" placeholder="valor financiado" style="width:160px">
+      <input id="fn-taxa" type="number" step="0.001" placeholder="% ao mês" style="width:110px">
+      <input id="fn-parc" type="number" placeholder="parcelas" style="width:100px">
+      <input id="fn-seg" type="number" step="0.01" placeholder="seguro/taxa" style="width:120px">
+      <input id="fn-1a" type="date" title="mês da primeira cobrança">
+      <input id="fn-obra" type="date" title="fim da obra: quando começa a amortizar">
+      <input id="fn-lib" type="number" step="0.01" placeholder="já liberado" style="width:130px">
+      <input id="fn-adm" type="number" step="0.01" placeholder="taxa adm." style="width:110px">
+      <select id="fn-sis"><option value="PRICE">PRICE (parcela fixa)</option><option value="SAC">SAC (parcela cai)</option></select>
+      <button class="btn ok" onclick="novoFinanciamento()">Guardar</button>
+    </div>
+  </div></div>
+
+  <div class="duas">
+  <div class="card"><h2>Reforma, mobília e outros projetos</h2>
+  <p class="meta">Orçamento definido e gasto realizado. Serve para qualquer coisa com começo e fim.</p>
+  ${PES.projs.length ? PES.projs.map(p=>{
+    const g = PES.lancs.filter(l=>l.projeto_id===p.id).reduce((a,l)=>a+Number(l.valor),0);
+    const tot = gastoProjTotal(p.id);
+    return `<div style="padding:10px 18px;border-top:1px solid var(--ln)">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <b>${esc(p.nome)}</b>
+        <span class="pill ${p.situacao==='concluido'?'good':'cin'}">${esc(p.situacao)}</span>
+        ${tot>Number(p.orcamento)&&Number(p.orcamento)>0?'<span class="pill crit">passou do orçamento</span>':''}
+      </div>
+      <div class="bar" style="margin-top:6px"><div class="rot">${rs(tot)} de ${rs(p.orcamento)}</div>
+        <div class="trilho"><div class="barra" style="width:${pct(tot,Number(p.orcamento)||1)}%;background:${tot>Number(p.orcamento)?'var(--crit)':'var(--serie)'}"></div></div>
+        <div class="val">${pct(tot,Number(p.orcamento)||1)}%</div></div>
+      <div class="sub">${g>0?`${rs(g)} neste mês · `:''}resta ${rs(Math.max(0,Number(p.orcamento)-tot))}</div>
+      <div class="acoes" style="padding-left:0">
+        ${p.situacao!=='concluido'?`<button class="btn" onclick="fecharProjeto('${p.id}')">marcar concluído</button>`:''}
+      </div></div>`;
+  }).join('') : '<div class="vazio">Nenhum projeto.</div>'}
+  <div style="padding:10px 18px;border-top:1px solid var(--ln);display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+    <input id="pj-nome" placeholder="ex.: Reforma da cozinha" style="min-width:170px">
+    <input id="pj-orc" type="number" step="0.01" placeholder="orçamento" style="width:130px">
+    <input id="pj-prev" type="date" title="previsão de término">
+    <button class="btn ok" onclick="novoProjeto()">Criar</button>
+  </div></div>
+
+  <div class="card"><h2>Reserva e metas</h2>
+  <p class="meta">Quanto você já tem guardado e quantos meses isso cobre dos seus custos fixos —
+    o número que diz se dá para respirar num mês ruim.</p>
+  ${(() => { const fixoMes = c.comprometido + c.variaveis;
+     const reserva = PES.metas.filter(m=>m.tipo==='reserva').reduce((a,m)=>a+Number(m.guardado),0);
+     return fixoMes>0 ? `<p class="nota">Com ${rs(reserva)} guardados e um custo de ${rs(fixoMes)} por mês,
+       sua reserva cobre <b>${(reserva/fixoMes).toFixed(1)} meses</b>.</p>` : ''; })()}
+  ${PES.metas.length ? PES.metas.map(m=>`<div style="padding:10px 18px;border-top:1px solid var(--ln)">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <b>${esc(m.nome)}</b><span class="pill cin">${m.tipo==='reserva'?'reserva':'meta'}</span>
+        ${m.prazo?`<span class="sub" style="margin:0">até ${br(m.prazo)}</span>`:''}</div>
+      <div class="bar" style="margin-top:6px"><div class="rot">${rs(m.guardado)} de ${rs(m.alvo)}</div>
+        <div class="trilho"><div class="barra" style="width:${pct(Number(m.guardado),Number(m.alvo)||1)}%"></div></div>
+        <div class="val">${pct(Number(m.guardado),Number(m.alvo)||1)}%</div></div>
+      <div style="display:flex;gap:6px;margin-top:5px;align-items:flex-end">
+        <input type="number" step="0.01" id="mt-${m.id}" placeholder="guardar agora" style="width:130px">
+        <button class="btn" onclick="guardarNaMeta('${m.id}')">Guardar</button></div>
+    </div>`).join('') : '<div class="vazio">Nenhuma meta.</div>'}
+  <div style="padding:10px 18px;border-top:1px solid var(--ln);display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+    <input id="mt-nome" placeholder="ex.: Reserva de emergência" style="min-width:170px">
+    <input id="mt-alvo" type="number" step="0.01" placeholder="alvo" style="width:120px">
+    <select id="mt-tipo"><option value="reserva">reserva</option><option value="meta">meta</option></select>
+    <button class="btn ok" onclick="novaMeta()">Criar</button>
+  </div></div>
+  </div>
+
+  <div class="card"><h2>Despesas fixas do mês</h2>
+  <p class="meta">O que se repete todo mês, com dia de vencimento. Marcando como pago, entra no extrato.</p>
+  ${(()=>{
+    const ativas = recorrentesDoMes(PESMES);
+    /* Fixas lançadas que não vieram de recorrente nenhuma — categoria de grupo "fixa"
+       lançada à mão. Sem isto, editar uma despesa e marcá-la como fixa não mudava nada aqui. */
+    const avulsas = PES.lancs.filter(l => l.tipo==='saida' && !l.projeto_id && !l.meta_id
+      && catDe(l.categoria_id)?.grupo === 'fixa'
+      && !ativas.some(r => lancamentoDaRecorrente(r)?.id === l.id));
+    if (!ativas.length && !avulsas.length) return '<div class="vazio">Nenhuma despesa fixa neste mês.</div>';
+    const linhaLanc = (l, dia, rid) => `<tr><td>${dia}</td><td>${esc(l.descricao||'—')}</td>
+      <td class="sub">${esc(catDe(l.categoria_id)?.nome || '—')}</td>
+      <td>${rs(l.valor)}</td>
+      <td><span class="pill good">lançado</span>
+        <button class="btn" onclick="editarLancamentoPessoal('${l.id}')">editar</button>
+        ${rid?`<button class="btn" onclick="tirarRecorrente('${rid}')">tirar a fixa</button>`:''}</td></tr>`;
+    return `<table><thead><tr><th>Dia</th><th>Descrição</th><th>Categoria</th><th>Valor</th><th></th></tr></thead><tbody>
+    ${ativas.map(r=>{
+      const l = lancamentoDaRecorrente(r);
+      if (l) return linhaLanc(l, r.dia, r.id);
+      return `<tr><td>${r.dia}</td><td>${esc(r.descricao)}</td>
+      <td class="sub">${esc(catDe(r.categoria_id)?.nome||'—')}</td>
+      <td>${rs(r.valor)}</td>
+      <td><button class="btn" onclick="pagarRecorrente('${r.id}')">registrar pago</button>
+        <button class="btn" onclick="tirarRecorrente('${r.id}')">tirar</button></td></tr>`;
+    }).join('')}
+    ${avulsas.map(l => linhaLanc(l, br(l.data).slice(0,2), null)).join('')}
+    <tr><td></td><td><b>Total</b></td><td></td><td><b>${rs(c.fixas)}</b></td><td></td></tr>
+    </tbody></table>`;
+  })()}
+  <div style="padding:10px 18px;border-top:1px solid var(--ln);display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+    <input id="rc-desc" placeholder="ex.: Condomínio" style="min-width:170px">
+    <input id="rc-valor" type="number" step="0.01" placeholder="valor" style="width:120px">
+    <input id="rc-dia" type="number" min="1" max="28" placeholder="dia" style="width:80px">
+    <select id="rc-cat">${PES.cats.filter(x=>x.tipo==='saida').map(x=>`<option value="${x.id}">${esc(x.nome)}</option>`).join('')}</select>
+    <button class="btn ok" onclick="novaRecorrente()">Guardar</button>
+  </div></div>
+
+  <div class="card"><h2>Variáveis do mês</h2>
+  <p class="meta">Mercado, combustível, o que muda todo mês. O teto é um limite que você mesmo se dá —
+    o sistema não impede nada, só mostra quando passou.</p>
+  ${vars.length ? `<div class="bars">${vars.map(x=>{
+      const g = gastoCat(x.id), teto = Number(x.teto_mensal||0);
+      return `<div class="bar"><div class="rot">${esc(x.nome)}${teto?` · teto ${rs(teto)}`:''}</div>
+        <div class="trilho"><div class="barra" style="width:${teto?pct(g,teto):pct(g,Math.max(c.variaveis,1))}%;background:${teto&&g>teto?'var(--crit)':'var(--serie)'}"></div></div>
+        <div class="val">${rs(g)}</div></div>`;
+    }).join('')}</div>` : '<div class="vazio">Nenhuma categoria variável ainda.</div>'}
+  <div style="padding:10px 18px;border-top:1px solid var(--ln);display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+    <input id="cat-nome" placeholder="ex.: Mercado" style="min-width:150px">
+    <input id="cat-teto" type="number" step="0.01" placeholder="teto mensal (opcional)" style="width:180px">
+    <select id="cat-grupo"><option value="variavel">variável</option><option value="fixa">fixa</option></select>
+    <select id="cat-tipo"><option value="saida">de saída</option><option value="entrada">de entrada</option></select>
+    <button class="btn ok" onclick="novaCategoriaPessoal()">Criar categoria</button>
+  </div></div>
+
+  <div class="card"><h2>Lançar</h2>
+  <div style="padding:10px 18px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+    <input id="lc-data" type="date" value="${new Date().toISOString().slice(0,10)}">
+    <select id="lc-tipo"><option value="saida">saída</option><option value="entrada">entrada</option></select>
+    <input id="lc-valor" type="number" step="0.01" placeholder="valor" style="width:120px">
+    <input id="lc-desc" placeholder="descrição" style="min-width:180px">
+    <select id="lc-cat"><option value="">— categoria —</option>${PES.cats.map(x=>`<option value="${x.id}">${esc(x.nome)}</option>`).join('')}</select>
+    <select id="lc-proj"><option value="">— projeto —</option>${PES.projs.filter(p=>p.situacao!=='concluido').map(p=>`<option value="${p.id}">${esc(p.nome)}</option>`).join('')}</select>
+    <button class="btn ok" onclick="novoLancamentoPessoal()">Lançar</button>
+  </div></div>
+
+  ${PES.candidatos.length ? `<div class="card"><h2>Saídas do escritório neste mês</h2>
+  <p class="meta">Marque aqui o que foi repasse para você. O lançamento continua sendo despesa do escritório —
+    a marca só faz ele aparecer como receita na sua aba, sem digitar duas vezes.</p>
+  ${PES.candidatos.map(x=>`<div style="padding:8px 18px;border-top:1px solid var(--ln);display:flex;gap:10px;justify-content:space-between;align-items:center">
+    <div><b>${esc(x.descricao||'sem descrição')}</b><span class="sub">${br(x.vencimento)}${x.contraparte?' · '+esc(x.contraparte):''}</span></div>
+    <div style="display:flex;gap:10px;align-items:center">${rs(x.valor)}
+      <button class="btn" onclick="marcarDistribuicao('${x.id}')">é minha distribuição</button></div></div>`).join('')}
+  </div>` : ''}
+
+  <div class="card"><h2>Extrato de ${mesBr(PESMES)}</h2>
+  ${PES.distrib.length ? PES.distrib.map(d=>`<div style="padding:8px 18px;border-top:1px solid var(--ln);display:flex;gap:10px;justify-content:space-between">
+      <div><b>${esc(d.descricao||'Distribuição')}</b><span class="sub">do escritório · ${br(d.vencimento)}</span></div>
+      <div style="display:flex;gap:10px;align-items:center"><span style="color:var(--good);font-weight:600">${rs(d.valor)}</span>
+        <button class="btn" onclick="desmarcarDistribuicao('${d.id}')">desmarcar</button></div></div>`).join('') : ''}
+  ${PES.lancs.length ? PES.lancs.map(l=> l.id===PESEDIT ? `
+    <div style="padding:10px 18px;border-top:1px solid var(--ln);background:var(--s1)">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+        <label style="display:flex;flex-direction:column;gap:3px"><span class="sub" style="margin:0">data</span>
+          <input id="ed-data" type="date" value="${l.data||''}"></label>
+        <label style="display:flex;flex-direction:column;gap:3px"><span class="sub" style="margin:0">tipo</span>
+          <select id="ed-tipo">
+            <option value="saida"${l.tipo==='saida'?' selected':''}>saída</option>
+            <option value="entrada"${l.tipo==='entrada'?' selected':''}>entrada</option></select></label>
+        <label style="display:flex;flex-direction:column;gap:3px"><span class="sub" style="margin:0">valor</span>
+          <input id="ed-valor" type="number" step="0.01" value="${Number(l.valor)}" style="width:120px"></label>
+        <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:180px"><span class="sub" style="margin:0">descrição</span>
+          <input id="ed-desc" value="${esc(l.descricao||'')}"></label>
+        <label style="display:flex;flex-direction:column;gap:3px"><span class="sub" style="margin:0">categoria</span>
+          <select id="ed-cat"><option value="">— nenhuma —</option>
+            ${PES.cats.map(x=>`<option value="${x.id}"${x.id===l.categoria_id?' selected':''}>${esc(x.nome)}${x.tipo==='entrada'?' (entrada)':''}</option>`).join('')}
+          </select></label>
+        <label style="display:flex;flex-direction:column;gap:3px"><span class="sub" style="margin:0">projeto</span>
+          <select id="ed-proj"><option value="">— nenhum —</option>
+            ${PES.projs.map(x=>`<option value="${x.id}"${x.id===l.projeto_id?' selected':''}>${esc(x.nome)}</option>`).join('')}
+          </select></label>
+        <button class="btn ok" onclick="salvarLancamentoPessoal('${l.id}')">Guardar</button>
+        <button class="btn" onclick="cancelarEdicaoPessoal()">cancelar</button>
+      </div>
+      <p class="sub" style="margin:6px 0 0">Trocar o tipo de saída para entrada muda o sinal no extrato e no resumo do mês.</p>
+    </div>` : `
+    <div style="padding:8px 18px;border-top:1px solid var(--ln);display:flex;gap:10px;justify-content:space-between;align-items:center">
+      <div><b>${esc(l.descricao||'—')}</b><span class="sub">${br(l.data)}
+        ${l.projeto_id?' · projeto':''}${l.origem==='recorrente'?' · fixa':''}</span></div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <select onchange="atribuirCategoriaPessoal('${l.id}', this.value)"
+          title="categoria deste lançamento"
+          style="max-width:170px;font-size:12px;padding:3px 6px;${l.categoria_id?'':'border-color:var(--warn)'}">
+          <option value=""${l.categoria_id?'':' selected'}>— sem categoria —</option>
+          ${PES.cats.filter(x=>x.tipo===l.tipo||!x.tipo).map(x=>
+            `<option value="${x.id}"${x.id===l.categoria_id?' selected':''}>${esc(x.nome)}</option>`).join('')}
+        </select>
+        <span style="font-weight:600;color:${l.tipo==='entrada'?'var(--good)':'var(--ink)'}">${l.tipo==='entrada'?'+':'−'} ${rs(l.valor)}</span>
+        <button class="btn" onclick="editarLancamentoPessoal('${l.id}')">editar</button>
+        <button class="btn" onclick="tirarLancamentoPessoal('${l.id}')">tirar</button></div></div>`).join('')
+    : (PES.distrib.length?'':'<div class="vazio">Nada lançado neste mês.</div>')}
+  </div>
+  </main>` + rodape();
+}
+function gastoProjTotal(id){ return PES.__projTot?.[id] ?? 0; }
+
+window.salvarEntrega = async function(id){
+  const v = document.getElementById('ob-'+id).value || null;
+  const { error } = await sb.from('pessoal_financiamento').update({ obra_ate: v }).eq('id', id);
+  if (error) { alert('Não deu para guardar: ' + error.message); return; }
+  telaPessoal();
+};
+window.simularAmortizacao = function(id){
+  const f = PES.fins.find(x=>x.id===id);
+  const extra = Number(document.getElementById('ap-'+id).value||0);
+  const st = document.getElementById('sim-'+id);
+  if (!extra) { st.textContent = 'informe o valor extra'; return; }
+  const semExtra = tabelaFin(f), comExtra = tabelaFin(f, extra);
+  const jurosA = semExtra.reduce((a,x)=>a+x.juros,0), jurosB = comExtra.reduce((a,x)=>a+x.juros,0);
+  st.innerHTML = `<b>${semExtra.length - comExtra.length} parcelas a menos</b> — quita em
+    ${comExtra.length} em vez de ${semExtra.length}, e economiza ${rs(jurosA-jurosB)} de juros.`;
+};
+window.novoFinanciamento = async function(){
+  const v = id => document.getElementById(id).value;
+  if(!v('fn-nome') || !v('fn-valor') || !v('fn-parc') || !v('fn-1a'))
+    return alert('Nome, valor financiado, número de parcelas e data da primeira parcela são obrigatórios.');
+  const { error } = await sb.from('pessoal_financiamento').insert({
+    dono_id: PES.uid, familia_id: PES.fam, nome: v('fn-nome'), credor: v('fn-credor')||null,
+    valor_financiado: Number(v('fn-valor')), taxa_mes: Number(v('fn-taxa')||0),
+    parcelas: Number(v('fn-parc')), seguro_mes: Number(v('fn-seg')||0),
+    primeira: v('fn-1a'), sistema: v('fn-sis'),
+    obra_ate: v('fn-obra')||null, liberado: Number(v('fn-lib')||0), taxa_adm: Number(v('fn-adm')||0),
+  });
+  if(error) return alert(error.message);
+  telaPessoal();
+};
+window.tirarFinanciamento = async function(id){
+  await sb.from('pessoal_financiamento').update({ ativo:false }).eq('id', id); telaPessoal();
+};
+window.novoProjeto = async function(){
+  const v = id => document.getElementById(id).value;
+  if(!v('pj-nome')) return alert('Dê um nome ao projeto.');
+  const { error } = await sb.from('pessoal_projeto').insert({
+    dono_id: PES.uid, familia_id: PES.fam, nome: v('pj-nome'), orcamento: Number(v('pj-orc')||0),
+    inicio: new Date().toISOString().slice(0,10), previsao: v('pj-prev')||null });
+  if(error) return alert(error.message);
+  telaPessoal();
+};
+window.fecharProjeto = async function(id){
+  await sb.from('pessoal_projeto').update({ situacao:'concluido' }).eq('id', id); telaPessoal();
+};
+window.novaMeta = async function(){
+  const v = id => document.getElementById(id).value;
+  if(!v('mt-nome')) return alert('Dê um nome à meta.');
+  const { error } = await sb.from('pessoal_meta').insert({
+    dono_id: PES.uid, familia_id: PES.fam, nome: v('mt-nome'), alvo: Number(v('mt-alvo')||0), tipo: v('mt-tipo') });
+  if(error) return alert(error.message);
+  telaPessoal();
+};
+window.guardarNaMeta = async function(id){
+  const val = Number(document.getElementById('mt-'+id).value||0);
+  if(!val) return alert('Informe quanto guardar.');
+  const m = PES.metas.find(x=>x.id===id);
+  await sb.from('pessoal_meta').update({ guardado: Number(m.guardado)+val }).eq('id', id);
+  await sb.from('pessoal_lancamento').insert({ dono_id: PES.uid, familia_id: PES.fam, tipo:'saida', valor: val,
+    descricao: 'Guardado — ' + m.nome, meta_id: id, origem:'manual',
+    data: new Date().toISOString().slice(0,10) });
+  telaPessoal();
+};
+window.novaRecorrente = async function(){
+  const v = id => document.getElementById(id).value;
+  if(!v('rc-desc') || !v('rc-valor')) return alert('Descrição e valor são obrigatórios.');
+  const { error } = await sb.from('pessoal_recorrente').insert({
+    dono_id: PES.uid, familia_id: PES.fam, descricao: v('rc-desc'), valor: Number(v('rc-valor')),
+    dia: Number(v('rc-dia')||10), categoria_id: v('rc-cat')||null });
+  if(error) return alert(error.message);
+  telaPessoal();
+};
+window.tirarRecorrente = async function(id){
+  await sb.from('pessoal_recorrente').update({ ativo:false }).eq('id', id); telaPessoal();
+};
+window.pagarRecorrente = async function(id){
+  const r = PES.recs.find(x=>x.id===id);
+  const dia = String(Math.min(28, r.dia)).padStart(2,'0');
+  const { error } = await sb.from('pessoal_lancamento').insert({
+    dono_id: PES.uid, familia_id: PES.fam, tipo:'saida', valor: r.valor, descricao: r.descricao,
+    categoria_id: r.categoria_id, data: `${PESMES}-${dia}`, origem:'recorrente' });
+  if(error) return alert(error.message);
+  telaPessoal();
+};
+window.novaCategoriaPessoal = async function(){
+  const v = id => document.getElementById(id).value;
+  if(!v('cat-nome')) return alert('Dê um nome à categoria.');
+  const { error } = await sb.from('pessoal_categoria').insert({
+    dono_id: PES.uid, familia_id: PES.fam, nome: v('cat-nome'), grupo: v('cat-grupo'), tipo: v('cat-tipo')||'saida',
+    teto_mensal: v('cat-teto') ? Number(v('cat-teto')) : null });
+  if(error) return alert(error.message);
+  telaPessoal();
+};
+window.novoLancamentoPessoal = async function(){
+  const v = id => document.getElementById(id).value;
+  if(!v('lc-valor')) return alert('Informe o valor.');
+  const { error } = await sb.from('pessoal_lancamento').insert({
+    dono_id: PES.uid, familia_id: PES.fam, data: v('lc-data'), tipo: v('lc-tipo'), valor: Number(v('lc-valor')),
+    descricao: v('lc-desc')||null, categoria_id: v('lc-cat')||null,
+    projeto_id: v('lc-proj')||null, origem:'manual' });
+  if(error) return alert(error.message);
+  telaPessoal();
+};
+window.marcarDistribuicao = async function(id){
+  const { error } = await sb.from('lancamento').update({ distribuicao_para: PES.uid }).eq('id', id);
+  if(error) return alert(error.message);
+  telaPessoal();
+};
+window.desmarcarDistribuicao = async function(id){
+  await sb.from('lancamento').update({ distribuicao_para: null }).eq('id', id); telaPessoal();
+};
+window.editarLancamentoPessoal = function(id){ PESEDIT = id; telaPessoal(); };
+window.cancelarEdicaoPessoal = function(){ PESEDIT = null; telaPessoal(); };
+window.salvarLancamentoPessoal = async function(id){
+  const v = k => document.getElementById(k).value;
+  const valor = Number(v('ed-valor'));
+  if (!v('ed-data')) return alert('A data não pode ficar vazia.');
+  if (!(valor > 0))  return alert('O valor precisa ser maior que zero.');
+  const { error } = await sb.from('pessoal_lancamento').update({
+    data: v('ed-data'), tipo: v('ed-tipo'), valor,
+    descricao: v('ed-desc') || null,
+    categoria_id: v('ed-cat') || null,
+    projeto_id: v('ed-proj') || null
+  }).eq('id', id);
+  if (error) { alert('Não deu para guardar: ' + error.message); return; }
+  PESEDIT = null;
+  PESMES = v('ed-data').slice(0,7);   /* se a data mudou de mês, vai junto */
+  telaPessoal();
+};
+window.atribuirCategoriaPessoal = async function(id, cat){
+  const { error } = await sb.from('pessoal_lancamento')
+    .update({ categoria_id: cat || null }).eq('id', id);
+  if (error) { alert('Nao deu para trocar a categoria: ' + error.message); return; }
+  telaPessoal();
+};
+window.tirarLancamentoPessoal = async function(id){
+  await sb.from('pessoal_lancamento').delete().eq('id', id); telaPessoal();
+};
+
+
+
+/* ================================================================== A CASA
+   Reforma, mobília e tudo o que ainda falta na casa nova. A régua é sempre a
+   mesma: quanto foi orçado, quanto já saiu do bolso, e o que ainda não chegou.
+   Orçamento aqui não é número solto — é o papel do fornecedor, anexado, para
+   comparar lado a lado antes de decidir. */
+const SITAMB = { a_fazer:'a fazer', andamento:'em andamento', pronto:'pronto' };
+const SITITEM = { a_orcar:'a orçar', orcado:'orçado', contratado:'contratado',
+                  comprado:'comprado', entregue:'entregue', pronto:'pronto', cancelado:'cancelado' };
+const TIPOITEM = { servico:'serviço', movel:'móvel', material:'material', eletro:'eletro', outro:'outro' };
+const corItem = s => s === 'pronto' || s === 'entregue' ? 'good'
+  : s === 'cancelado' ? 'cin' : s === 'a_orcar' ? 'warn' : 'serie';
+let CASA = { amb:[], itens:[], orc:[], gastos:{} }, CASAFILTRO = null, CASAMB = null;
+
+async function carregarCasa(){
+  const [am, it, or_, ga] = await Promise.all([
+    sb.from('casa_ambiente').select('*').order('ordem').order('nome'),
+    sb.from('casa_item').select('*').order('criado_em'),
+    sb.from('casa_orcamento').select('*').order('valor'),
+    sb.from('pessoal_lancamento').select('casa_item_id,valor,data,descricao')
+      .not('casa_item_id','is',null).limit(5000),
+  ]);
+  const gastos = {};
+  (ga.data||[]).forEach(l => { gastos[l.casa_item_id] = (gastos[l.casa_item_id]||0) + Number(l.valor); });
+  CASA = { amb: am.data||[], itens: it.data||[], orc: or_.data||[], gastos };
+  return CASA;
+}
+const orcDoItem = id => CASA.orc.filter(o => o.item_id === id);
+const gastoItem  = id => CASA.gastos[id] || 0;
+/* O previsto de um item é o orçamento escolhido; se nenhum foi escolhido ainda,
+   vale o valor que você estimou; e se não há nem estimativa, o menor orçamento. */
+function previstoItem(i){
+  const esc_ = orcDoItem(i.id).find(o => o.escolhido);
+  if (esc_) return Number(esc_.valor);
+  if (i.valor_previsto != null) return Number(i.valor_previsto);
+  const l = orcDoItem(i.id).map(o => Number(o.valor)).sort((a,b)=>a-b);
+  return l.length ? l[0] : 0;
+}
+const itensDoAmb = id => CASA.itens.filter(i => i.ambiente_id === id && i.situacao !== 'cancelado');
+const atrasadoItem = i => i.entrega_prevista && !i.entregue_em
+  && !['entregue','pronto','cancelado'].includes(i.situacao) && i.entrega_prevista < hoje();
+
+window.novoAmbiente = async (ev) => {
+  ev.preventDefault();
+  const f = ev.target, nome = (f.elements.nome.value||'').trim(); if (!nome) return;
+  const st = document.getElementById('ca-st'); st.textContent = 'gravando…';
+  const { error } = await sb.from('casa_ambiente').insert({
+    familia_id: FAM.id, nome, ordem: (CASA.amb.length + 1) * 10 });
+  if (error) { st.style.color='var(--crit)'; st.textContent = 'erro: ' + error.message; return; }
+  telaCasa();
+};
+window.mudarAmbiente = async (id, campo, valor) => {
+  const { error } = await sb.from('casa_ambiente').update({ [campo]: valor }).eq('id', id);
+  if (error) return alert(error.message);
+  telaCasa();
+};
+window.novoItemCasa = async (ev) => {
+  ev.preventDefault();
+  const f = ev.target, v = n => (f.elements[n]?.value || '').trim() || null;
+  const st = document.getElementById('ci-st'); st.style.color='var(--i3)'; st.textContent = 'gravando…';
+  const { error } = await sb.from('casa_item').insert({
+    familia_id: FAM.id, ambiente_id: v('ambiente'), tipo: v('tipo') || 'servico',
+    nome: v('nome'), descricao: v('descricao'),
+    valor_previsto: numOuNulo(v('previsto')), comprar_ate: v('comprar_ate'),
+    entrega_prevista: v('entrega'), fornecedor: v('fornecedor') });
+  if (error) { st.style.color='var(--crit)'; st.textContent = 'erro: ' + error.message; return; }
+  telaCasa();
+};
+window.mudarItem = async (id, campo, valor) => {
+  const campos = { [campo]: valor === '' ? null : valor, atualizado_em: new Date().toISOString() };
+  if (campo === 'situacao' && ['entregue','pronto'].includes(valor)) {
+    const i = CASA.itens.find(x => x.id === id);
+    if (i && !i.entregue_em) campos.entregue_em = hoje();
+  }
+  const { error } = await sb.from('casa_item').update(campos).eq('id', id);
+  if (error) return alert(error.message);
+  telaCasa();
+};
+window.tirarItem = async (id) => {
+  const i = CASA.itens.find(x => x.id === id);
+  if (!confirm('Cancelar "' + (i?.nome||'') + '"? Ele sai das contas, mas o histórico fica.')) return;
+  await sb.from('casa_item').update({ situacao:'cancelado' }).eq('id', id);
+  telaCasa();
+};
+window.abrirOrc = (id) => {
+  const el = document.getElementById('orc'+id); if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+};
+window.novoOrcamento = async (ev, itemId) => {
+  ev.preventDefault();
+  const f = ev.target, v = n => (f.elements[n]?.value || '').trim() || null;
+  const st = document.getElementById('or-st-' + itemId);
+  st.style.color = 'var(--i3)'; st.textContent = 'gravando…';
+  const arq = f.elements['arquivo']?.files?.[0] || null;
+  if (arq && arq.size > 15 * 1024 * 1024) { st.style.color='var(--crit)';
+    return st.textContent = 'arquivo grande demais (máximo 15 MB)'; }
+  const { data, error } = await sb.from('casa_orcamento').insert({
+    familia_id: FAM.id, item_id: itemId, fornecedor: v('fornecedor'),
+    valor: numOuNulo(v('valor')) || 0, prazo_dias: v('prazo') ? Number(v('prazo')) : null,
+    validade: v('validade'), condicoes: v('condicoes') }).select('id').single();
+  if (error) { st.style.color='var(--crit)'; st.textContent = 'erro: ' + error.message; return; }
+  if (arq) {
+    st.textContent = 'enviando ' + arq.name + '…';
+    const caminho = `${FAM.id}/orcamentos/${data.id}-${arq.name.replace(/[^A-Za-z0-9._-]/g,'-').slice(-70)}`;
+    const up = await sb.storage.from('casa').upload(caminho, arq, { upsert:true });
+    if (up.error) { st.style.color='var(--crit)';
+      st.textContent = 'o orçamento foi gravado, mas o arquivo falhou: ' + up.error.message; return; }
+    await sb.from('casa_orcamento').update({ arquivo_path: caminho, arquivo_nome: arq.name }).eq('id', data.id);
+  }
+  telaCasa();
+};
+window.verOrcamento = async (id) => {
+  const o = CASA.orc.find(x => x.id === id); if (!o?.arquivo_path) return;
+  const { data, error } = await sb.storage.from('casa').createSignedUrl(o.arquivo_path, 120);
+  if (error) return alert('Não consegui abrir: ' + error.message);
+  window.open(data.signedUrl, '_blank', 'noreferrer');
+};
+/* Escolher um orçamento é uma decisão: ela fixa o previsto do item e marca o
+   fornecedor. Os outros continuam guardados, para você lembrar do que recusou. */
+window.escolherOrc = async (id, itemId) => {
+  const o = CASA.orc.find(x => x.id === id); if (!o) return;
+  await sb.from('casa_orcamento').update({ escolhido:false }).eq('item_id', itemId);
+  await sb.from('casa_orcamento').update({ escolhido:true }).eq('id', id);
+  const i = CASA.itens.find(x => x.id === itemId);
+  const campos = { valor_previsto: o.valor, fornecedor: o.fornecedor, atualizado_em: new Date().toISOString() };
+  if (i && ['a_orcar','orcado'].includes(i.situacao)) campos.situacao = 'contratado';
+  await sb.from('casa_item').update(campos).eq('id', itemId);
+  telaCasa();
+};
+window.tirarOrc = async (id) => {
+  const o = CASA.orc.find(x => x.id === id); if (!o) return;
+  if (!confirm('Apagar o orçamento de ' + o.fornecedor + '?')) return;
+  if (o.arquivo_path) await sb.storage.from('casa').remove([o.arquivo_path]);
+  await sb.from('casa_orcamento').delete().eq('id', id);
+  telaCasa();
+};
+/* O gasto da casa é lançamento como qualquer outro: entra no mês, some da
+   sobra e aparece no Dinheiro. A diferença é que ele sabe a que item pertence. */
+window.gastoCasa = async (ev, itemId) => {
+  ev.preventDefault();
+  const f = ev.target, v = n => (f.elements[n]?.value || '').trim() || null;
+  const st = document.getElementById('ga-st-' + itemId);
+  st.style.color = 'var(--i3)'; st.textContent = 'lançando…';
+  const i = CASA.itens.find(x => x.id === itemId);
+  const { error } = await sb.from('pessoal_lancamento').insert({
+    familia_id: FAM.id, dono_id: FAM.uid, tipo:'saida', valor: numOuNulo(v('valor')),
+    data: v('data') || hoje(), casa_item_id: itemId,
+    descricao: (v('descricao') || ('Casa — ' + (i?.nome || ''))), origem:'casa' });
+  if (error) { st.style.color='var(--crit)'; st.textContent = 'erro: ' + error.message; return; }
+  telaCasa();
+};
+window.filtrarAmb = (id) => { CASAFILTRO = (CASAFILTRO === id ? null : id); telaCasa(); };
+
+function linhaItemCasa(i){
+  const prev = previstoItem(i), gas = gastoItem(i.id), orcs = orcDoItem(i.id);
+  const amb = CASA.amb.find(a => a.id === i.ambiente_id);
+  return `<tr${i.situacao==='cancelado'?' style="opacity:.45"':''}>
+    <td><b>${esc(i.nome)}</b>
+      <span class="sub">${TIPOITEM[i.tipo]||i.tipo}${amb ? ' · ' + esc(amb.nome) : ' · sem ambiente'}${
+        i.fornecedor ? ' · ' + esc(i.fornecedor) : ''}</span>
+      ${i.descricao ? `<span class="sub">${esc(i.descricao)}</span>` : ''}</td>
+    <td><select style="font-size:11.6px" onchange="mudarItem('${i.id}','situacao',this.value)">
+      ${Object.entries(SITITEM).map(([k,r])=>`<option value="${k}" ${i.situacao===k?'selected':''}>${r}</option>`).join('')}
+      </select></td>
+    <td class="dt">${prev ? rs(prev) : '—'}${orcs.length ? `<span class="sub">${orcs.length} orçamento${orcs.length>1?'s':''}</span>` : ''}</td>
+    <td class="dt">${gas ? rs(gas) : '—'}${prev && gas > prev ? '<span class="sub" style="color:var(--crit)">passou do orçado</span>' : ''}</td>
+    <td class="dt">${i.entrega_prevista ? br(i.entrega_prevista) : '—'}
+      ${atrasadoItem(i) ? '<span class="pill crit">atrasado</span>' : ''}
+      ${i.entregue_em ? `<span class="sub">chegou ${br(i.entregue_em)}</span>` : ''}</td>
+    <td style="white-space:nowrap">
+      <button class="btn" style="font-size:11.4px;padding:4px 8px" onclick="abrirOrc('${i.id}')">Orçamentos</button>
+      <button class="btn" style="font-size:11.4px;padding:4px 8px" onclick="tirarItem('${i.id}')">×</button></td>
+  </tr>
+  <tr id="orc${i.id}" style="display:none"><td colspan="6" style="background:var(--f2,rgba(0,0,0,.02))">
+    <div style="padding:10px 4px">
+      ${orcs.length ? `<table style="margin-bottom:10px"><thead><tr><th>Fornecedor</th><th>Valor</th>
+        <th>Prazo</th><th>Vale até</th><th>Condições</th><th>Papel</th><th></th></tr></thead><tbody>
+        ${orcs.map(o => `<tr${o.escolhido?' style="background:rgba(12,163,12,.08)"':''}>
+          <td><b>${esc(o.fornecedor)}</b>${o.escolhido?' <span class="pill good">escolhido</span>':''}</td>
+          <td class="dt">${rs(o.valor)}${prev && Number(o.valor) > prev ? `<span class="sub">+${rs(Number(o.valor)-prev)}</span>` : ''}</td>
+          <td>${o.prazo_dias ? o.prazo_dias + ' dias' : '—'}</td>
+          <td class="dt">${o.validade ? br(o.validade) : '—'}${o.validade && o.validade < hoje() ? '<span class="sub" style="color:var(--crit)">vencido</span>' : ''}</td>
+          <td class="sub" style="margin:0">${esc(o.condicoes||'—')}</td>
+          <td>${o.arquivo_path ? `<button class="btn" style="font-size:11.4px;padding:3px 7px" onclick="verOrcamento('${o.id}')">ver</button>` : '<span class="sub" style="margin:0">sem anexo</span>'}</td>
+          <td style="white-space:nowrap">${o.escolhido ? '' : `<button class="btn ok" style="font-size:11.4px;padding:3px 7px"
+              onclick="escolherOrc('${o.id}','${i.id}')">Escolher</button>`}
+            <button class="btn" style="font-size:11.4px;padding:3px 7px" onclick="tirarOrc('${o.id}')">×</button></td>
+        </tr>`).join('')}</tbody></table>`
+      : '<div class="sub" style="margin:0 0 10px">Nenhum orçamento ainda. Peça pelo menos dois: é a única forma de saber se o primeiro estava caro.</div>'}
+      <form onsubmit="novoOrcamento(event,'${i.id}')" style="display:flex;gap:7px;flex-wrap:wrap;align-items:flex-end">
+        <input name="fornecedor" required placeholder="fornecedor" style="min-width:160px;font-size:12px">
+        <input name="valor" required inputmode="decimal" placeholder="valor" style="width:110px;font-size:12px">
+        <input name="prazo" type="number" placeholder="dias" style="width:80px;font-size:12px" title="prazo de entrega, em dias">
+        <input name="validade" type="date" style="font-size:12px" title="até quando o orçamento vale">
+        <input name="condicoes" placeholder="pagamento, garantia…" style="flex:1;min-width:160px;font-size:12px">
+        <label class="sub" style="margin:0;display:flex;align-items:center;gap:5px">papel:
+          <input name="arquivo" type="file" accept="application/pdf,image/*" style="font-size:11.5px"></label>
+        <button class="btn ok" type="submit" style="font-size:11.6px">Guardar orçamento</button>
+        <span class="sub" id="or-st-${i.id}" style="margin:0"></span>
+      </form>
+      <form onsubmit="gastoCasa(event,'${i.id}')" style="display:flex;gap:7px;flex-wrap:wrap;align-items:flex-end;margin-top:9px;border-top:1px solid var(--ln);padding-top:9px">
+        <span class="sub" style="margin:0">pagou alguma coisa deste item?</span>
+        <input name="valor" required inputmode="decimal" placeholder="valor pago" style="width:120px;font-size:12px">
+        <input name="data" type="date" value="${hoje()}" style="font-size:12px">
+        <input name="descricao" placeholder="o que foi (sinal, parcela, entrega…)" style="flex:1;min-width:180px;font-size:12px">
+        <button class="btn" type="submit" style="font-size:11.6px">Lançar gasto</button>
+        <span class="sub" id="ga-st-${i.id}" style="margin:0"></span>
+      </form>
+    </div></td></tr>`;
+}
+
+async function telaCasa(){
+  await carregarCasa();
+  const vivos = CASA.itens.filter(i => i.situacao !== 'cancelado');
+  const prevTotal = vivos.reduce((a,i)=>a+previstoItem(i),0);
+  const gastoTotal = vivos.reduce((a,i)=>a+gastoItem(i.id),0);
+  const atrasados = vivos.filter(atrasadoItem);
+  const aOrcar = vivos.filter(i => i.situacao === 'a_orcar');
+  const lista = CASAFILTRO ? vivos.filter(i => i.ambiente_id === CASAFILTRO) : CASA.itens;
+  const compras = vivos.filter(i => (i.comprar_ate || i.entrega_prevista) && !['entregue','pronto'].includes(i.situacao))
+    .sort((a,b) => String(a.entrega_prevista||a.comprar_ate).localeCompare(String(b.entrega_prevista||b.comprar_ate)));
+
+  app.innerHTML = menu('casa') + `
+  <main><h1>A casa</h1>
+  <p class="meta">A reforma e a mobília, ambiente por ambiente. O que está orçado, o que já foi pago e o que
+    ainda não chegou. Cada item guarda os orçamentos que você pediu — com o papel anexado, para comparar.</p>
+
+  <div class="kpis">
+    <div class="kpi"><div class="n" style="font-size:19px">${rs(prevTotal)}</div><div class="l">orçado no total</div></div>
+    <div class="kpi"><div class="n" style="font-size:19px">${rs(gastoTotal)}</div><div class="l">já pago</div></div>
+    <div class="kpi ${prevTotal - gastoTotal < 0 ? 'al' : ''}"><div class="n" style="font-size:19px">${rs(Math.max(0, prevTotal - gastoTotal))}</div><div class="l">ainda falta pagar</div></div>
+    <div class="kpi ${atrasados.length?'al':''}"><div class="n">${atrasados.length}</div><div class="l">entregas atrasadas</div></div>
+  </div>
+  ${prevTotal ? `<div style="height:8px;background:var(--ln);border-radius:5px;margin:-6px 0 16px;overflow:hidden">
+    <div style="height:100%;width:${Math.min(100, Math.round(gastoTotal/prevTotal*100))}%;background:${gastoTotal>prevTotal?'var(--crit)':'var(--good)'}"></div></div>` : ''}
+  ${aOrcar.length ? `<p class="nota"><b>${aOrcar.length} ite${aOrcar.length>1?'ns ainda não têm':'m ainda não tem'} orçamento.</b>
+    Enquanto não tiverem, o total acima está menor do que a realidade.</p>` : ''}
+
+  <div class="card"><h2>Ambientes</h2>
+    <p class="nota">Clique num ambiente para ver só o que é dele.</p>
+    ${CASA.amb.length ? `<table><thead><tr><th>Ambiente</th><th style="width:170px">Como está</th>
+      <th>Orçado</th><th>Pago</th><th>Falta</th><th>Itens</th></tr></thead><tbody>
+      ${CASA.amb.map(a => { const its = itensDoAmb(a.id);
+        const p = its.reduce((x,i)=>x+previstoItem(i),0), g = its.reduce((x,i)=>x+gastoItem(i.id),0);
+        return `<tr${CASAFILTRO===a.id?' style="background:rgba(42,120,214,.08)"':''}>
+        <td><a class="lnk" style="cursor:pointer" onclick="filtrarAmb('${a.id}')"><b>${esc(a.nome)}</b></a></td>
+        <td><select style="font-size:11.6px" onchange="mudarAmbiente('${a.id}','situacao',this.value)">
+          ${Object.entries(SITAMB).map(([k,r])=>`<option value="${k}" ${a.situacao===k?'selected':''}>${r}</option>`).join('')}
+          </select></td>
+        <td class="dt">${p ? rs(p) : '—'}</td><td class="dt">${g ? rs(g) : '—'}</td>
+        <td class="dt">${p - g > 0 ? rs(p-g) : '—'}</td>
+        <td>${its.length}</td></tr>`; }).join('')}
+    </tbody></table>` : '<div class="vazio" style="padding:0 18px 12px">Nenhum ambiente ainda.</div>'}
+    <form onsubmit="novoAmbiente(event)" style="display:flex;gap:8px;flex-wrap:wrap;padding:10px 18px 18px;align-items:flex-end">
+      <input name="nome" required placeholder="Ex.: cozinha, quarto do casal, área externa" style="flex:1;min-width:260px">
+      <button class="btn ok" type="submit">Acrescentar ambiente</button>
+      ${CASAFILTRO ? `<button class="btn" type="button" onclick="filtrarAmb('${CASAFILTRO}')">ver todos os itens</button>` : ''}
+      <span class="sub" id="ca-st" style="margin:0"></span>
+    </form></div>
+
+  <div class="card"><h2>O que falta${CASAFILTRO ? ' — ' + esc(CASA.amb.find(a=>a.id===CASAFILTRO)?.nome||'') : ''}</h2>
+    <p class="nota">Serviço, móvel, material — tudo entra aqui. <b>Orçamentos</b> abre o painel para guardar as
+      propostas, escolher uma e lançar o que já foi pago.</p>
+    ${lista.length ? `<table><thead><tr><th>O quê</th><th style="width:140px">Situação</th><th>Orçado</th>
+      <th>Pago</th><th>Entrega</th><th></th></tr></thead><tbody>
+      ${lista.map(linhaItemCasa).join('')}</tbody></table>`
+    : '<div class="vazio" style="padding:0 18px 12px">Nada cadastrado ainda.</div>'}
+    <form onsubmit="novoItemCasa(event)" style="display:flex;gap:8px;flex-wrap:wrap;padding:10px 18px 18px;align-items:flex-end">
+      <label style="display:flex;flex-direction:column;gap:3px;flex:2;min-width:220px">
+        <span class="sub" style="margin:0">O quê</span>
+        <input name="nome" required placeholder="Ex.: armário da cozinha, pintura da sala"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:140px">
+        <span class="sub" style="margin:0">Tipo</span>
+        <select name="tipo">${Object.entries(TIPOITEM).map(([k,r])=>`<option value="${k}">${r}</option>`).join('')}</select></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:180px">
+        <span class="sub" style="margin:0">Ambiente</span>
+        <select name="ambiente"><option value="">— a casa toda —</option>
+          ${CASA.amb.map(a=>`<option value="${a.id}" ${CASAFILTRO===a.id?'selected':''}>${esc(a.nome)}</option>`).join('')}</select></label>
+      <label style="display:flex;flex-direction:column;gap:3px;width:130px">
+        <span class="sub" style="margin:0">Estimativa (R$)</span>
+        <input name="previsto" inputmode="decimal" placeholder="se já tiver"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:150px">
+        <span class="sub" style="margin:0">Comprar até</span>
+        <input name="comprar_ate" type="date"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:150px">
+        <span class="sub" style="margin:0">Entrega prometida</span>
+        <input name="entrega" type="date"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:200px">
+        <span class="sub" style="margin:0">Observação</span>
+        <input name="descricao" placeholder="medidas, cor, referência…"></label>
+      <button class="btn ok" type="submit">Acrescentar</button>
+      <span class="sub" id="ci-st" style="margin:0"></span>
+    </form></div>
+
+  ${compras.length ? `<div class="card"><h2>Compras e entregas</h2>
+    <p class="nota">O que tem data marcada. Vermelho é promessa vencida — é a hora de cobrar o fornecedor.</p>
+    <table><thead><tr><th>Quando</th><th>O quê</th><th>Fornecedor</th><th>Situação</th><th>Marcar como</th></tr></thead><tbody>
+    ${compras.map(i => { const d = i.entrega_prevista || i.comprar_ate;
+      const q = dias(d);
+      return `<tr>
+      <td class="dt"><b>${br(d)}</b><span class="sub">${i.entrega_prevista ? 'entrega' : 'comprar até'} · ${
+        q < 0 ? 'há ' + (-q) + 'd' : (q === 0 ? 'hoje' : 'em ' + q + 'd')}</span></td>
+      <td>${esc(i.nome)}</td>
+      <td>${esc(i.fornecedor||'—')}</td>
+      <td><span class="pill ${atrasadoItem(i)?'crit':corItem(i.situacao)}">${atrasadoItem(i)?'atrasado':(SITITEM[i.situacao]||i.situacao)}</span></td>
+      <td><button class="btn ok" style="font-size:11.4px;padding:4px 8px"
+            onclick="mudarItem('${i.id}','situacao','entregue')">Chegou</button></td></tr>`; }).join('')}
+    </tbody></table></div>` : ''}
+  </main>` + rodape();
+}
+
+
+/* ------------------------------------------------------------------ rota */
+async function rota(){
+  const { data:{ user } } = await sb.auth.getUser();
+  if (!user) return telaLogin();
+  USER = user;
+  if (!FAM.id) {
+    try { await carregarFamilia(); } catch(e) { return erro(e.message); }
+    if (!FAM.id) return app.innerHTML = `<div class="login"><h1>Sem acesso</h1>
+      <p>O e-mail <b>${esc(user.email)}</b> ainda não faz parte desta área da família.
+      Peça a quem administra para cadastrar este endereço em <i>Quem somos</i>.</p>
+      <button class="btn" onclick="sb.auth.signOut().then(()=>location.reload())">Sair</button></div>`;
+  }
+  const h = location.hash || '#/dinheiro';
+  if (h.startsWith('#/casa'))     return telaCasa();
+  if (h.startsWith('#/familia'))  return telaFamiliaTela();
+  if (h.startsWith('#/extrato'))  return telaPessoal();
+  return telaPessoal();
+}
+window.addEventListener('hashchange', rota);
+sb.auth.onAuthStateChange((e) => { if (e === 'SIGNED_IN' || e === 'SIGNED_OUT') rota(); });
+rota();
+
+</script></body></html>
