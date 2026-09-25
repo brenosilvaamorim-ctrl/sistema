@@ -1300,45 +1300,74 @@ window.tirarLancamentoPessoal = async function(id){
 
 
 /* ================================================================== A CASA
-   Reforma, mobília e tudo o que ainda falta na casa nova. A régua é sempre a
-   mesma: quanto foi orçado, quanto já saiu do bolso, e o que ainda não chegou.
-   Orçamento aqui não é número solto — é o papel do fornecedor, anexado, para
-   comparar lado a lado antes de decidir. */
+   Reforma, mobília e tudo o que ainda falta na casa nova.
+   Três perguntas mandam aqui, e elas são diferentes entre si:
+     quanto custa       → comparar propostas lado a lado, não só o número;
+     quanto já saiu     → o que foi pago de verdade, por item e por ambiente;
+     até quando se paga → parcela e mês da última, porque é isso que aperta.
+   O que já foi contratado ou comprado aparece em verde: bate o olho e você vê
+   o que já está resolvido e o que ainda está no ar. */
 const SITAMB = { a_fazer:'a fazer', andamento:'em andamento', pronto:'pronto' };
 const SITITEM = { a_orcar:'a orçar', orcado:'orçado', contratado:'contratado',
                   comprado:'comprado', entregue:'entregue', pronto:'pronto', cancelado:'cancelado' };
 const TIPOITEM = { servico:'serviço', movel:'móvel', material:'material', eletro:'eletro', outro:'outro' };
-const corItem = s => s === 'pronto' || s === 'entregue' ? 'good'
-  : s === 'cancelado' ? 'cin' : s === 'a_orcar' ? 'warn' : 'serie';
-let CASA = { amb:[], itens:[], orc:[], gastos:{} }, CASAFILTRO = null, CASAMB = null;
+const FORMAS = ['à vista','cartão de crédito','boleto','pix','financiado','a combinar'];
+/* Fechado = decidido e com dinheiro comprometido. É o que fica verde. */
+const FECHADO = ['contratado','comprado','entregue','pronto'];
+const fechado = i => FECHADO.includes(i.situacao);
+const corItem = s => ['pronto','entregue'].includes(s) ? 'good'
+  : s === 'cancelado' ? 'cin' : s === 'a_orcar' ? 'warn' : s === 'orcado' ? 'serie' : 'good';
+const VERDE = 'background:rgba(12,163,12,.10);border-left:3px solid var(--good)';
+
+let CASA = { amb:[], itens:[], orc:[], gastos:{}, lancs:{} }, CASAFILTRO = null;
+
+const addMeses = (d, n) => {
+  if (!d) return null;
+  const [y,m,dd] = String(d).slice(0,10).split('-').map(Number);
+  const t = new Date(Date.UTC(y, m - 1 + n, 1));
+  const ultimo = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth()+1, 0)).getUTCDate();
+  t.setUTCDate(Math.min(dd, ultimo));
+  return t.toISOString().slice(0,10);
+};
+/* O total de uma proposta parcelada é entrada + parcelas — e quase nunca é
+   igual ao "valor à vista". Comparar sem isso é comparar coisas diferentes. */
+const totalOrc = o => (o.parcelas && o.valor_parcela)
+  ? Number(o.entrada || 0) + Number(o.parcelas) * Number(o.valor_parcela)
+  : Number(o.valor || 0);
+const ultimaOrc = o => (o.primeira_parcela && o.parcelas) ? addMeses(o.primeira_parcela, Number(o.parcelas) - 1) : null;
+const parcelaTexto = x => (x.parcelas && x.valor_parcela)
+  ? `${x.parcelas}× ${rs(x.valor_parcela)}` : 'à vista';
 
 async function carregarCasa(){
   const [am, it, or_, ga] = await Promise.all([
     sb.from('casa_ambiente').select('*').order('ordem').order('nome'),
     sb.from('casa_item').select('*').order('criado_em'),
     sb.from('casa_orcamento').select('*').order('valor'),
-    sb.from('pessoal_lancamento').select('casa_item_id,valor,data,descricao')
-      .not('casa_item_id','is',null).limit(5000),
+    sb.from('pessoal_lancamento').select('id,casa_item_id,valor,data,descricao')
+      .not('casa_item_id','is',null).order('data',{ascending:false}).limit(5000),
   ]);
-  const gastos = {};
-  (ga.data||[]).forEach(l => { gastos[l.casa_item_id] = (gastos[l.casa_item_id]||0) + Number(l.valor); });
-  CASA = { amb: am.data||[], itens: it.data||[], orc: or_.data||[], gastos };
+  const gastos = {}, lancs = {};
+  (ga.data||[]).forEach(l => {
+    gastos[l.casa_item_id] = (gastos[l.casa_item_id]||0) + Number(l.valor);
+    (lancs[l.casa_item_id] = lancs[l.casa_item_id] || []).push(l);
+  });
+  CASA = { amb: am.data||[], itens: it.data||[], orc: or_.data||[], gastos, lancs };
   return CASA;
 }
 const orcDoItem = id => CASA.orc.filter(o => o.item_id === id);
 const gastoItem  = id => CASA.gastos[id] || 0;
-/* O previsto de um item é o orçamento escolhido; se nenhum foi escolhido ainda,
-   vale o valor que você estimou; e se não há nem estimativa, o menor orçamento. */
 function previstoItem(i){
-  const esc_ = orcDoItem(i.id).find(o => o.escolhido);
-  if (esc_) return Number(esc_.valor);
+  const e = orcDoItem(i.id).find(o => o.escolhido);
+  if (e) return totalOrc(e);
   if (i.valor_previsto != null) return Number(i.valor_previsto);
-  const l = orcDoItem(i.id).map(o => Number(o.valor)).sort((a,b)=>a-b);
+  const l = orcDoItem(i.id).map(totalOrc).sort((a,b)=>a-b);
   return l.length ? l[0] : 0;
 }
 const itensDoAmb = id => CASA.itens.filter(i => i.ambiente_id === id && i.situacao !== 'cancelado');
 const atrasadoItem = i => i.entrega_prevista && !i.entregue_em
   && !['entregue','pronto','cancelado'].includes(i.situacao) && i.entrega_prevista < hoje();
+/* Parcelamento ainda correndo: é o que compromete os meses à frente. */
+const pagando = i => i.parcelas && i.valor_parcela && i.ultima_parcela && i.ultima_parcela >= hoje();
 
 window.novoAmbiente = async (ev) => {
   ev.preventDefault();
@@ -1354,17 +1383,25 @@ window.mudarAmbiente = async (id, campo, valor) => {
   if (error) return alert(error.message);
   telaCasa();
 };
+window.tirarAmbiente = async (id) => {
+  const a = CASA.amb.find(x => x.id === id); if (!a) return;
+  const n = itensDoAmb(id).length;
+  if (n) return alert('Este ambiente ainda tem ' + n + ' item(ns). Mova ou cancele antes de apagar.');
+  if (!confirm('Apagar o ambiente "' + a.nome + '"?')) return;
+  await sb.from('casa_ambiente').delete().eq('id', id);
+  telaCasa();
+};
 window.novoItemCasa = async (ev) => {
   ev.preventDefault();
   const f = ev.target, v = n => (f.elements[n]?.value || '').trim() || null;
   const st = document.getElementById('ci-st'); st.style.color='var(--i3)'; st.textContent = 'gravando…';
-  const { error } = await sb.from('casa_item').insert({
+  const { data, error } = await sb.from('casa_item').insert({
     familia_id: FAM.id, ambiente_id: v('ambiente'), tipo: v('tipo') || 'servico',
     nome: v('nome'), descricao: v('descricao'),
     valor_previsto: numOuNulo(v('previsto')), comprar_ate: v('comprar_ate'),
-    entrega_prevista: v('entrega'), fornecedor: v('fornecedor') });
+    entrega_prevista: v('entrega') }).select('id').single();
   if (error) { st.style.color='var(--crit)'; st.textContent = 'erro: ' + error.message; return; }
-  telaCasa();
+  location.hash = '#/item/' + data.id;
 };
 window.mudarItem = async (id, campo, valor) => {
   const campos = { [campo]: valor === '' ? null : valor, atualizado_em: new Date().toISOString() };
@@ -1374,30 +1411,32 @@ window.mudarItem = async (id, campo, valor) => {
   }
   const { error } = await sb.from('casa_item').update(campos).eq('id', id);
   if (error) return alert(error.message);
-  telaCasa();
+  if (location.hash.startsWith('#/item/')) telaItemCasa(id); else telaCasa();
 };
 window.tirarItem = async (id) => {
   const i = CASA.itens.find(x => x.id === id);
   if (!confirm('Cancelar "' + (i?.nome||'') + '"? Ele sai das contas, mas o histórico fica.')) return;
   await sb.from('casa_item').update({ situacao:'cancelado' }).eq('id', id);
-  telaCasa();
+  if (location.hash.startsWith('#/item/')) location.hash = '#/casa'; else telaCasa();
 };
-window.abrirOrc = (id) => {
-  const el = document.getElementById('orc'+id); if (!el) return;
-  el.style.display = el.style.display === 'none' ? 'block' : 'none';
-};
+
+/* ------------------------------------------------------------ orçamentos */
 window.novoOrcamento = async (ev, itemId) => {
   ev.preventDefault();
   const f = ev.target, v = n => (f.elements[n]?.value || '').trim() || null;
-  const st = document.getElementById('or-st-' + itemId);
+  const st = document.getElementById('or-st');
   st.style.color = 'var(--i3)'; st.textContent = 'gravando…';
   const arq = f.elements['arquivo']?.files?.[0] || null;
   if (arq && arq.size > 15 * 1024 * 1024) { st.style.color='var(--crit)';
     return st.textContent = 'arquivo grande demais (máximo 15 MB)'; }
   const { data, error } = await sb.from('casa_orcamento').insert({
-    familia_id: FAM.id, item_id: itemId, fornecedor: v('fornecedor'),
-    valor: numOuNulo(v('valor')) || 0, prazo_dias: v('prazo') ? Number(v('prazo')) : null,
-    validade: v('validade'), condicoes: v('condicoes') }).select('id').single();
+    familia_id: FAM.id, item_id: itemId, fornecedor: v('fornecedor'), contato: v('contato'),
+    valor: numOuNulo(v('valor')) || 0, entrada: numOuNulo(v('entrada')),
+    parcelas: v('parcelas') ? Number(v('parcelas')) : null,
+    valor_parcela: numOuNulo(v('valor_parcela')),
+    primeira_parcela: v('primeira_parcela'), forma: v('forma'),
+    prazo_dias: v('prazo') ? Number(v('prazo')) : null,
+    validade: v('validade'), condicoes: v('condicoes'), link: v('link') }).select('id').single();
   if (error) { st.style.color='var(--crit)'; st.textContent = 'erro: ' + error.message; return; }
   if (arq) {
     st.textContent = 'enviando ' + arq.name + '…';
@@ -1407,7 +1446,10 @@ window.novoOrcamento = async (ev, itemId) => {
       st.textContent = 'o orçamento foi gravado, mas o arquivo falhou: ' + up.error.message; return; }
     await sb.from('casa_orcamento').update({ arquivo_path: caminho, arquivo_nome: arq.name }).eq('id', data.id);
   }
-  telaCasa();
+  /* Pediu orçamento: o item deixa de estar "a orçar". */
+  const i = CASA.itens.find(x => x.id === itemId);
+  if (i && i.situacao === 'a_orcar') await sb.from('casa_item').update({ situacao:'orcado' }).eq('id', itemId);
+  telaItemCasa(itemId);
 };
 window.verOrcamento = async (id) => {
   const o = CASA.orc.find(x => x.id === id); if (!o?.arquivo_path) return;
@@ -1415,31 +1457,46 @@ window.verOrcamento = async (id) => {
   if (error) return alert('Não consegui abrir: ' + error.message);
   window.open(data.signedUrl, '_blank', 'noreferrer');
 };
-/* Escolher um orçamento é uma decisão: ela fixa o previsto do item e marca o
-   fornecedor. Os outros continuam guardados, para você lembrar do que recusou. */
+/* Escolher é fechar: o item vira contrato e herda as condições da proposta —
+   inclusive em quantas vezes e quando cai a última parcela. */
 window.escolherOrc = async (id, itemId) => {
   const o = CASA.orc.find(x => x.id === id); if (!o) return;
   await sb.from('casa_orcamento').update({ escolhido:false }).eq('item_id', itemId);
   await sb.from('casa_orcamento').update({ escolhido:true }).eq('id', id);
   const i = CASA.itens.find(x => x.id === itemId);
-  const campos = { valor_previsto: o.valor, fornecedor: o.fornecedor, atualizado_em: new Date().toISOString() };
+  const campos = {
+    valor_previsto: totalOrc(o), fornecedor: o.fornecedor, contato: o.contato,
+    orcamento_id: o.id, parcelas: o.parcelas, valor_parcela: o.valor_parcela,
+    entrada: o.entrada, primeira_parcela: o.primeira_parcela,
+    ultima_parcela: ultimaOrc(o), forma: o.forma,
+    contratado_em: i?.contratado_em || hoje(),
+    atualizado_em: new Date().toISOString(),
+  };
   if (i && ['a_orcar','orcado'].includes(i.situacao)) campos.situacao = 'contratado';
+  if (o.prazo_dias && i && !i.entrega_prevista) campos.entrega_prevista = addDias(hoje(), Number(o.prazo_dias));
   await sb.from('casa_item').update(campos).eq('id', itemId);
-  telaCasa();
+  telaItemCasa(itemId);
 };
-window.tirarOrc = async (id) => {
+const addDias = (d, n) => new Date(Date.parse(d + 'T00:00:00Z') + n*864e5).toISOString().slice(0,10);
+window.desfazerEscolha = async (itemId) => {
+  if (!confirm('Desfazer a escolha? O item volta a "orçado" e as condições de pagamento saem.')) return;
+  await sb.from('casa_orcamento').update({ escolhido:false }).eq('item_id', itemId);
+  await sb.from('casa_item').update({ situacao:'orcado', orcamento_id:null, parcelas:null,
+    valor_parcela:null, entrada:null, primeira_parcela:null, ultima_parcela:null,
+    forma:null, contratado_em:null, atualizado_em: new Date().toISOString() }).eq('id', itemId);
+  telaItemCasa(itemId);
+};
+window.tirarOrc = async (id, itemId) => {
   const o = CASA.orc.find(x => x.id === id); if (!o) return;
-  if (!confirm('Apagar o orçamento de ' + o.fornecedor + '?')) return;
+  if (!confirm('Apagar a proposta de ' + o.fornecedor + '?')) return;
   if (o.arquivo_path) await sb.storage.from('casa').remove([o.arquivo_path]);
   await sb.from('casa_orcamento').delete().eq('id', id);
-  telaCasa();
+  telaItemCasa(itemId);
 };
-/* O gasto da casa é lançamento como qualquer outro: entra no mês, some da
-   sobra e aparece no Dinheiro. A diferença é que ele sabe a que item pertence. */
 window.gastoCasa = async (ev, itemId) => {
   ev.preventDefault();
   const f = ev.target, v = n => (f.elements[n]?.value || '').trim() || null;
-  const st = document.getElementById('ga-st-' + itemId);
+  const st = document.getElementById('ga-st');
   st.style.color = 'var(--i3)'; st.textContent = 'lançando…';
   const i = CASA.itens.find(x => x.id === itemId);
   const { error } = await sb.from('pessoal_lancamento').insert({
@@ -1447,68 +1504,208 @@ window.gastoCasa = async (ev, itemId) => {
     data: v('data') || hoje(), casa_item_id: itemId,
     descricao: (v('descricao') || ('Casa — ' + (i?.nome || ''))), origem:'casa' });
   if (error) { st.style.color='var(--crit)'; st.textContent = 'erro: ' + error.message; return; }
-  telaCasa();
+  telaItemCasa(itemId);
+};
+window.tirarGastoCasa = async (id, itemId) => {
+  if (!confirm('Apagar este pagamento? Ele sai também do Dinheiro.')) return;
+  await sb.from('pessoal_lancamento').delete().eq('id', id);
+  telaItemCasa(itemId);
 };
 window.filtrarAmb = (id) => { CASAFILTRO = (CASAFILTRO === id ? null : id); telaCasa(); };
 
-function linhaItemCasa(i){
-  const prev = previstoItem(i), gas = gastoItem(i.id), orcs = orcDoItem(i.id);
+/* ------------------------------------------------- um item por dentro */
+async function telaItemCasa(id){
+  await carregarCasa();
+  const i = CASA.itens.find(x => x.id === id);
+  if (!i) return erro('item não encontrado');
+  const orcs = orcDoItem(id);
   const amb = CASA.amb.find(a => a.id === i.ambiente_id);
-  return `<tr${i.situacao==='cancelado'?' style="opacity:.45"':''}>
-    <td><b>${esc(i.nome)}</b>
-      <span class="sub">${TIPOITEM[i.tipo]||i.tipo}${amb ? ' · ' + esc(amb.nome) : ' · sem ambiente'}${
-        i.fornecedor ? ' · ' + esc(i.fornecedor) : ''}</span>
-      ${i.descricao ? `<span class="sub">${esc(i.descricao)}</span>` : ''}</td>
-    <td><select style="font-size:11.6px" onchange="mudarItem('${i.id}','situacao',this.value)">
-      ${Object.entries(SITITEM).map(([k,r])=>`<option value="${k}" ${i.situacao===k?'selected':''}>${r}</option>`).join('')}
-      </select></td>
-    <td class="dt">${prev ? rs(prev) : '—'}${orcs.length ? `<span class="sub">${orcs.length} orçamento${orcs.length>1?'s':''}</span>` : ''}</td>
-    <td class="dt">${gas ? rs(gas) : '—'}${prev && gas > prev ? '<span class="sub" style="color:var(--crit)">passou do orçado</span>' : ''}</td>
-    <td class="dt">${i.entrega_prevista ? br(i.entrega_prevista) : '—'}
-      ${atrasadoItem(i) ? '<span class="pill crit">atrasado</span>' : ''}
-      ${i.entregue_em ? `<span class="sub">chegou ${br(i.entregue_em)}</span>` : ''}</td>
-    <td style="white-space:nowrap">
-      <button class="btn" style="font-size:11.4px;padding:4px 8px" onclick="abrirOrc('${i.id}')">Orçamentos</button>
-      <button class="btn" style="font-size:11.4px;padding:4px 8px" onclick="tirarItem('${i.id}')">×</button></td>
-  </tr>
-  <tr id="orc${i.id}" style="display:none"><td colspan="6" style="background:var(--f2,rgba(0,0,0,.02))">
-    <div style="padding:10px 4px">
-      ${orcs.length ? `<table style="margin-bottom:10px"><thead><tr><th>Fornecedor</th><th>Valor</th>
-        <th>Prazo</th><th>Vale até</th><th>Condições</th><th>Papel</th><th></th></tr></thead><tbody>
-        ${orcs.map(o => `<tr${o.escolhido?' style="background:rgba(12,163,12,.08)"':''}>
-          <td><b>${esc(o.fornecedor)}</b>${o.escolhido?' <span class="pill good">escolhido</span>':''}</td>
-          <td class="dt">${rs(o.valor)}${prev && Number(o.valor) > prev ? `<span class="sub">+${rs(Number(o.valor)-prev)}</span>` : ''}</td>
-          <td>${o.prazo_dias ? o.prazo_dias + ' dias' : '—'}</td>
-          <td class="dt">${o.validade ? br(o.validade) : '—'}${o.validade && o.validade < hoje() ? '<span class="sub" style="color:var(--crit)">vencido</span>' : ''}</td>
-          <td class="sub" style="margin:0">${esc(o.condicoes||'—')}</td>
-          <td>${o.arquivo_path ? `<button class="btn" style="font-size:11.4px;padding:3px 7px" onclick="verOrcamento('${o.id}')">ver</button>` : '<span class="sub" style="margin:0">sem anexo</span>'}</td>
-          <td style="white-space:nowrap">${o.escolhido ? '' : `<button class="btn ok" style="font-size:11.4px;padding:3px 7px"
-              onclick="escolherOrc('${o.id}','${i.id}')">Escolher</button>`}
-            <button class="btn" style="font-size:11.4px;padding:3px 7px" onclick="tirarOrc('${o.id}')">×</button></td>
-        </tr>`).join('')}</tbody></table>`
-      : '<div class="sub" style="margin:0 0 10px">Nenhum orçamento ainda. Peça pelo menos dois: é a única forma de saber se o primeiro estava caro.</div>'}
-      <form onsubmit="novoOrcamento(event,'${i.id}')" style="display:flex;gap:7px;flex-wrap:wrap;align-items:flex-end">
-        <input name="fornecedor" required placeholder="fornecedor" style="min-width:160px;font-size:12px">
-        <input name="valor" required inputmode="decimal" placeholder="valor" style="width:110px;font-size:12px">
-        <input name="prazo" type="number" placeholder="dias" style="width:80px;font-size:12px" title="prazo de entrega, em dias">
-        <input name="validade" type="date" style="font-size:12px" title="até quando o orçamento vale">
-        <input name="condicoes" placeholder="pagamento, garantia…" style="flex:1;min-width:160px;font-size:12px">
-        <label class="sub" style="margin:0;display:flex;align-items:center;gap:5px">papel:
-          <input name="arquivo" type="file" accept="application/pdf,image/*" style="font-size:11.5px"></label>
-        <button class="btn ok" type="submit" style="font-size:11.6px">Guardar orçamento</button>
-        <span class="sub" id="or-st-${i.id}" style="margin:0"></span>
-      </form>
-      <form onsubmit="gastoCasa(event,'${i.id}')" style="display:flex;gap:7px;flex-wrap:wrap;align-items:flex-end;margin-top:9px;border-top:1px solid var(--ln);padding-top:9px">
-        <span class="sub" style="margin:0">pagou alguma coisa deste item?</span>
-        <input name="valor" required inputmode="decimal" placeholder="valor pago" style="width:120px;font-size:12px">
-        <input name="data" type="date" value="${hoje()}" style="font-size:12px">
-        <input name="descricao" placeholder="o que foi (sinal, parcela, entrega…)" style="flex:1;min-width:180px;font-size:12px">
-        <button class="btn" type="submit" style="font-size:11.6px">Lançar gasto</button>
-        <span class="sub" id="ga-st-${i.id}" style="margin:0"></span>
-      </form>
-    </div></td></tr>`;
+  const esc_ = orcs.find(o => o.escolhido);
+  const pago = gastoItem(id), prev = previstoItem(i);
+  const menor = orcs.length ? Math.min(...orcs.map(totalOrc)) : null;
+  const menorParc = orcs.filter(o => o.valor_parcela).length
+    ? Math.min(...orcs.filter(o => o.valor_parcela).map(o => Number(o.valor_parcela))) : null;
+  const pagamentos = (CASA.lancs[id] || []);
+
+  const cartao = o => {
+    const tot = totalOrc(o), ult = ultimaOrc(o);
+    const eMenor = menor !== null && Math.abs(tot - menor) < 0.005;
+    const eMenorParc = menorParc !== null && o.valor_parcela && Math.abs(Number(o.valor_parcela) - menorParc) < 0.005;
+    return `<div class="card" style="margin:0;${o.escolhido ? VERDE : ''}">
+      <div style="padding:13px 15px">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
+          <div><b style="font-size:15px">${esc(o.fornecedor)}</b>
+            ${o.contato ? `<span class="sub">${esc(o.contato)}</span>` : ''}
+            ${o.link ? `<span class="sub"><a class="lnk" href="${esc(o.link)}" target="_blank" rel="noreferrer">página</a></span>` : ''}</div>
+          ${o.escolhido ? '<span class="pill good">escolhido</span>' : ''}
+        </div>
+        <div style="font-size:22px;margin:9px 0 2px"><b>${rs(tot)}</b></div>
+        <div class="sub" style="margin:0">${parcelaTexto(o)}${
+          o.entrada ? ' · entrada ' + rs(o.entrada) : ''}${
+          o.valor && Math.abs(Number(o.valor) - tot) > 0.005 ? ' · à vista ' + rs(o.valor) : ''}</div>
+        <div style="margin:8px 0;display:flex;gap:5px;flex-wrap:wrap">
+          ${eMenor ? '<span class="pill good">menor total</span>' : ''}
+          ${eMenorParc && orcs.length > 1 ? '<span class="pill serie">menor parcela</span>' : ''}
+          ${o.validade && o.validade < hoje() ? '<span class="pill crit">proposta vencida</span>' : ''}
+        </div>
+        <table style="font-size:12.6px"><tbody>
+          <tr><td class="sub" style="margin:0;padding:4px 0;border:0">entrega</td><td style="padding:4px 0;border:0;text-align:right">${o.prazo_dias ? o.prazo_dias + ' dias' : '—'}</td></tr>
+          <tr><td class="sub" style="margin:0;padding:4px 0;border:0">última parcela</td><td style="padding:4px 0;border:0;text-align:right">${ult ? br(ult) : '—'}</td></tr>
+          <tr><td class="sub" style="margin:0;padding:4px 0;border:0">forma</td><td style="padding:4px 0;border:0;text-align:right">${esc(o.forma||'—')}</td></tr>
+          <tr><td class="sub" style="margin:0;padding:4px 0;border:0">vale até</td><td style="padding:4px 0;border:0;text-align:right">${o.validade ? br(o.validade) : '—'}</td></tr>
+        </tbody></table>
+        ${o.condicoes ? `<div class="sub" style="margin-top:6px">${esc(o.condicoes)}</div>` : ''}
+        <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
+          ${o.arquivo_path ? `<button class="btn" style="font-size:11.6px" onclick="verOrcamento('${o.id}')">Ver o papel</button>`
+            : '<span class="sub" style="margin:0;align-self:center">sem anexo</span>'}
+          ${o.escolhido ? `<button class="btn" style="font-size:11.6px" onclick="desfazerEscolha('${i.id}')">Desfazer</button>`
+            : `<button class="btn ok" style="font-size:11.6px" onclick="escolherOrc('${o.id}','${i.id}')">Escolher esta</button>`}
+          <button class="btn" style="font-size:11.6px" onclick="tirarOrc('${o.id}','${i.id}')">×</button>
+        </div></div></div>`;
+  };
+
+  app.innerHTML = menu('casa') + `
+  <main><p class="meta"><a class="lnk" href="#/casa">← voltar para a casa</a></p>
+  <h1>${esc(i.nome)} <span class="pill ${corItem(i.situacao)}" style="vertical-align:middle">${SITITEM[i.situacao]||i.situacao}</span></h1>
+  <p class="meta">${TIPOITEM[i.tipo]||i.tipo}${amb ? ' · ' + esc(amb.nome) : ' · a casa toda'}${
+    i.descricao ? ' · ' + esc(i.descricao) : ''}</p>
+
+  <div class="kpis">
+    <div class="kpi" ${fechado(i)?`style="${VERDE}"`:''}><div class="n" style="font-size:19px">${prev ? rs(prev) : '—'}</div><div class="l">${esc_ ? 'fechado por' : 'previsto'}</div></div>
+    <div class="kpi"><div class="n" style="font-size:19px">${pago ? rs(pago) : '—'}</div><div class="l">já pago</div></div>
+    <div class="kpi"><div class="n" style="font-size:19px">${i.valor_parcela ? rs(i.valor_parcela) : '—'}</div><div class="l">${i.parcelas ? 'parcela (de ' + i.parcelas + ')' : 'sem parcelamento'}</div></div>
+    <div class="kpi ${atrasadoItem(i)?'al':''}"><div class="n" style="font-size:19px">${i.ultima_parcela ? br(i.ultima_parcela) : (i.entrega_prevista ? br(i.entrega_prevista) : '—')}</div><div class="l">${i.ultima_parcela ? 'última parcela' : 'entrega prevista'}</div></div>
+  </div>
+
+  <div class="card"><h2>As propostas ${orcs.length ? `<span class="sub" style="display:inline;margin:0">(${orcs.length})</span>` : ''}</h2>
+    <p class="nota">Lado a lado, pelo que importa: o <b>total</b> (entrada + parcelas, não o preço de vitrine),
+      a parcela, o prazo de entrega e até quando a proposta vale. A escolhida fica verde.</p>
+    ${orcs.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:12px;padding:0 18px 16px">
+      ${orcs.slice().sort((a,b)=>totalOrc(a)-totalOrc(b)).map(cartao).join('')}</div>
+    ${orcs.length > 1 ? `<div style="padding:0 18px 18px"><table><thead><tr><th>Loja / profissional</th>
+      <th>Total</th><th>Parcela</th><th>Entrada</th><th>Última parcela</th><th>Entrega</th><th>Diferença</th></tr></thead><tbody>
+      ${orcs.slice().sort((a,b)=>totalOrc(a)-totalOrc(b)).map(o => `<tr${o.escolhido?` style="${VERDE}"`:''}>
+        <td><b>${esc(o.fornecedor)}</b>${o.contato?`<span class="sub">${esc(o.contato)}</span>`:''}</td>
+        <td class="dt">${rs(totalOrc(o))}</td>
+        <td class="dt">${parcelaTexto(o)}</td>
+        <td class="dt">${o.entrada ? rs(o.entrada) : '—'}</td>
+        <td class="dt">${ultimaOrc(o) ? br(ultimaOrc(o)) : '—'}</td>
+        <td>${o.prazo_dias ? o.prazo_dias + ' dias' : '—'}</td>
+        <td class="dt">${totalOrc(o) - menor < 0.005 ? '<span class="pill good">o mais barato</span>' : '+ ' + rs(totalOrc(o) - menor)}</td>
+      </tr>`).join('')}</tbody></table></div>` : ''}`
+    : '<div class="vazio" style="padding:0 18px 12px">Nenhuma proposta ainda. Peça pelo menos duas: é a única forma de saber se a primeira estava cara.</div>'}
+
+    <form onsubmit="novoOrcamento(event,'${i.id}')" style="display:flex;gap:9px;flex-wrap:wrap;padding:6px 18px 18px;align-items:flex-end;border-top:1px solid var(--ln)">
+      <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:190px">
+        <span class="sub" style="margin:0">Loja ou profissional</span>
+        <input name="fornecedor" required placeholder="Ex.: Marcenaria Silva"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:170px">
+        <span class="sub" style="margin:0">Contato</span>
+        <input name="contato" placeholder="telefone, vendedor"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;width:140px">
+        <span class="sub" style="margin:0">Valor à vista</span>
+        <input name="valor" inputmode="decimal" placeholder="R$"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;width:120px">
+        <span class="sub" style="margin:0">Entrada</span>
+        <input name="entrada" inputmode="decimal" placeholder="se houver"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;width:100px">
+        <span class="sub" style="margin:0">Parcelas</span>
+        <input name="parcelas" type="number" min="1" placeholder="nº"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;width:140px">
+        <span class="sub" style="margin:0">Valor da parcela</span>
+        <input name="valor_parcela" inputmode="decimal" placeholder="R$"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:150px">
+        <span class="sub" style="margin:0">1ª parcela em</span>
+        <input name="primeira_parcela" type="date"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:150px">
+        <span class="sub" style="margin:0">Forma</span>
+        <select name="forma"><option value="">—</option>${FORMAS.map(f=>`<option>${f}</option>`).join('')}</select></label>
+      <label style="display:flex;flex-direction:column;gap:3px;width:110px">
+        <span class="sub" style="margin:0">Entrega (dias)</span>
+        <input name="prazo" type="number" min="0"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:150px">
+        <span class="sub" style="margin:0">Proposta vale até</span>
+        <input name="validade" type="date"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:200px">
+        <span class="sub" style="margin:0">Condições</span>
+        <input name="condicoes" placeholder="garantia, montagem, frete…"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:180px">
+        <span class="sub" style="margin:0">Link (site, catálogo)</span>
+        <input name="link" type="url" placeholder="https://"></label>
+      <label class="sub" style="margin:0;display:flex;align-items:center;gap:6px">Papel do orçamento:
+        <input name="arquivo" type="file" accept="application/pdf,image/*" style="font-size:12px"></label>
+      <button class="btn ok" type="submit">Guardar proposta</button>
+      <span class="sub" id="or-st" style="margin:0"></span>
+    </form></div>
+
+  <div class="card" ${fechado(i)?`style="${VERDE}"`:''}><h2>O contrato</h2>
+    <p class="nota">${esc_ ? 'Preenchido a partir da proposta escolhida. Dá para ajustar à mão se o combinado mudou.'
+      : 'Ainda não há proposta escolhida. Você pode preencher à mão se fechou sem orçamento formal.'}</p>
+    <div style="display:flex;gap:9px;flex-wrap:wrap;padding:0 18px 18px;align-items:flex-end">
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:170px">
+        <span class="sub" style="margin:0">Situação</span>
+        <select onchange="mudarItem('${i.id}','situacao',this.value)">
+          ${Object.entries(SITITEM).map(([k,r])=>`<option value="${k}" ${i.situacao===k?'selected':''}>${r}</option>`).join('')}</select></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:190px">
+        <span class="sub" style="margin:0">Com quem</span>
+        <input value="${esc(i.fornecedor||'')}" onchange="mudarItem('${i.id}','fornecedor',this.value)"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:160px">
+        <span class="sub" style="margin:0">Contato</span>
+        <input value="${esc(i.contato||'')}" onchange="mudarItem('${i.id}','contato',this.value)"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;width:100px">
+        <span class="sub" style="margin:0">Parcelas</span>
+        <input type="number" min="1" value="${i.parcelas ?? ''}" onchange="mudarItem('${i.id}','parcelas',this.value)"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;width:140px">
+        <span class="sub" style="margin:0">Valor da parcela</span>
+        <input inputmode="decimal" value="${i.valor_parcela ?? ''}" onchange="mudarItem('${i.id}','valor_parcela',this.value)"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:150px">
+        <span class="sub" style="margin:0">1ª parcela</span>
+        <input type="date" value="${i.primeira_parcela||''}" onchange="mudarItem('${i.id}','primeira_parcela',this.value)"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:150px">
+        <span class="sub" style="margin:0">Última parcela</span>
+        <input type="date" value="${i.ultima_parcela||''}" onchange="mudarItem('${i.id}','ultima_parcela',this.value)"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:150px">
+        <span class="sub" style="margin:0">Entrega prevista</span>
+        <input type="date" value="${i.entrega_prevista||''}" onchange="mudarItem('${i.id}','entrega_prevista',this.value)"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:150px">
+        <span class="sub" style="margin:0">Chegou em</span>
+        <input type="date" value="${i.entregue_em||''}" onchange="mudarItem('${i.id}','entregue_em',this.value)"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:180px">
+        <span class="sub" style="margin:0">Ambiente</span>
+        <select onchange="mudarItem('${i.id}','ambiente_id',this.value)">
+          <option value="">— a casa toda —</option>
+          ${CASA.amb.map(a=>`<option value="${a.id}" ${i.ambiente_id===a.id?'selected':''}>${esc(a.nome)}</option>`).join('')}</select></label>
+      <button class="btn" onclick="tirarItem('${i.id}')">Cancelar este item</button>
+    </div>
+    ${i.parcelas && i.valor_parcela ? `<p class="nota" style="padding-top:0">
+      ${i.parcelas}× de ${rs(i.valor_parcela)}${i.entrada ? ' com entrada de ' + rs(i.entrada) : ''} —
+      total de <b>${rs(Number(i.entrada||0) + Number(i.parcelas)*Number(i.valor_parcela))}</b>${
+      i.ultima_parcela ? `, última em <b>${br(i.ultima_parcela)}</b>` : ''}.</p>` : ''}</div>
+
+  <div class="card"><h2>O que já foi pago</h2>
+    ${pagamentos.length ? `<table><thead><tr><th>Quando</th><th>O quê</th><th>Valor</th><th></th></tr></thead><tbody>
+      ${pagamentos.map(l=>`<tr><td class="dt">${br(l.data)}</td><td>${esc(l.descricao||'—')}</td>
+        <td class="dt">${rs(l.valor)}</td>
+        <td><button class="btn" style="font-size:11.4px;padding:3px 7px" onclick="tirarGastoCasa('${l.id}','${i.id}')">×</button></td></tr>`).join('')}
+      <tr><td></td><td><b>total</b></td><td class="dt"><b>${rs(pago)}</b></td><td></td></tr>
+    </tbody></table>` : '<div class="vazio" style="padding:0 18px 12px">Nada pago ainda.</div>'}
+    <form onsubmit="gastoCasa(event,'${i.id}')" style="display:flex;gap:8px;flex-wrap:wrap;padding:10px 18px 18px;align-items:flex-end">
+      <label style="display:flex;flex-direction:column;gap:3px;width:140px">
+        <span class="sub" style="margin:0">Valor pago</span>
+        <input name="valor" required inputmode="decimal"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:150px">
+        <span class="sub" style="margin:0">Quando</span>
+        <input name="data" type="date" value="${hoje()}"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:220px">
+        <span class="sub" style="margin:0">O que foi</span>
+        <input name="descricao" placeholder="sinal, 1ª parcela, entrega…"></label>
+      <button class="btn ok" type="submit">Lançar no Dinheiro</button>
+      <span class="sub" id="ga-st" style="margin:0"></span>
+    </form></div>
+  </main>` + rodape();
 }
 
+/* ------------------------------------------------------------- a casa toda */
 async function telaCasa(){
   await carregarCasa();
   const vivos = CASA.itens.filter(i => i.situacao !== 'cancelado');
@@ -1516,40 +1713,68 @@ async function telaCasa(){
   const gastoTotal = vivos.reduce((a,i)=>a+gastoItem(i.id),0);
   const atrasados = vivos.filter(atrasadoItem);
   const aOrcar = vivos.filter(i => i.situacao === 'a_orcar');
-  const lista = CASAFILTRO ? vivos.filter(i => i.ambiente_id === CASAFILTRO) : CASA.itens;
+  const emParcelas = vivos.filter(pagando);
+  const mensal = emParcelas.reduce((a,i)=>a+Number(i.valor_parcela),0);
+  const ultimaGeral = emParcelas.map(i=>i.ultima_parcela).sort().pop();
+  const lista = CASAFILTRO ? CASA.itens.filter(i => i.ambiente_id === CASAFILTRO) : CASA.itens;
   const compras = vivos.filter(i => (i.comprar_ate || i.entrega_prevista) && !['entregue','pronto'].includes(i.situacao))
     .sort((a,b) => String(a.entrega_prevista||a.comprar_ate).localeCompare(String(b.entrega_prevista||b.comprar_ate)));
 
+  const linha = i => {
+    const prev = previstoItem(i), gas = gastoItem(i.id), orcs = orcDoItem(i.id);
+    const amb = CASA.amb.find(a => a.id === i.ambiente_id);
+    return `<tr style="${fechado(i)?VERDE:''}${i.situacao==='cancelado'?';opacity:.45':''}">
+      <td><a class="lnk" href="#/item/${i.id}"><b>${esc(i.nome)}</b></a>
+        <span class="sub">${TIPOITEM[i.tipo]||i.tipo}${amb ? ' · ' + esc(amb.nome) : ''}${
+          i.fornecedor ? ' · ' + esc(i.fornecedor) : ''}</span></td>
+      <td><span class="pill ${corItem(i.situacao)}">${SITITEM[i.situacao]||i.situacao}</span></td>
+      <td class="dt">${prev ? rs(prev) : '—'}<span class="sub">${orcs.length ? orcs.length + ' proposta' + (orcs.length>1?'s':'') : 'sem proposta'}</span></td>
+      <td class="dt">${i.valor_parcela ? parcelaTexto(i) : '—'}${
+        i.ultima_parcela ? `<span class="sub">até ${br(i.ultima_parcela)}</span>` : ''}</td>
+      <td class="dt">${gas ? rs(gas) : '—'}${prev && gas > prev + 0.005 ? '<span class="sub" style="color:var(--crit)">passou do fechado</span>' : ''}</td>
+      <td class="dt">${i.entrega_prevista ? br(i.entrega_prevista) : '—'}
+        ${atrasadoItem(i) ? '<span class="pill crit">atrasado</span>' : ''}</td>
+      <td><a class="btn" href="#/item/${i.id}" style="text-decoration:none;font-size:11.4px;padding:4px 8px">Abrir</a></td>
+    </tr>`;
+  };
+
   app.innerHTML = menu('casa') + `
   <main><h1>A casa</h1>
-  <p class="meta">A reforma e a mobília, ambiente por ambiente. O que está orçado, o que já foi pago e o que
-    ainda não chegou. Cada item guarda os orçamentos que você pediu — com o papel anexado, para comparar.</p>
+  <p class="meta">Ambiente por ambiente, o que falta, quanto custa e até quando se paga.
+    <b style="color:var(--good)">Em verde</b>, o que já está contratado ou comprado.</p>
 
   <div class="kpis">
     <div class="kpi"><div class="n" style="font-size:19px">${rs(prevTotal)}</div><div class="l">orçado no total</div></div>
     <div class="kpi"><div class="n" style="font-size:19px">${rs(gastoTotal)}</div><div class="l">já pago</div></div>
-    <div class="kpi ${prevTotal - gastoTotal < 0 ? 'al' : ''}"><div class="n" style="font-size:19px">${rs(Math.max(0, prevTotal - gastoTotal))}</div><div class="l">ainda falta pagar</div></div>
+    <div class="kpi"><div class="n" style="font-size:19px">${rs(Math.max(0, prevTotal - gastoTotal))}</div><div class="l">ainda falta pagar</div></div>
+    <div class="kpi ${mensal?'al':''}"><div class="n" style="font-size:19px">${mensal ? rs(mensal) : '—'}</div><div class="l">em parcelas por mês</div></div>
     <div class="kpi ${atrasados.length?'al':''}"><div class="n">${atrasados.length}</div><div class="l">entregas atrasadas</div></div>
   </div>
-  ${prevTotal ? `<div style="height:8px;background:var(--ln);border-radius:5px;margin:-6px 0 16px;overflow:hidden">
+  ${prevTotal ? `<div style="height:8px;background:var(--ln);border-radius:5px;margin:-6px 0 14px;overflow:hidden">
     <div style="height:100%;width:${Math.min(100, Math.round(gastoTotal/prevTotal*100))}%;background:${gastoTotal>prevTotal?'var(--crit)':'var(--good)'}"></div></div>` : ''}
-  ${aOrcar.length ? `<p class="nota"><b>${aOrcar.length} ite${aOrcar.length>1?'ns ainda não têm':'m ainda não tem'} orçamento.</b>
+  ${ultimaGeral ? `<p class="nota">Hoje a casa compromete <b>${rs(mensal)}</b> por mês em parcelas.
+    A última cai em <b>${br(ultimaGeral)}</b> — daí em diante esse dinheiro volta para o mês.</p>` : ''}
+  ${aOrcar.length ? `<p class="nota"><b>${aOrcar.length} ite${aOrcar.length>1?'ns ainda não têm':'m ainda não tem'} proposta.</b>
     Enquanto não tiverem, o total acima está menor do que a realidade.</p>` : ''}
 
   <div class="card"><h2>Ambientes</h2>
-    <p class="nota">Clique num ambiente para ver só o que é dele.</p>
-    ${CASA.amb.length ? `<table><thead><tr><th>Ambiente</th><th style="width:170px">Como está</th>
-      <th>Orçado</th><th>Pago</th><th>Falta</th><th>Itens</th></tr></thead><tbody>
+    <p class="nota">Clique no nome para ver só o que é dele.</p>
+    ${CASA.amb.length ? `<table><thead><tr><th>Ambiente</th><th style="width:160px">Como está</th>
+      <th>Orçado</th><th>Pago</th><th>Falta</th><th>Itens</th><th>Fechados</th><th></th></tr></thead><tbody>
       ${CASA.amb.map(a => { const its = itensDoAmb(a.id);
         const p = its.reduce((x,i)=>x+previstoItem(i),0), g = its.reduce((x,i)=>x+gastoItem(i.id),0);
-        return `<tr${CASAFILTRO===a.id?' style="background:rgba(42,120,214,.08)"':''}>
+        const fe = its.filter(fechado).length;
+        const tudo = its.length && fe === its.length;
+        return `<tr style="${tudo||a.situacao==='pronto'?VERDE:''}${CASAFILTRO===a.id?';outline:2px solid var(--serie)':''}">
         <td><a class="lnk" style="cursor:pointer" onclick="filtrarAmb('${a.id}')"><b>${esc(a.nome)}</b></a></td>
         <td><select style="font-size:11.6px" onchange="mudarAmbiente('${a.id}','situacao',this.value)">
           ${Object.entries(SITAMB).map(([k,r])=>`<option value="${k}" ${a.situacao===k?'selected':''}>${r}</option>`).join('')}
           </select></td>
         <td class="dt">${p ? rs(p) : '—'}</td><td class="dt">${g ? rs(g) : '—'}</td>
-        <td class="dt">${p - g > 0 ? rs(p-g) : '—'}</td>
-        <td>${its.length}</td></tr>`; }).join('')}
+        <td class="dt">${p - g > 0.005 ? rs(p-g) : '—'}</td>
+        <td>${its.length}</td>
+        <td>${its.length ? `${fe} de ${its.length}` : '—'}</td>
+        <td><button class="btn" style="font-size:11.4px;padding:3px 7px" onclick="tirarAmbiente('${a.id}')">×</button></td></tr>`; }).join('')}
     </tbody></table>` : '<div class="vazio" style="padding:0 18px 12px">Nenhum ambiente ainda.</div>'}
     <form onsubmit="novoAmbiente(event)" style="display:flex;gap:8px;flex-wrap:wrap;padding:10px 18px 18px;align-items:flex-end">
       <input name="nome" required placeholder="Ex.: cozinha, quarto do casal, área externa" style="flex:1;min-width:260px">
@@ -1559,16 +1784,15 @@ async function telaCasa(){
     </form></div>
 
   <div class="card"><h2>O que falta${CASAFILTRO ? ' — ' + esc(CASA.amb.find(a=>a.id===CASAFILTRO)?.nome||'') : ''}</h2>
-    <p class="nota">Serviço, móvel, material — tudo entra aqui. <b>Orçamentos</b> abre o painel para guardar as
-      propostas, escolher uma e lançar o que já foi pago.</p>
-    ${lista.length ? `<table><thead><tr><th>O quê</th><th style="width:140px">Situação</th><th>Orçado</th>
-      <th>Pago</th><th>Entrega</th><th></th></tr></thead><tbody>
-      ${lista.map(linhaItemCasa).join('')}</tbody></table>`
+    <p class="nota">Clique no nome para abrir o item: é lá que ficam as propostas lado a lado, o parcelamento e os pagamentos.</p>
+    ${lista.length ? `<table><thead><tr><th>O quê</th><th style="width:120px">Situação</th><th>Fechado por</th>
+      <th>Parcelas</th><th>Pago</th><th>Entrega</th><th></th></tr></thead><tbody>
+      ${lista.map(linha).join('')}</tbody></table>`
     : '<div class="vazio" style="padding:0 18px 12px">Nada cadastrado ainda.</div>'}
     <form onsubmit="novoItemCasa(event)" style="display:flex;gap:8px;flex-wrap:wrap;padding:10px 18px 18px;align-items:flex-end">
       <label style="display:flex;flex-direction:column;gap:3px;flex:2;min-width:220px">
         <span class="sub" style="margin:0">O quê</span>
-        <input name="nome" required placeholder="Ex.: armário da cozinha, pintura da sala"></label>
+        <input name="nome" required placeholder="Ex.: armários planejados da cozinha"></label>
       <label style="display:flex;flex-direction:column;gap:3px;min-width:140px">
         <span class="sub" style="margin:0">Tipo</span>
         <select name="tipo">${Object.entries(TIPOITEM).map(([k,r])=>`<option value="${k}">${r}</option>`).join('')}</select></label>
@@ -1588,19 +1812,30 @@ async function telaCasa(){
       <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:200px">
         <span class="sub" style="margin:0">Observação</span>
         <input name="descricao" placeholder="medidas, cor, referência…"></label>
-      <button class="btn ok" type="submit">Acrescentar</button>
+      <button class="btn ok" type="submit">Acrescentar e abrir</button>
       <span class="sub" id="ci-st" style="margin:0"></span>
     </form></div>
 
+  ${emParcelas.length ? `<div class="card"><h2>O que ainda está sendo pago</h2>
+    <p class="nota">Parcelamentos em curso. A soma é o que sai do mês por causa da casa.</p>
+    <table><thead><tr><th>O quê</th><th>Com quem</th><th>Parcela</th><th>Primeira</th><th>Última</th></tr></thead><tbody>
+    ${emParcelas.sort((a,b)=>String(a.ultima_parcela).localeCompare(String(b.ultima_parcela))).map(i=>`<tr style="${VERDE}">
+      <td><a class="lnk" href="#/item/${i.id}">${esc(i.nome)}</a></td>
+      <td>${esc(i.fornecedor||'—')}${i.contato?`<span class="sub">${esc(i.contato)}</span>`:''}</td>
+      <td class="dt">${parcelaTexto(i)}</td>
+      <td class="dt">${i.primeira_parcela?br(i.primeira_parcela):'—'}</td>
+      <td class="dt">${br(i.ultima_parcela)}</td></tr>`).join('')}
+    <tr><td colspan="2"><b>por mês</b></td><td class="dt"><b>${rs(mensal)}</b></td><td></td><td class="dt"><b>${br(ultimaGeral)}</b></td></tr>
+    </tbody></table></div>` : ''}
+
   ${compras.length ? `<div class="card"><h2>Compras e entregas</h2>
-    <p class="nota">O que tem data marcada. Vermelho é promessa vencida — é a hora de cobrar o fornecedor.</p>
-    <table><thead><tr><th>Quando</th><th>O quê</th><th>Fornecedor</th><th>Situação</th><th>Marcar como</th></tr></thead><tbody>
-    ${compras.map(i => { const d = i.entrega_prevista || i.comprar_ate;
-      const q = dias(d);
-      return `<tr>
+    <p class="nota">O que tem data marcada. Vermelho é promessa vencida — hora de cobrar o fornecedor.</p>
+    <table><thead><tr><th>Quando</th><th>O quê</th><th>Com quem</th><th>Situação</th><th></th></tr></thead><tbody>
+    ${compras.map(i => { const d = i.entrega_prevista || i.comprar_ate; const q = dias(d);
+      return `<tr style="${fechado(i)?VERDE:''}">
       <td class="dt"><b>${br(d)}</b><span class="sub">${i.entrega_prevista ? 'entrega' : 'comprar até'} · ${
         q < 0 ? 'há ' + (-q) + 'd' : (q === 0 ? 'hoje' : 'em ' + q + 'd')}</span></td>
-      <td>${esc(i.nome)}</td>
+      <td><a class="lnk" href="#/item/${i.id}">${esc(i.nome)}</a></td>
       <td>${esc(i.fornecedor||'—')}</td>
       <td><span class="pill ${atrasadoItem(i)?'crit':corItem(i.situacao)}">${atrasadoItem(i)?'atrasado':(SITITEM[i.situacao]||i.situacao)}</span></td>
       <td><button class="btn ok" style="font-size:11.4px;padding:4px 8px"
@@ -1623,6 +1858,7 @@ async function rota(){
       <button class="btn" onclick="sb.auth.signOut().then(()=>location.reload())">Sair</button></div>`;
   }
   const h = location.hash || '#/dinheiro';
+  if (h.startsWith('#/item/'))    return telaItemCasa(h.slice('#/item/'.length));
   if (h.startsWith('#/casa'))     return telaCasa();
   if (h.startsWith('#/familia'))  return telaFamiliaTela();
   if (h.startsWith('#/extrato'))  return telaPessoal();
