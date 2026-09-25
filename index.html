@@ -231,7 +231,7 @@ let ESC_NOME = 'Breno S. Amorim Advocacia', ESC_LOGO = null, ESC_ID = null, ESC_
    depois o que se escreve, depois a conta do escritório, e só no fim o sistema.
    Quem já tinha mexido na ordem continua com a dele — a troca abaixo só alcança
    quem nunca personalizou. */
-const MENU_PADRAO = [['inicio','Início'],['prazos','Prazos e publicações'],['agenda','Agenda'],['mensageria','Mensagens'],['captacao','Captação'],['clientes','Clientes'],['parceiros','Parceiros'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['minutas','Minutas'],['playbook','Playbook'],['documentos','Documentos'],['dicionario','Dicionário'],['aprender','Aprender'],['financeiro','Financeiro'],['metricas','Métricas'],['jurimetria','Jurimetria'],['projetos','Ideias e projetos'],['pessoal','Casa e família ↗'],['investir','Investir'],['manual','Manual'],['tutoriais','Tutoriais'],['regras','Regras'],['importar','Importar antigos'],['config','Configurações']];
+const MENU_PADRAO = [['inicio','Início'],['prazos','Prazos e publicações'],['agenda','Agenda'],['mensageria','Mensagens'],['whatsapp','Conversas do WhatsApp'],['captacao','Captação'],['clientes','Clientes'],['parceiros','Parceiros'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['minutas','Minutas'],['playbook','Playbook'],['documentos','Documentos'],['dicionario','Dicionário'],['aprender','Aprender'],['financeiro','Financeiro'],['metricas','Métricas'],['jurimetria','Jurimetria'],['projetos','Ideias e projetos'],['pessoal','Casa e família ↗'],['investir','Investir'],['manual','Manual'],['tutoriais','Tutoriais'],['regras','Regras'],['importar','Importar antigos'],['config','Configurações']];
 /* Ordem anterior, guardada só para reconhecer quem nunca mexeu no menu. */
 const MENU_ORDEM_ANTIGA = ['inicio','prazos','agenda','captacao','casos','processos','andamento','clientes','mensageria','metricas','jurimetria','financeiro','parceiros','minutas','playbook','aprender','dicionario','documentos','tutoriais','regras','importar','manual','investir','pessoal','config'];
 let MENUCFG = MENU_PADRAO.map(([k,r]) => ({ k, r, v:true }));
@@ -350,7 +350,7 @@ const grupoDe = k => (GRUPOS.find(([, ks]) => ks.includes(k)) || ['Outros'])[0];
    por último, o sistema. Cada grupo tem no máximo cinco itens, para caber no
    olho de uma vez. */
 const GRUPOS = [
-  ['Meu dia',           ['inicio','prazos','agenda','mensageria']],
+  ['Meu dia',           ['inicio','prazos','agenda','mensageria','whatsapp']],
   ['Pessoas',           ['captacao','clientes','parceiros']],
   ['Casos e processos', ['casos','processos','andamento']],
   ['Escrever',          ['minutas','playbook','documentos','dicionario','aprender']],
@@ -10119,6 +10119,8 @@ async function rota(){
   if(h.startsWith('#/andamento'))  return telaAndamento();
   if(h.startsWith('#/processos'))  return telaProcessos();
   if(h.startsWith('#/clientes'))   return telaClientes();
+  if(h.startsWith('#/whatsapp/'))   return telaWhatsApp(h.split('/')[2]);
+  if(h.startsWith('#/whatsapp'))    return telaWhatsApp();
   if(h.startsWith('#/mensageria/')) return telaMensageria(h.slice('#/mensageria/'.length));
   if(h.startsWith('#/mensageria')) return telaMensageria();
   if(h.startsWith('#/metricas'))   return telaMetricas();
@@ -10143,6 +10145,164 @@ async function rota(){
   if(h.startsWith('#/config'))     return telaConfig();
   return telaInicio();
 }
+/* ------------------------------------------------------- conversas do WhatsApp
+   A assistente atende os leads que chegam dos anúncios. Aqui você lê a conversa
+   inteira e, quando quiser, assume: ela se cala e quem escreve é você — pelo
+   mesmo número, sem mandar o cliente para lugar nenhum. */
+let WPP = { conversas: [], aberta: null, msgs: [], timer: null };
+
+const wppQuando = t => {
+  if (!t) return '—';
+  const d = new Date(t), ag = new Date();
+  const hm = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  return d.toDateString() === ag.toDateString() ? hm : `${br(d.toISOString())} ${hm}`;
+};
+const wppHorasDesde = t => t ? (Date.now() - Date.parse(t)) / 3600e3 : Infinity;
+
+async function telaWhatsApp(foco){
+  const { data, error } = await sb.from('bot_conversa')
+    .select('id,telefone,wa_nome,estado,urgencia,origem,lead_id,ficha_id,triagem_concluida_em,ultima_msg_em')
+    .order('ultima_msg_em', { ascending: false }).limit(60);
+  if (error) return erro(error.message);
+  WPP.conversas = data || [];
+  WPP.aberta = foco || WPP.conversas[0]?.id || null;
+  WPP.msgs = WPP.aberta ? await wppMensagens(WPP.aberta) : [];
+
+  const aguardando = WPP.conversas.filter(c => c.estado === 'humano').length;
+  const urgentes   = WPP.conversas.filter(c => c.urgencia === 'urgente').length;
+  const hojeQtd    = WPP.conversas.filter(c => String(c.ultima_msg_em||'').slice(0,10) === hoje()).length;
+
+  app.innerHTML = menu('whatsapp') + `
+  <main><h1>Conversas do WhatsApp</h1>
+  <p class="meta">Quem chega pelos anúncios fala primeiro com a assistente. Você acompanha aqui e assume quando quiser — o cliente continua no mesmo número.</p>
+  <div class="kpis">
+    <div class="kpi"><div class="n">${hojeQtd}</div><div class="l">conversas hoje</div></div>
+    <div class="kpi ${aguardando?'al':''}"><div class="n">${aguardando}</div><div class="l">com você (assistente calada)</div></div>
+    <div class="kpi ${urgentes?'al':''}"><div class="n">${urgentes}</div><div class="l">marcadas como urgentes</div></div>
+    <div class="kpi"><div class="n">${WPP.conversas.length}</div><div class="l">conversas no total</div></div>
+  </div>
+  <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
+    <div class="card" style="flex:1;min-width:260px;max-width:340px;padding:0;overflow:hidden">
+      ${WPP.conversas.length ? WPP.conversas.map(c => wppItemLista(c)).join('')
+        : '<div class="vazio" style="padding:18px">Nenhuma conversa ainda. Elas aparecem assim que alguém escrever para o número da assistente.</div>'}
+    </div>
+    <div class="card" style="flex:2;min-width:320px" id="wpp-conversa">${wppPainel()}</div>
+  </div>
+  </main>`;
+  wppRolarFim();
+  clearInterval(WPP.timer);
+  WPP.timer = setInterval(wppAtualizar, 15000);   // busca mensagens novas sozinho
+}
+
+function wppItemLista(c){
+  const sel = c.id === WPP.aberta;
+  const marca = c.urgencia === 'urgente' ? '<span class="tag crit">urgente</span>'
+              : c.estado === 'humano' ? '<span class="tag">com você</span>'
+              : c.triagem_concluida_em ? '<span class="tag good">triagem feita</span>' : '';
+  return `<a href="#/whatsapp/${c.id}" style="display:block;padding:11px 13px;border-bottom:1px solid var(--ln);
+    text-decoration:none;color:inherit;background:${sel?'var(--f2)':'transparent'}">
+    <div style="display:flex;justify-content:space-between;gap:8px">
+      <b style="font-size:13.4px">${esc(c.wa_nome || c.telefone)}</b>
+      <span class="sub" style="margin:0;white-space:nowrap">${wppQuando(c.ultima_msg_em)}</span>
+    </div>
+    <div class="sub" style="margin:2px 0 0">${esc(c.origem || 'WhatsApp')} ${marca}</div>
+  </a>`;
+}
+
+async function wppMensagens(id){
+  const { data } = await sb.from('bot_mensagem')
+    .select('id,direcao,tipo,texto,midia_path,criado_em')
+    .eq('conversa_id', id).order('criado_em').limit(300);
+  return data || [];
+}
+
+function wppPainel(){
+  const c = WPP.conversas.find(x => x.id === WPP.aberta);
+  if (!c) return '<div class="vazio">Escolha uma conversa ao lado.</div>';
+  const ultimaEntrada = [...WPP.msgs].reverse().find(m => m.direcao === 'entrada');
+  const horas = wppHorasDesde(ultimaEntrada?.criado_em);
+  const janela = horas < 24;
+  const restam = janela ? Math.max(0, Math.round(24 - horas)) : 0;
+  const humano = c.estado === 'humano';
+
+  const bolhas = WPP.msgs.map(m => {
+    const meu = m.direcao === 'saida';
+    const quem = m.tipo === 'humano' ? 'você' : meu ? 'assistente' : '';
+    return `<div style="display:flex;justify-content:${meu?'flex-end':'flex-start'};margin:6px 0">
+      <div style="max-width:78%;padding:8px 11px;border-radius:12px;font-size:13.4px;line-height:1.45;
+        background:${meu ? (m.tipo === 'humano' ? 'var(--ac)' : 'var(--f2)') : '#fff'};
+        color:${meu && m.tipo === 'humano' ? '#fff' : 'inherit'};border:1px solid var(--ln);white-space:pre-wrap">
+        ${esc(m.texto || '')}
+        <div class="sub" style="margin:3px 0 0;font-size:11px;opacity:.75;color:inherit">${quem ? quem + ' · ' : ''}${wppQuando(m.criado_em)}</div>
+      </div></div>`;
+  }).join('') || '<div class="vazio">Sem mensagens.</div>';
+
+  return `<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
+    <div>
+      <h2 style="margin:0">${esc(c.wa_nome || c.telefone)}</h2>
+      <p class="sub" style="margin:2px 0 0">${esc(c.telefone)} · ${esc(c.origem || 'WhatsApp')}
+        ${c.ficha_id ? `· <a class="lnk" href="#/ficha/${c.ficha_id}">ficha da triagem</a>` : ''}
+        ${c.lead_id ? '· <a class="lnk" href="#/captacao">ver na Captação</a>' : ''}</p>
+    </div>
+    <div style="display:flex;gap:7px">
+      ${humano
+        ? `<button class="btn" onclick="wppDevolver('${c.id}')">Devolver à assistente</button>`
+        : `<button class="btn" onclick="wppAssumir('${c.id}')">Assumir a conversa</button>`}
+    </div>
+  </div>
+  <div id="wpp-fio" style="max-height:52vh;overflow:auto;background:var(--f2);border:1px solid var(--ln);
+       border-radius:9px;padding:10px;margin:10px 0">${bolhas}</div>
+  ${janela ? '' : `<div class="aviso" style="border-color:var(--crit)">
+    Passaram-se mais de 24 horas desde a última mensagem do cliente. O WhatsApp não permite mais texto livre:
+    ligue para ele ou espere que escreva de novo.</div>`}
+  <div style="display:flex;gap:8px;align-items:flex-end">
+    <textarea id="wpp-txt" rows="2" style="flex:1" placeholder="${janela ? 'Escreva sua resposta…' : 'Janela de 24 horas fechada'}"
+      ${janela ? '' : 'disabled'} onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey))wppEnviar('${c.id}')"></textarea>
+    <button class="btn pri" onclick="wppEnviar('${c.id}')" ${janela ? '' : 'disabled'}>Enviar</button>
+  </div>
+  <p class="sub" style="margin:5px 0 0">${janela
+    ? `Ao enviar, a assistente se cala nesta conversa. Restam cerca de ${restam} h da janela de 24 horas. Cmd+Enter envia.`
+    : 'Só é possível responder dentro de 24 horas desde a última mensagem do cliente.'}
+    <span id="wpp-st"></span></p>`;
+}
+
+function wppRolarFim(){ const f = document.getElementById('wpp-fio'); if (f) f.scrollTop = f.scrollHeight; }
+
+async function wppAtualizar(){
+  if (!WPP.aberta || !location.hash.startsWith('#/whatsapp')) { clearInterval(WPP.timer); return; }
+  const antes = WPP.msgs.length;
+  WPP.msgs = await wppMensagens(WPP.aberta);
+  if (WPP.msgs.length !== antes) {
+    const alvo = document.getElementById('wpp-conversa');
+    const rascunho = document.getElementById('wpp-txt')?.value || '';
+    if (alvo) { alvo.innerHTML = wppPainel(); const t = document.getElementById('wpp-txt'); if (t) t.value = rascunho; wppRolarFim(); }
+  }
+}
+
+window.wppAssumir = async (id) => { await wppAcao(id, 'assumir'); };
+window.wppDevolver = async (id) => { await wppAcao(id, 'devolver'); };
+async function wppAcao(id, acao){
+  try { await chamarFuncao('whatsapp-bot', { acao, conversa_id: id }); }
+  catch (e) { alert('Não deu certo: ' + e.message); return; }
+  telaWhatsApp(id);
+}
+
+window.wppEnviar = async (id) => {
+  const t = document.getElementById('wpp-txt'), st = document.getElementById('wpp-st');
+  const texto = (t?.value || '').trim();
+  if (!texto) { t?.focus(); return; }
+  t.disabled = true; if (st) { st.style.color = 'var(--i2)'; st.textContent = ' enviando…'; }
+  try {
+    await chamarFuncao('whatsapp-bot', { acao: 'enviar', conversa_id: id, texto });
+    t.value = '';
+    WPP.msgs = await wppMensagens(id);
+    const alvo = document.getElementById('wpp-conversa');
+    if (alvo) { alvo.innerHTML = wppPainel(); wppRolarFim(); }
+  } catch (e) {
+    if (st) { st.style.color = 'var(--crit)'; st.textContent = ' ' + e.message; }
+  } finally { if (t) t.disabled = false; }
+};
+
 window.addEventListener('hashchange', rota);
 /* Só redesenha quando o usuário muda de fato. A renovação silenciosa do token
    disparava um redesenho no meio de operações longas e apagava o resultado da tela. */
