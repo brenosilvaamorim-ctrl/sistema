@@ -3528,6 +3528,107 @@ window.addProcesso = async (ev) => {
       ? 'esse número já está cadastrado em outro caso' : 'erro: ' + error.message; }
   telaCaso(CASO.id);
 };
+/* ------------------------------------------------- corrigir e apagar processo
+   Número digitado errado, vara trocada, classe que mudou no PJe: até aqui, o
+   processo cadastrado era pedra. Agora ele se corrige — e, quando o cadastro
+   foi engano mesmo, se apaga. São coisas diferentes e a tela não deixa
+   confundir: desvincular tira do caso e guarda o processo; apagar some com ele.
+   Por isso apagar diz, antes, o que vai junto. */
+window.abrirEditProc = (id) => {
+  const antiga = document.getElementById('ep-' + id);
+  document.querySelectorAll('[id^="ep-"]').forEach(el => el.remove());
+  if (antiga) return;
+  const p = CASOPROC.find(x => x.id === id); if (!p) return;
+  const tr = document.getElementById('prl-' + id); if (!tr) return;
+  const cols = tr.children.length;
+  const linha = document.createElement('tr');
+  linha.id = 'ep-' + id;
+  const campo = (rot, html, min) => `<label style="display:flex;flex-direction:column;gap:3px;min-width:${min||150}px;flex:1">
+    <span class="sub" style="margin:0">${rot}</span>${html}</label>`;
+  linha.innerHTML = `<td colspan="${cols}" style="background:var(--f2,rgba(0,0,0,.03));padding:14px 18px">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+      ${campo('Número do processo (CNJ)', `<input id="ep-num-${id}" value="${esc(p.numero_formatado || cnjFormata(p.numero_cnj) || '')}">`, 250)}
+      ${campo('Tribunal', `<input id="ep-tri-${id}" value="${esc(p.tribunal_sigla||'')}" placeholder="TRT6">`, 110)}
+      ${campo('Vara ou órgão', `<input id="ep-org-${id}" value="${esc(p.orgao||'')}">`, 240)}
+      ${campo('Classe', `<input id="ep-cla-${id}" value="${esc(p.classe||'')}">`, 190)}
+      ${campo('Assunto', `<input id="ep-ass-${id}" value="${esc(p.assunto||'')}">`, 190)}
+      ${campo('Grau', `<select id="ep-gra-${id}">${['1º Grau','2º Grau','Superior'].map(g =>
+        `<option ${p.grau===g?'selected':''}>${g}</option>`).join('')}</select>`, 110)}
+      ${campo('Parte ativa', `<input id="ep-pat-${id}" value="${esc(p.parte_ativa||'')}">`, 190)}
+      ${campo('Parte passiva', `<input id="ep-pas-${id}" value="${esc(p.parte_passiva||'')}">`, 190)}
+      ${campo('Valor da causa', `<input id="ep-val-${id}" inputmode="decimal" value="${p.valor_causa ?? ''}">`, 130)}
+      ${campo('Ajuizado em', `<input id="ep-aju-${id}" type="date" value="${p.data_ajuizamento||''}" max="${hoje()}">`, 150)}
+      ${campo('Fase', `<select id="ep-fas-${id}">${Object.entries(FASES).map(([k,r]) =>
+        `<option value="${k}" ${(p.fase||'conhecimento')===k?'selected':''}>${r}</option>`).join('')}</select>`, 150)}
+      <label class="sub" style="margin:0;display:flex;align-items:center;gap:6px;min-width:170px">
+        <input type="checkbox" id="ep-mon-${id}" ${p.monitorar!==false?'checked':''}> o robô acompanha este processo</label>
+      <label class="sub" style="margin:0;display:flex;align-items:center;gap:6px;min-width:150px">
+        <input type="checkbox" id="ep-seg-${id}" ${p.segredo_justica?'checked':''}> segredo de justiça</label>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button class="btn ok" onclick="salvarEditProc('${id}')">Guardar as correções</button>
+      <button class="btn" onclick="abrirEditProc('${id}')">Cancelar</button>
+      <span style="flex:1"></span>
+      <button class="btn" onclick="apagarProcesso('${id}')"
+        style="border-color:var(--crit);color:var(--crit)">Apagar este processo</button>
+      <span class="sub" id="ep-st-${id}" style="margin:0"></span>
+    </div>
+    <p class="nota" style="padding:8px 0 0">Trocar o número reescreve também o número formatado. Se o processo
+      foi cadastrado por engano, <b>apagar</b> é o caminho — <b>desvincular</b> só o solta deste caso.</p>
+  </td>`;
+  tr.after(linha);
+  document.getElementById('ep-num-' + id).focus();
+};
+
+window.salvarEditProc = async (id) => {
+  const g = k => (document.getElementById('ep-' + k + '-' + id)?.value || '').trim();
+  const st = document.getElementById('ep-st-' + id);
+  const dig = soDig(g('num'));
+  if (dig.length !== 20) { st.style.color='var(--crit)';
+    return st.textContent = 'o número do CNJ tem 20 dígitos; conte de novo'; }
+  st.style.color = 'var(--i3)'; st.textContent = 'guardando…';
+  const num = v => { const t = String(v||'').replace(/\./g,'').replace(',', '.').trim();
+    return t === '' || isNaN(Number(t)) ? null : Number(t); };
+  const campos = {
+    numero_cnj: dig, numero_formatado: cnjFormata(dig),
+    tribunal_sigla: g('tri') || null, orgao: g('org') || null, classe: g('cla') || null,
+    assunto: g('ass') || null, grau: g('gra') || null,
+    parte_ativa: g('pat') || null, parte_passiva: g('pas') || null,
+    valor_causa: num(g('val')), data_ajuizamento: g('aju') || null, fase: g('fas'),
+    monitorar: document.getElementById('ep-mon-' + id).checked,
+    segredo_justica: document.getElementById('ep-seg-' + id).checked,
+  };
+  const { error } = await sb.from('processo').update(campos).eq('id', id);
+  if (error) { st.style.color='var(--crit)';
+    return st.textContent = /duplicate|unique/i.test(error.message)
+      ? 'já existe outro processo com esse número' : 'erro: ' + error.message; }
+  telaCaso(CASO.id);
+};
+
+/* Apagar é definitivo, então a pergunta vem com a conta na mão: quantos
+   andamentos e partes vão junto, e o que apenas se solta e continua existindo. */
+window.apagarProcesso = async (id) => {
+  const p = CASOPROC.find(x => x.id === id); if (!p) return;
+  const st = document.getElementById('ep-st-' + id);
+  if (st) { st.style.color = 'var(--i3)'; st.textContent = 'conferindo o que está preso a ele…'; }
+  const cont = async (t) => (await sb.from(t).select('id', { count:'exact', head:true }).eq('processo_id', id)).count || 0;
+  const [mov, par, pz, ev, doc, intim] = await Promise.all(
+    ['movimentacao','parte','prazo','evento','documento','intimacao'].map(cont));
+  if (st) st.textContent = '';
+  const some = [mov ? mov + ' andamento(s)' : null, par ? par + ' parte(s)' : null].filter(Boolean);
+  const solta = [pz ? pz + ' prazo(s)' : null, ev ? ev + ' compromisso(s) da agenda' : null,
+                 doc ? doc + ' documento(s)' : null, intim ? intim + ' publicação(ões)' : null].filter(Boolean);
+  const texto = 'Apagar de vez o processo ' + (p.numero_formatado || cnjFormata(p.numero_cnj)) + '?\n\n'
+    + (some.length ? 'Some junto: ' + some.join(', ') + '.\n' : 'Nada de histórico será perdido.\n')
+    + (solta.length ? 'Continua existindo, mas sem processo: ' + solta.join(', ') + '.\n' : '')
+    + '\nIsto não tem desfazer. Se foi só engano de vínculo, use Desvincular.';
+  if (!confirm(texto)) return;
+  if (!confirm('Confirma mesmo? Digite mentalmente "sim" e clique em OK.')) return;
+  const { error } = await sb.from('processo').delete().eq('id', id);
+  if (error) { if (st) { st.style.color='var(--crit)'; st.textContent = 'erro: ' + error.message; } return; }
+  telaCaso(CASO.id);
+};
+
 window.tirarProcesso = async (id) => {
   await sb.from('processo').update({ caso_id: null, monitorar: false }).eq('id', id);
   telaCaso(CASO.id);
@@ -3832,7 +3933,7 @@ async function telaCaso(id){
     <p class="nota">Cadastre o número assim que protocolar — não precisa esperar o diário publicar.
       A partir daí o robô do DataJud passa a acompanhar os andamentos sozinho.</p>
     ${CASOPROC.length ? `<table><thead><tr><th>Número</th><th>Tribunal / órgão</th><th>Classe</th><th>Ajuizado</th><th>Em trâmite</th><th>Situação</th><th></th></tr></thead>
-      <tbody>${CASOPROC.map(p=>{ const sf = semaforo({ ...p, ultima_movimentacao: CASOMOV[p.id] || null }); return `<tr>
+      <tbody>${CASOPROC.map(p=>{ const sf = semaforo({ ...p, ultima_movimentacao: CASOMOV[p.id] || null }); return `<tr id="prl-${p.id}">
         <td class="proc"><a class="lnk" href="#/processo/${p.id}">${esc(p.numero_formatado || cnjFormata(p.numero_cnj))}</a></td>
         <td>${esc(p.tribunal_sigla||'—')}${p.orgao?'<span class="sub">'+esc(p.orgao)+'</span>':''}</td>
         <td>${esc(p.classe||'—')}${p.grau?'<span class="sub">'+esc(p.grau)+'</span>':''}</td>
@@ -3848,9 +3949,16 @@ async function telaCaso(id){
               `<option value="${k}" ${(p.fase||'conhecimento')===k?'selected':''}>${r}</option>`).join('')}
           </select><span class="sub"></span></td>
         <td><span class="pill ${sf.cor}">${esc(sf.titulo)}</span><span class="sub" style="display:block;margin-top:3px">${esc(sf.acao)}</span></td>
-        <td><button class="btn" onclick="tirarProcesso('${p.id}')">Desvincular</button></td>
+        <td style="white-space:nowrap">
+          <button class="btn" onclick="abrirEditProc('${p.id}')"
+            title="corrigir número, tribunal, vara, classe, partes, valor — ou apagar">Editar</button>
+          <button class="btn" onclick="tirarProcesso('${p.id}')"
+            title="solta o processo deste caso, sem apagar nada">Desvincular</button></td>
       </tr>`; }).join('')}</tbody></table>
-      <p class="nota">A fase é editável aqui mesmo. <b>Arquivado</b> encerra o processo: ele continua
+      <p class="nota"><b>Editar</b> corrige qualquer dado do processo — número, tribunal, vara, classe, partes,
+        valor da causa — e é lá também que se apaga um processo cadastrado por engano.
+        <b>Desvincular</b> é outra coisa: solta o processo deste caso sem apagar nada.
+        A fase é editável aqui mesmo. <b>Arquivado</b> encerra o processo: ele continua
         guardado e pesquisável, mas sai das contas do menu Andamento e para de pedir providência.
         Para silenciar um alerta temporariamente, use o menu Andamento.</p>` : '<div class="vazio">Nenhum processo cadastrado ainda.</div>'}
     ${pickerHtml(c.id)}
@@ -4886,7 +4994,7 @@ async function telaRegras(){
 /* ---------------------------------------------------------------- manual */
 const MANUAL_MD = `# Manual do sistema — Breno S. Amorim Advocacia
 
-Atualizado em 25 de setembro de 2026.
+Atualizado em 28 de setembro de 2026.
 
 Este manual explica o que cada menu faz, na ordem em que a coisa acontece no escritório: a publicação chega, vira prazo, vira tarefa, vira peça, vira dinheiro. No fim tem os limites do sistema e o que fazer quando algo der errado.
 
@@ -5109,6 +5217,8 @@ A cobrança abre o **seu** WhatsApp: não usa o envio pago da ZapSign, que custa
 **Processos** é a lista de todos os números, com busca.
 
 **Andamento** ordena os processos pelos mais parados e mostra um semáforo por processo: em dia, atenção, parado. Dá para mudar a fase (conhecimento, recurso, execução, suspenso, arquivado), marcar espera e silenciar o alerta de um processo que está corretamente parado. **Arquivado** é o fim de linha: o processo continua guardado e pesquisável, mas sai das contas e para de cobrar providência — tem um botão próprio para listar só os arquivados. A fase também pode ser mudada dentro do caso, na tabela de processos.
+
+Dentro do caso, cada processo tem **Editar**: corrige número do CNJ, tribunal, vara, classe, assunto, grau, partes, valor da causa, data de ajuizamento, fase, segredo de justiça e se o robô o acompanha. É lá também que se **apaga** um processo cadastrado por engano — antes de apagar, o sistema conta o que vai junto (andamentos e partes) e o que apenas se solta e continua existindo (prazos, compromissos, documentos, publicações). **Desvincular** é diferente de apagar: só tira o processo daquele caso.
 
 ## 9. Clientes
 
