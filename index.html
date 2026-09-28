@@ -3486,6 +3486,22 @@ window.subirCaso = async function(id, passo){
 
 /* ------------------------------------------------------------------ caso */
 let CASO = null, CASOPROC = [], CASOLINHA = [], CASOFILTRO = new Set(), CASOMOV = {};
+/* O tribunal do processo não é texto livre: o banco só aceita sigla que exista
+   na tabela de tribunais — é isso que permite ao robô saber a qual API ir
+   buscar o andamento. Digitar "TJSP" à mão devolvia um erro de chave
+   estrangeira, ilegível. Agora é uma lista do que está cadastrado. */
+let TRIBS = [];
+async function carregarTribunais(){
+  if (TRIBS.length) return TRIBS;
+  const { data } = await sb.from('tribunal').select('sigla,nome,uf').eq('ativo', true).order('sigla');
+  TRIBS = data || []; return TRIBS;
+}
+const opcoesTribunal = (atual) => `<option value="">— não informado —</option>` +
+  TRIBS.map(t => `<option value="${esc(t.sigla)}" ${atual===t.sigla?'selected':''}
+    >${esc(t.sigla)}${t.uf ? ' · ' + esc(t.uf) : ''}</option>`).join('');
+const erroProcesso = m => /tribunal_sigla_fkey/.test(m)
+  ? 'esse tribunal ainda não está cadastrado no sistema — escolha um da lista, ou peça para incluí-lo em Configurações'
+  : (/duplicate|unique/i.test(m) ? 'já existe outro processo com esse número' : 'erro: ' + m);
 const soDig = t => String(t||'').replace(/\D/g,'');
 function cnjFormata(n){
   const d = soDig(n);
@@ -3525,7 +3541,7 @@ window.addProcesso = async (ev) => {
   });
   if (error) { st.style.color='var(--crit)';
     return st.textContent = /duplicate|unique/i.test(error.message)
-      ? 'esse número já está cadastrado em outro caso' : 'erro: ' + error.message; }
+      ? 'esse número já está cadastrado em outro caso' : erroProcesso(error.message); }
   telaCaso(CASO.id);
 };
 /* ------------------------------------------------- corrigir e apagar processo
@@ -3548,7 +3564,7 @@ window.abrirEditProc = (id) => {
   linha.innerHTML = `<td colspan="${cols}" style="background:var(--f2,rgba(0,0,0,.03));padding:14px 18px">
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
       ${campo('Número do processo (CNJ)', `<input id="ep-num-${id}" value="${esc(p.numero_formatado || cnjFormata(p.numero_cnj) || '')}">`, 250)}
-      ${campo('Tribunal', `<input id="ep-tri-${id}" value="${esc(p.tribunal_sigla||'')}" placeholder="TRT6">`, 110)}
+      ${campo('Tribunal', `<select id="ep-tri-${id}">${opcoesTribunal(p.tribunal_sigla)}</select>`, 130)}
       ${campo('Vara ou órgão', `<input id="ep-org-${id}" value="${esc(p.orgao||'')}">`, 240)}
       ${campo('Classe', `<input id="ep-cla-${id}" value="${esc(p.classe||'')}">`, 190)}
       ${campo('Assunto', `<input id="ep-ass-${id}" value="${esc(p.assunto||'')}">`, 190)}
@@ -3599,9 +3615,7 @@ window.salvarEditProc = async (id) => {
     segredo_justica: document.getElementById('ep-seg-' + id).checked,
   };
   const { error } = await sb.from('processo').update(campos).eq('id', id);
-  if (error) { st.style.color='var(--crit)';
-    return st.textContent = /duplicate|unique/i.test(error.message)
-      ? 'já existe outro processo com esse número' : 'erro: ' + error.message; }
+  if (error) { st.style.color='var(--crit)'; return st.textContent = erroProcesso(error.message); }
   telaCaso(CASO.id);
 };
 
@@ -3756,6 +3770,7 @@ async function telaCaso(id){
   ]);
   if (cs.error) return erro(cs.error.message);
   await carregarClientes().catch(()=>{});
+  await carregarTribunais().catch(()=>{});
   CASO = cs.data; CASOPROC = pr.data || [];
   CASOPZ = pz.data || []; CASOEV = ev.data || [];
   CASODOCS = cd.data || []; CASOMODELOS = cm.data || []; CASOASSIN = asg.data || [];
@@ -3966,9 +3981,9 @@ async function telaCaso(id){
       <label style="display:flex;flex-direction:column;gap:3px;min-width:250px">
         <span class="sub" style="margin:0">Número do processo (CNJ)</span>
         <input name="numero" required placeholder="0000000-00.0000.0.00.0000"></label>
-      <label style="display:flex;flex-direction:column;gap:3px;min-width:110px">
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:140px">
         <span class="sub" style="margin:0">Tribunal</span>
-        <input name="tribunal" placeholder="TRT6"></label>
+        <select name="tribunal">${opcoesTribunal(null)}</select></label>
       <label style="display:flex;flex-direction:column;gap:3px;min-width:210px">
         <span class="sub" style="margin:0">Vara ou órgão</span>
         <input name="orgao" placeholder="2ª Vara do Trabalho de Petrolina"></label>
