@@ -2252,12 +2252,24 @@ window.contatoLead = async (id) => {
   if (error) alert(error.message); else telaCaptacao();
 };
 window.perderLead = async (id) => {
+  const l = LEADS.find(x=>x.id===id);
+  /* Quem nunca chegou à consulta não entra na conta de fechamento: ele não
+     ouviu proposta nenhuma. E entre os que chegaram, atender e não fechar é
+     coisa diferente de não aparecer — a primeira fala da proposta, a segunda
+     fala da marcação. Por isso a pergunta. */
+  const chegouNaConsulta = ['consulta','proposta'].includes(l.etapa);
+  const houve = chegouNaConsulta && confirm(
+    'A consulta chegou a acontecer?\n\n' +
+    'OK = sim, atendemos e não fechou.\n' +
+    'Cancelar = não compareceu ou desmarcou.');
   const motivo = prompt('Por que este lead não fechou? (preço, sem direito, sumiu, foi com outro…)');
   if (motivo === null) return;
-  const l = LEADS.find(x=>x.id===id);
   const { error } = await sb.from('lead').update({
     etapa: 'perdido',
-    resumo: [(l.resumo||''), 'PERDIDO: ' + motivo].filter(Boolean).join('\n'),
+    desfecho: chegouNaConsulta ? (houve ? 'nao_contratou' : 'nao_compareceu') : null,
+    desfecho_em: new Date().toISOString(),
+    desfecho_motivo: (motivo || '').trim() || null,
+    consulta_em: houve ? new Date().toISOString() : null,
     atualizado_em: new Date().toISOString(),
   }).eq('id', id);
   if (error) alert(error.message); else telaCaptacao();
@@ -2265,6 +2277,14 @@ window.perderLead = async (id) => {
 window.fecharLead = async (id) => {
   const l = LEADS.find(x=>x.id===id);
   if (!confirm(`Transformar "${l.nome}" em cliente e abrir o caso?`)) return;
+  /* O valor contratado é o que transforma "fechou" em dinheiro: sem ele não dá
+     para dizer qual origem traz caso grande, nem devolver valor de conversão ao
+     anúncio. Fica opcional para não travar quem ainda não acertou o preço. */
+  const bruto = prompt('Honorário contratado, em reais. Deixe em branco se ainda não definiu.', '');
+  if (bruto === null) return;
+  const limpo = String(bruto).replace(/[^\d,.-]/g,'').replace(/\./g,'').replace(',','.');
+  const honorario = limpo.trim() ? Number(limpo) : null;
+  if (honorario !== null && !Number.isFinite(honorario)) return alert('Não entendi o valor. Use só números, como 5000 ou 5.000,00.');
   const esc1 = await escritorioId();
   const { data: cli, error: e1 } = await sb.from('cliente')
     .insert({ escritorio_id: esc1, nome: l.nome, telefone: l.telefone, whatsapp: l.telefone, origem_id: l.origem_id })
@@ -2278,7 +2298,10 @@ window.fecharLead = async (id) => {
     descricao: l.resumo, prescricao_em: l.prescricao_em,
   }).select('id').single();
   if (e2) return alert('Erro ao criar caso: ' + e2.message);
-  await sb.from('lead').update({ etapa:'fechado', caso_id: caso.id, atualizado_em: new Date().toISOString() }).eq('id', id);
+  await sb.from('lead').update({ etapa:'fechado', caso_id: caso.id,
+    desfecho:'contratou', desfecho_em: new Date().toISOString(),
+    consulta_em: l.consulta_em || LEADEV[id]?.inicio || new Date().toISOString(),
+    honorario, atualizado_em: new Date().toISOString() }).eq('id', id);
   /* A ficha do atendimento segue o lead: sem isso, o que foi colhido na primeira
      conversa ficaria órfão justamente quando o caso começa. */
   await sb.from('ficha').update({ caso_id: caso.id, cliente_id: cli.id }).eq('lead_id', id);
@@ -3044,6 +3067,16 @@ async function telaCaptacao(){
   const abertos = LEADS.filter(l => !['fechado','perdido'].includes(l.etapa));
   const atrasados = abertos.filter(l => l.proximo_contato && dias(l.proximo_contato) < 0).length;
   const conv = doMes.length ? Math.round(fechados / doMes.length * 100) : 0;
+  /* A taxa que decide quanto vale pagar por um lead. Base: só quem foi
+     atendido. Quem não compareceu fala da marcação, não da proposta, e por
+     isso fica de fora do denominador. */
+  const atendidos = LEADS.filter(l => ['contratou','nao_contratou'].includes(l.desfecho));
+  const contratou = atendidos.filter(l => l.desfecho === 'contratou');
+  const taxaFech = atendidos.length ? Math.round(contratou.length / atendidos.length * 100) : null;
+  const faltaram = LEADS.filter(l => l.desfecho === 'nao_compareceu').length;
+  const ticket = contratou.filter(l => l.honorario > 0);
+  const ticketMedio = ticket.length
+    ? Math.round(ticket.reduce((a,l) => a + Number(l.honorario), 0) / ticket.length) : null;
   const opt = (lista, vazio) => `<option value="">${vazio}</option>` +
     lista.map(x=>`<option value="${x.id}">${esc(x.nome)}</option>`).join('');
   const perdidos = LEADS.filter(l=>l.etapa==='perdido');
@@ -3056,6 +3089,12 @@ async function telaCaptacao(){
     <div class="kpi"><div class="n">${doMes.length}</div><div class="l">entraram neste mês</div></div>
     <div class="kpi"><div class="n">${conv}%</div><div class="l">fecharam, no mês</div></div>
     <div class="kpi ${atrasados?'al':''}"><div class="n">${atrasados}</div><div class="l">com retorno atrasado</div></div>
+    <div class="kpi" title="${atendidos.length ? contratou.length + ' de ' + atendidos.length + ' consultas atendidas viraram contrato' + (faltaram ? ' · ' + faltaram + ' não compareceram' : '') : 'Aparece quando a primeira consulta atendida tiver desfecho registrado'}">
+      <div class="n">${taxaFech === null ? '—' : taxaFech + '%'}</div>
+      <div class="l">consultas que viram contrato</div></div>
+    <div class="kpi" title="${ticket.length ? 'média de ' + ticket.length + ' contrato(s) com honorário informado' : 'aparece quando houver honorário registrado'}">
+      <div class="n">${ticketMedio === null ? '—' : 'R$ ' + ticketMedio.toLocaleString('pt-BR')}</div>
+      <div class="l">honorário médio</div></div>
   </div>
 
   <div class="card"><h2>Novo contato</h2>
@@ -3094,10 +3133,11 @@ async function telaCaptacao(){
 
   ${perdidos.length?`<div class="card" style="margin-top:20px"><h2>Não fecharam</h2>
     <p class="nota">Vale reler de vez em quando: é aqui que aparece se o problema é preço, triagem ou demora.</p>
-    <table><thead><tr><th>Nome</th><th>Origem</th><th>Área</th><th>Motivo</th><th>Quando</th></tr></thead>
+    <table><thead><tr><th>Nome</th><th>Origem</th><th>Área</th><th>Até onde foi</th><th>Motivo</th><th>Quando</th></tr></thead>
     <tbody>${perdidos.slice(0,30).map(l=>`<tr>
       <td>${esc(l.nome)}</td><td>${esc(l.origem_nome||'—')}</td><td>${esc(l.area_nome||'—')}</td>
-      <td class="sub" style="margin:0">${esc((l.resumo||'').split('PERDIDO: ')[1] || '—')}</td>
+      <td class="sub" style="margin:0">${ { nao_contratou:'foi atendido', nao_compareceu:'não compareceu' }[l.desfecho] || 'antes da consulta' }</td>
+      <td class="sub" style="margin:0">${esc(l.desfecho_motivo || (l.resumo||'').split('PERDIDO: ')[1] || '—')}</td>
       <td class="dt">${br(l.atualizado_em)}</td></tr>`).join('')}</tbody></table></div>`:''}
   </main>` + rodape();
 }
@@ -10344,10 +10384,11 @@ async function wppMensagens(id){
 function wppPainel(){
   const c = WPP.conversas.find(x => x.id === WPP.aberta);
   if (!c) return '<div class="vazio">Escolha uma conversa ao lado.</div>';
+  /* Pelo Z-API o número é um aparelho vinculado, como o WhatsApp Web: dá para
+     responder a qualquer momento, sem a janela de 24 horas da API oficial. */
   const ultimaEntrada = [...WPP.msgs].reverse().find(m => m.direcao === 'entrada');
   const horas = wppHorasDesde(ultimaEntrada?.criado_em);
-  const janela = horas < 24;
-  const restam = janela ? Math.max(0, Math.round(24 - horas)) : 0;
+  const janela = true;
   const humano = c.estado === 'humano';
 
   const bolhas = WPP.msgs.map(m => {
@@ -10377,17 +10418,13 @@ function wppPainel(){
   </div>
   <div id="wpp-fio" style="max-height:52vh;overflow:auto;background:var(--f2);border:1px solid var(--ln);
        border-radius:9px;padding:10px;margin:10px 0">${bolhas}</div>
-  ${janela ? '' : `<div class="aviso" style="border-color:var(--crit)">
-    Passaram-se mais de 24 horas desde a última mensagem do cliente. O WhatsApp não permite mais texto livre:
-    ligue para ele ou espere que escreva de novo.</div>`}
+  ${horas > 72 ? `<div class="aviso">A última mensagem do cliente foi há ${Math.round(horas/24)} dias. Ele pode ter esquecido o assunto — vale retomar o contexto na primeira frase.</div>` : ''}
   <div style="display:flex;gap:8px;align-items:flex-end">
     <textarea id="wpp-txt" rows="2" style="flex:1" placeholder="${janela ? 'Escreva sua resposta…' : 'Janela de 24 horas fechada'}"
       ${janela ? '' : 'disabled'} onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey))wppEnviar('${c.id}')"></textarea>
     <button class="btn pri" onclick="wppEnviar('${c.id}')" ${janela ? '' : 'disabled'}>Enviar</button>
   </div>
-  <p class="sub" style="margin:5px 0 0">${janela
-    ? `Ao enviar, a assistente se cala nesta conversa. Restam cerca de ${restam} h da janela de 24 horas. Cmd+Enter envia.`
-    : 'Só é possível responder dentro de 24 horas desde a última mensagem do cliente.'}
+  <p class="sub" style="margin:5px 0 0">Ao enviar, a assistente se cala nesta conversa — religue com "Devolver à assistente". Cmd+Enter envia.
     <span id="wpp-st"></span></p>`;
 }
 
