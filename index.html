@@ -2206,11 +2206,31 @@ window.gerarDoc = async (id, tipo) => {
 
 /* ---------------------------------------------------------------- captação */
 const ETAPAS = [
-  ['novo',     'Entrou'],
-  ['contatado','Primeiro contato feito'],
-  ['consulta', 'Consulta marcada'],
-  ['proposta', 'Proposta enviada'],
+  ['novo',       'Entrou'],
+  ['contatado',  'Primeiro contato feito'],
+  ['consulta',   'Consulta marcada'],
+  ['documentos', 'Análise de documentação'],
+  ['proposta',   'Proposta enviada'],
 ];
+
+/* O que se pede depois da consulta. Os comuns valem para todo mundo; os outros dois
+   grupos seguem as duas famílias da triagem — ou existe procedimento contra a pessoa,
+   ou a administração negou um direito dela. A lista entra marcada conforme o assunto
+   da ficha, mas quem decide o que pedir é o advogado: tudo é editável antes de enviar. */
+const DOCS = {
+  comuns: ['RG e CPF', 'Comprovante de residência', 'Contracheques dos últimos três meses',
+           'Ficha funcional (ou histórico funcional)'],
+  procedimento: ['Portaria de instauração', 'Citação ou termo de indiciação',
+                 'Relatório final da comissão', 'Decisão ou publicação da penalidade',
+                 'Defesa já apresentada, se houver'],
+  direito: ['Requerimento protocolado, com o número do protocolo',
+            'Despacho ou ofício que negou o pedido',
+            'Publicação no diário oficial, se houve',
+            'Laudo da perícia, quando o caso envolver saúde'],
+};
+const ASSUNTO_PROCEDIMENTO_DOCS = ['PAD ou sindicância', 'Acúmulo de cargos', 'Reintegração ao cargo'];
+let LEADCONV = {};   // lead_id -> conversa do WhatsApp, para enviar sem sair do quadro
+let DOCSASSUNTO = {}; // lead_id -> assunto da ficha, buscado só quando o painel abre
 let LEADS = [];
 window.novoLead = async (ev, abrirAFicha) => {
   ev.preventDefault();
@@ -2246,6 +2266,108 @@ window.moverLead = async (id, etapa) => {
   const { error } = await sb.from('lead').update({ etapa, atualizado_em: new Date().toISOString() }).eq('id', id);
   if (error) alert(error.message); else telaCaptacao();
 };
+/* ------------------------------------------------ pedido de documentos
+   Depois da consulta vem a parte que trava mais caso: a pessoa some porque não
+   sabe o que mandar. O painel monta a lista, deixa editar e manda pelo mesmo
+   número da assistente — sem sair do quadro e sem copiar e colar. */
+window.abrirDocs = async (id) => {
+  const cx = document.getElementById('dc' + id);
+  if (!cx) return;
+  if (cx.style.display === 'block') { cx.style.display = 'none'; return; }
+  cx.style.display = 'block';
+  cx.innerHTML = '<div class="sub" style="margin:0">carregando…</div>';
+
+  /* O assunto fica na ficha da triagem e decide quais documentos vêm marcados.
+     Buscado só agora: carregar a ficha de todos os leads encheria a tela à toa. */
+  if (DOCSASSUNTO[id] === undefined) {
+    const { data } = await sb.from('ficha').select('respostas').eq('lead_id', id)
+      .order('criado_em', { ascending: false }).limit(1).maybeSingle();
+    DOCSASSUNTO[id] = data?.respostas?.assunto ?? null;
+  }
+  const assunto = DOCSASSUNTO[id];
+  // Sem assunto na ficha, marca só os comuns: pedir documento que não serve
+  // cansa a pessoa e atrasa o que importa.
+  const grupo = assunto == null ? null
+    : (ASSUNTO_PROCEDIMENTO_DOCS.includes(assunto) ? 'procedimento' : 'direito');
+
+  const linha = (txt, marcado) => `<label style="display:flex;gap:6px;align-items:flex-start;margin-bottom:4px">
+    <input type="checkbox" class="dc-item-${id}" value="${esc(txt)}" ${marcado ? 'checked' : ''}>
+    <span class="sub" style="margin:0">${esc(txt)}</span></label>`;
+
+  cx.innerHTML = `
+    <div class="sub" style="margin:0 0 6px">${assunto
+      ? 'Assunto na ficha: <b>' + esc(assunto) + '</b>. Marquei o que costuma valer para esse caso.'
+      : 'A ficha não diz o assunto, então marquei só os documentos comuns.'}</div>
+    ${DOCS.comuns.map(t => linha(t, true)).join('')}
+    ${DOCS.procedimento.map(t => linha(t, grupo === 'procedimento')).join('')}
+    ${DOCS.direito.map(t => linha(t, grupo === 'direito')).join('')}
+    <input type="text" id="dc-extra-${id}" placeholder="outro documento (separe por vírgula)"
+           style="font-size:11.4px;width:100%;margin-top:4px">
+    <div class="sub" style="margin:6px 0 0">${LEADCONV[id]
+      ? 'Vai pelo WhatsApp do escritório, na conversa que já existe.'
+      : 'Esta pessoa não tem conversa aberta com a assistente: o texto abre no WhatsApp para você enviar.'}</div>
+    <div style="margin-top:6px;display:flex;gap:6px;align-items:center">
+      <button class="btn ok" style="font-size:11.4px;padding:4px 8px"
+        onclick="enviarDocs('${id}')">${LEADCONV[id] ? 'Enviar a lista' : 'Abrir no WhatsApp'}</button>
+      <span class="sub" id="dc-st-${id}" style="margin:0"></span></div>`;
+};
+
+/* Monta o texto a partir do que ficou marcado. A primeira pessoa do singular é a do
+   escritório, não a da assistente: quem pede documento depois da consulta é o advogado. */
+function textoDocs(id, itens) {
+  const l = LEADS.find(x => x.id === id);
+  const primeiro = nomeProprio((l?.nome || '').split(' ')[0]);
+  return `Olá, ${primeiro}. Aqui é do escritório Breno S. Amorim Advocacia.\n\n` +
+    `Para seguir com a análise do seu caso, preciso destes documentos:\n\n` +
+    itens.map(t => '- ' + t).join('\n') +
+    `\n\nPode mandar por aqui mesmo, em foto ou PDF. Se faltar algum, envie o que tiver que a gente completa depois.`;
+}
+
+window.enviarDocs = async (id) => {
+  const st = document.getElementById('dc-st-' + id);
+  const marcados = [...document.querySelectorAll('.dc-item-' + id)]
+    .filter(c => c.checked).map(c => c.value);
+  const extra = (document.getElementById('dc-extra-' + id)?.value || '')
+    .split(',').map(t => t.trim()).filter(Boolean);
+  const itens = [...marcados, ...extra];
+  if (!itens.length) { if (st) { st.style.color = 'var(--crit)'; st.textContent = ' marque ao menos um documento'; } return; }
+
+  const texto = textoDocs(id, itens);
+  const conversa = LEADCONV[id];
+  const l = LEADS.find(x => x.id === id);
+
+  /* Sem conversa aberta, não dá para mandar pelo bot: abre o WhatsApp com o texto
+     pronto e deixa o envio com você. O lead avança igual, porque o pedido foi feito. */
+  if (!conversa) {
+    if (l?.telefone) window.open(linkWa(l.telefone, texto), '_blank', 'noreferrer');
+    else { if (st) { st.style.color = 'var(--crit)'; st.textContent = ' este lead não tem telefone'; } return; }
+  } else {
+    if (st) { st.style.color = 'var(--i3)'; st.textContent = ' enviando…'; }
+    try {
+      await chamarFuncao('whatsapp-bot', { acao: 'enviar', conversa_id: conversa.id, texto });
+      /* Enviar pela função cala a assistente naquela conversa (quem escreve assume).
+         Aqui isso seria um retrocesso: depois da consulta ela ainda acusa o recebimento
+         dos documentos. Se a conversa estava com ela, devolve-se. */
+      if (conversa.estado === 'ativa') {
+        await chamarFuncao('whatsapp-bot', { acao: 'devolver', conversa_id: conversa.id });
+      }
+    } catch (e) {
+      if (st) { st.style.color = 'var(--crit)'; st.textContent = ' ' + e.message; }
+      return;
+    }
+  }
+
+  /* Pedido feito, o lead passa a esperar documento: é essa a etapa nova. O resumo
+     guarda o que foi pedido, para a próxima pessoa que abrir o cartão saber. */
+  const resumo = [(l?.resumo || ''), 'Documentos pedidos em ' + br(new Date().toISOString()) + ': ' + itens.join('; ')]
+    .filter(Boolean).join('\n');
+  const { error } = await sb.from('lead').update({
+    etapa: 'documentos', resumo, atualizado_em: new Date().toISOString(),
+  }).eq('id', id);
+  if (error) { if (st) { st.style.color = 'var(--crit)'; st.textContent = ' ' + error.message; } return; }
+  telaCaptacao();
+};
+
 window.contatoLead = async (id) => {
   const d = document.getElementById('pc'+id).value || null;
   const { error } = await sb.from('lead').update({ proximo_contato: d, atualizado_em: new Date().toISOString() }).eq('id', id);
@@ -2411,6 +2533,9 @@ function cartaoLead(l){
         onclick="abrirConsulta('${l.id}')">${LEADEV[l.id] ? 'Remarcar' : 'Marcar consulta'}</button>
       ${LEADEV[l.id] ? `<button class="btn" style="font-size:11.4px;padding:4px 8px"
         onclick="desmarcarConsulta('${l.id}')">Desmarcar</button>` : ''}
+      ${['consulta','documentos'].includes(l.etapa) ? `<button class="btn" style="font-size:11.4px;padding:4px 8px"
+        title="monta a lista de documentos e manda pelo WhatsApp, pelo mesmo número da assistente"
+        onclick="abrirDocs('${l.id}')">Pedir documentos</button>` : ''}
     </div>
     ${(() => { const e = LEADEV[l.id] || null; const d = e ? String(e.inicio) : '';
       return `<div id="cs${l.id}" style="display:none;margin-top:8px;border-top:1px solid var(--ln);padding-top:8px">
@@ -2443,6 +2568,7 @@ function cartaoLead(l){
         <button class="btn ok" style="font-size:11.4px;padding:4px 8px" onclick="salvarViab('${l.id}')">Guardar</button>
         <span class="sub" id="vb-st-${l.id}" style="margin:0"></span></div>
     </div>
+    <div id="dc${l.id}" style="display:none;margin-top:8px;border-top:1px solid var(--ln);padding-top:8px"></div>
     <div style="margin-top:8px;display:flex;gap:5px;flex-wrap:wrap;align-items:center">
       ${wa ? `<a class="btn ok" href="${wa}" target="_blank" rel="noreferrer"
              style="text-decoration:none;font-size:11.4px;padding:4px 8px">WhatsApp</a>` : ''}
@@ -3048,15 +3174,17 @@ window.imprimirFicha = async function(){
 };
 
 async function telaCaptacao(){
-  const [le, ar, og, cs] = await Promise.all([
+  const [le, ar, og, cs, bc] = await Promise.all([
     sb.from('lead').select('*').order('criado_em', { ascending:false }),
     sb.from('area_atuacao').select('id,nome').eq('ativo',true).order('ordem'),
     sb.from('origem_captacao').select('id,nome').eq('ativo',true).order('nome'),
     sb.from('evento').select('id,titulo,inicio,local,link_sala,situacao,lead_id')
       .not('lead_id','is',null).not('situacao','in','("concluida","cancelada")'),
+    sb.from('bot_conversa').select('id,lead_id,estado').not('lead_id','is',null),
   ]);
   if (le.error) return erro(le.error.message);
   LEADEV = {}; (cs.data||[]).forEach(e => { LEADEV[e.lead_id] = e; });
+  LEADCONV = {}; (bc?.data||[]).forEach(c => { LEADCONV[c.lead_id] = { id: c.id, estado: c.estado }; });
   AREAS = ar.data||[]; ORIGENS = og.data||[];
   const rotA = new Map(AREAS.map(a=>[a.id,a.nome])), rotO = new Map(ORIGENS.map(o=>[o.id,o.nome]));
   LEADS = (le.data||[]).map(l => ({ ...l, area_nome: rotA.get(l.area_id), origem_nome: rotO.get(l.origem_id) }));
