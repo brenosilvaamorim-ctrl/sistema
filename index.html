@@ -2525,7 +2525,10 @@ function cartaoLead(l){
     ${(() => { /* O WhatsApp às vezes entrega um identificador interno no lugar do número.
          Quem já escreveu antes pelo telefone vira cartão repetido, e sem o carimbo do
          anúncio. Marca-se para o Dr. Breno reclassificar; a tela não adivinha. */
-      const t = LEADCONV[l.id]?.telefone || l.telefone || '';
+      /* Só o telefone da CONVERSA entra na conta: é o que o bot grava, sempre em
+         dígitos e com o código do país. O telefone do lead é campo livre — quem
+         cadastra à mão escreve "87 99901-6669", e marcar isso seria ruído. */
+      const t = LEADCONV[l.id]?.telefone || '';
       return t && !/^55\d{10,11}$/.test(t)
         ? `<span class="pill ser" title="O WhatsApp não informou o número (veio ${esc(t)}). Pode ser a mesma pessoa de outro cartão, e a origem pode não ser esta.">origem a conferir</span>`
         : ''; })()}
