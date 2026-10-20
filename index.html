@@ -7629,20 +7629,28 @@ const areaDoTribunal = t => {
   if (s.startsWith('TJ')) return 'Cível';
   return null;
 };
+/* Carrega TODOS os processos cadastrados, não só os sem caso. Enquanto a lista
+   era só de soltos, ela vivia vazia — todo caminho que cadastra processo já cria
+   um caso junto —, e aí o seletor não oferecia nada e o botão não fazia nada.
+   Com a lista inteira dá para trazer para cá um processo que hoje está em outro
+   caso, que é o que resolve número redistribuído e cadastro em duplicata. */
 async function carregarSoltos(){
   const { data } = await sb.from('processo')
-    .select('id,numero_formatado,numero_cnj,classe,orgao,tribunal_sigla')
-    .is('caso_id', null).order('numero_cnj').limit(500);
+    .select('id,numero_formatado,numero_cnj,classe,orgao,tribunal_sigla,caso_id,caso:caso_id(titulo)')
+    .order('numero_cnj').limit(2000);
   SOLTOS = data || [];
   return SOLTOS;
 }
 const rotuloProc = p => (p.numero_formatado || cnjFormata(p.numero_cnj))
-  + ' · ' + (p.classe || 'sem classe') + ' · ' + (p.orgao || p.tribunal_sigla || '');
+  + ' · ' + (p.classe || 'sem classe') + ' · ' + (p.orgao || p.tribunal_sigla || '')
+  + (p.caso_id ? ' · hoje em: ' + (p.caso?.titulo || 'outro caso') : ' · SEM CASO');
 function pickerHtml(casoId){
   return `<div style="padding:0 18px 16px">
-    <p class="nota" style="padding:0">Vincular processo que já está cadastrado e ainda não pertence a caso nenhum.</p>
+    <p class="nota" style="padding:0">Trazer para este caso um processo que já está cadastrado.
+      Os que não pertencem a caso nenhum aparecem primeiro, marcados como <b>SEM CASO</b>;
+      os demais mostram em que caso estão hoje, e vir para cá tira o processo de lá.</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <input id="bs-${casoId}" type="search" placeholder="número, vara ou classe"
+      <input id="bs-${casoId}" type="search" placeholder="número, vara, classe ou caso"
              oninput="filtrarSoltos('${casoId}')" style="min-width:220px">
       <select id="ss-${casoId}" style="min-width:330px"></select>
       <button class="btn ok" onclick="vincularProc('${casoId}')">Vincular ao caso</button>
@@ -7652,24 +7660,54 @@ function pickerHtml(casoId){
 window.filtrarSoltos = casoId => {
   const s = document.getElementById('ss-' + casoId); if (!s) return;
   const t = (document.getElementById('bs-' + casoId)?.value || '').toLowerCase().trim();
-  const l = SOLTOS.filter(p => !t ||
+  const base = SOLTOS.filter(p => p.caso_id !== casoId);   /* o que já está aqui não se oferece */
+  const l = base.filter(p => !t ||
     String(p.numero_formatado || p.numero_cnj || '').toLowerCase().includes(t) ||
+    String(p.numero_cnj || '').includes(so(t)) ||
     String(p.orgao || '').toLowerCase().includes(t) ||
     String(p.classe || '').toLowerCase().includes(t) ||
-    String(p.tribunal_sigla || '').toLowerCase().includes(t));
+    String(p.tribunal_sigla || '').toLowerCase().includes(t) ||
+    String(p.caso?.titulo || '').toLowerCase().includes(t));
+  l.sort((a, b) => (a.caso_id ? 1 : 0) - (b.caso_id ? 1 : 0));   /* sem caso primeiro */
+  /* a mensagem de lista vazia precisa dizer a verdade: antes falava em "esse
+     termo" mesmo quando não havia termo nenhum, e parecia defeito da busca */
   s.innerHTML = l.length
     ? l.slice(0, 300).map(p => `<option value="${p.id}">${esc(rotuloProc(p))}</option>`).join('')
-    : '<option value="">— nenhum processo solto com esse termo —</option>';
+    : `<option value="">— ${t ? 'nenhum processo com esse termo'
+        : (base.length ? 'nenhum processo para mostrar' : 'não há outro processo cadastrado')} —</option>`;
 };
 window.vincularProc = async casoId => {
-  const s = document.getElementById('ss-' + casoId), st = document.getElementById('vs-' + casoId);
-  const pid = s?.value; if (!pid) return;
-  if (st) st.textContent = 'vinculando…';
+  const s = document.getElementById('ss-' + casoId);
+  const diz = (txt, cor) => { const e = document.getElementById('vs-' + casoId);
+    if (e) { e.style.color = cor || 'var(--i3)'; e.textContent = txt; } };
+  /* antes, sem nada escolhido isto era um return mudo: o clique não fazia nada
+     e não dizia nada, que foi exatamente como o defeito apareceu */
+  const pid = s?.value;
+  if (!pid) return diz(s && s.options.length > 1
+    ? 'escolha um processo na lista antes de vincular'
+    : 'não há processo disponível para vincular a este caso', 'var(--ser)');
+  const p = SOLTOS.find(x => x.id === pid);
+  const de = p?.caso_id || null;
+  if (de && !confirm('O processo ' + (p.numero_formatado || p.numero_cnj)
+      + ' está hoje no caso "' + (p.caso?.titulo || 'outro caso') + '".\n\n'
+      + 'Trazer para este caso? Ele sai do outro, e tudo o que estiver pendurado '
+      + 'nele — movimentações, prazos, intimações — vem junto.')) return diz('');
+  diz('vinculando…');
   const { error } = await sb.from('processo').update({ caso_id: casoId }).eq('id', pid);
-  if (error) { if (st) st.textContent = 'erro: ' + error.message; return; }
-  SOLTOS = SOLTOS.filter(p => p.id !== pid);
-  if (typeof CASO !== 'undefined' && CASO && CASO.id === casoId) return telaCaso(casoId);
-  if (st) st.textContent = 'vinculado ✓';
+  if (error) return diz('não deu: ' + error.message, 'var(--crit)');
+  /* quando o processo veio de outro caso, avisa se aquele caso ficou sem nenhum
+     processo — é a hora de decidir se ele ainda serve para alguma coisa */
+  let aviso = '';
+  if (de) {
+    const { count } = await sb.from('processo')
+      .select('id', { count:'exact', head:true }).eq('caso_id', de);
+    if (!count) aviso = ' · o caso de origem ficou sem processo nenhum';
+  }
+  registrarAcao('vinculou', 'processo',
+    (p?.numero_formatado || p?.numero_cnj || pid) + (de ? ' veio de outro caso' : ' estava sem caso'));
+  await carregarSoltos().catch(() => {});
+  if (typeof CASO !== 'undefined' && CASO && CASO.id === casoId) await telaCaso(casoId);
+  diz('vinculado ✓' + aviso, aviso ? 'var(--ser)' : 'var(--good)');
   filtrarSoltos(casoId);
 };
 /* usado na aba Processos: escolher o caso de um processo solto */
