@@ -7661,9 +7661,12 @@ window.filtrarSoltos = casoId => {
   const s = document.getElementById('ss-' + casoId); if (!s) return;
   const t = (document.getElementById('bs-' + casoId)?.value || '').toLowerCase().trim();
   const base = SOLTOS.filter(p => p.caso_id !== casoId);   /* o que já está aqui não se oferece */
+  /* o termo só digitos serve para achar por numero com ou sem pontuação, mas
+     precisa do guarda: so('piemonte') é '' e includes('') casa com tudo */
+  const d = so(t);
   const l = base.filter(p => !t ||
     String(p.numero_formatado || p.numero_cnj || '').toLowerCase().includes(t) ||
-    String(p.numero_cnj || '').includes(so(t)) ||
+    (d && String(p.numero_cnj || '').includes(d)) ||
     String(p.orgao || '').toLowerCase().includes(t) ||
     String(p.classe || '').toLowerCase().includes(t) ||
     String(p.tribunal_sigla || '').toLowerCase().includes(t) ||
