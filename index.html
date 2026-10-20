@@ -7686,9 +7686,16 @@ window.vincularProc = async casoId => {
   /* antes, sem nada escolhido isto era um return mudo: o clique não fazia nada
      e não dizia nada, que foi exatamente como o defeito apareceu */
   const pid = s?.value;
-  if (!pid) return diz(s && s.options.length > 1
-    ? 'escolha um processo na lista antes de vincular'
-    : 'não há processo disponível para vincular a este caso', 'var(--ser)');
+  if (!pid) {
+    /* lista vazia é o rótulo de aviso, que vai sem value — não confundir com
+       lista cheia e nada escolhido, que pede outra frase */
+    const semLista = !s || !s.options.length || (s.options.length === 1 && !s.options[0].value);
+    const comBusca = !!(document.getElementById('bs-' + casoId)?.value || '').trim();
+    return diz(semLista
+      ? (comBusca ? 'a busca não achou nenhum processo — limpe o campo e procure de novo'
+                  : 'não há processo cadastrado para trazer para este caso')
+      : 'escolha um processo na lista antes de vincular', 'var(--ser)');
+  }
   const p = SOLTOS.find(x => x.id === pid);
   const de = p?.caso_id || null;
   if (de && !confirm('O processo ' + (p.numero_formatado || p.numero_cnj)
