@@ -3429,6 +3429,7 @@ window.novoCaso = async (ev) => {
     titulo: v('titulo') || nome,
     area_id: v('area_id'), area: areaNome,
     coluna_id: v('coluna_id'), polo: v('polo'),
+    origem_id: v('origem_id'),
     descricao: v('descricao'),
   }).select('id').single();
   if (error) { st.style.color='var(--crit)'; return st.textContent = 'erro ao criar o caso: ' + error.message; }
@@ -3443,13 +3444,15 @@ window.abrirNovoCaso = () => {
 };
 
 async function telaCasos(){
-  const [q, co, od, ar] = await Promise.all([
+  const [q, co, od, ar, og] = await Promise.all([
     sb.from('caso_quadro').select('*'),
     sb.from('coluna_caso').select('*').order('ordem'),
     sb.from('caso').select('id,ordem'),          /* a ordem manual mora em caso, não na view */
     sb.from('area_atuacao').select('id,nome').eq('ativo',true).order('ordem'),
+    sb.from('origem_captacao').select('id,nome').eq('ativo',true).order('nome'),
   ]);
   AREAS = ar.data || [];
+  ORIGENS = og.data || [];
   await carregarClientes().catch(()=>{});
   if (q.error) return erro(q.error.message);
   QUADRO = q.data||[]; COLUNAS = co.data||[];
@@ -3508,6 +3511,10 @@ async function telaCasos(){
         <span class="sub" style="margin:0">Polo</span>
         <select name="polo"><option value="">— não informado —</option>
           <option>Reclamante</option><option>Reclamado</option><option>Autor</option><option>Réu</option></select></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:200px">
+        <span class="sub" style="margin:0">Origem do lead</span>
+        <select name="origem_id"><option value="">— não informada —</option>
+          ${ORIGENS.map(o=>`<option value="${o.id}">${esc(o.nome)}</option>`).join('')}</select></label>
       <label style="display:flex;flex-direction:column;gap:3px;min-width:200px">
         <span class="sub" style="margin:0">Etapa</span>
         <select name="coluna_id">${COLUNAS.map((k,i)=>
@@ -3929,7 +3936,7 @@ function pintarLinha(){
   }).join('') : '<div class="vazio">Nada registrado com esse filtro.</div>';
 }
 async function telaCaso(id){
-  const [cs, pr, pz, ev, it, hn, dc, mn, cd, cm, tpc, ftx, asg, dlg] = await Promise.all([
+  const [cs, pr, pz, ev, it, hn, dc, mn, cd, cm, tpc, ftx, asg, dlg, og] = await Promise.all([
     sb.from('caso').select('*, cliente:cliente_id(id,nome,telefone,whatsapp,cpf_cnpj,cidade,uf), responsavel:responsavel_id(nome)').eq('id', id).single(),
     sb.from('processo').select('*').eq('caso_id', id).order('criado_em'),
     sb.from('prazo').select('*').eq('caso_id', id).order('data_fatal'),
@@ -3945,8 +3952,11 @@ async function telaCaso(id){
     sb.from('assinatura').select('*').eq('caso_id', id).order('criado_em'),
     sb.from('delegacao').select('*, parceiro:parceiro_id(nome,telefone,cidade,oab,uf_oab)')
       .eq('caso_id', id).order('criado_em'),
+    /* de onde veio este cliente: a lista vive em Escritório → Origens de captação */
+    sb.from('origem_captacao').select('id,nome').eq('ativo', true).order('nome'),
   ]);
   if (cs.error) return erro(cs.error.message);
+  ORIGENS = og.data || ORIGENS;
   await carregarClientes().catch(()=>{});
   await carregarTribunais().catch(()=>{});
   CASO = cs.data; CASOPROC = pr.data || [];
@@ -4033,9 +4043,21 @@ async function telaCaso(id){
     <div class="kpi ${paradoMais>=90?'al':''}"><div class="n" style="font-size:19px">${paradoMais!=null?humano(paradoMais):'—'}</div><div class="l">parado há</div></div>
   </div>
 
-  <div class="card"><h2>Tipo do caso e etiquetas</h2>
+  <div class="card"><h2>Tipo do caso, origem e etiquetas</h2>
     <p class="nota">Escolher o tipo traz de uma vez a lista de documentos, as primeiras tarefas e os campos
       próprios daquele tipo de ação. Nada é apagado: só se acrescenta o que ainda não existe.</p>
+    <!-- De onde veio o cliente. Quando o caso nasce de um lead, a origem vem junto;
+         quando é cadastrado direto aqui, ninguém informava — e sem isso não dá para
+         saber qual canal paga as contas. Grava na hora, sem botão. -->
+    <div style="padding:0 18px 12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <span class="sub" style="margin:0">Origem do lead:</span>
+      <select onchange="mudarOrigemCaso('${c.id}', this.value, this)" style="min-width:230px">
+        <option value="">— não informada —</option>
+        ${ORIGENS.map(o=>`<option value="${o.id}" ${o.id===c.origem_id?'selected':''}>${esc(o.nome)}</option>`).join('')}
+      </select>
+      <span class="sub" id="og-st" style="margin:0"></span>
+      <span class="sub" style="margin:0">A lista sai de Escritório → Origens de captação.</span>
+    </div>
     <div style="padding:0 18px 10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <select id="tipocaso" style="min-width:320px">
         <option value="">— escolha o tipo —</option>
@@ -8322,6 +8344,23 @@ window.salvarCampos = async (casoId) => {
   if (error) { st.style.color='var(--crit)'; st.textContent = 'erro: ' + error.message; return; }
   CASO.dados = dados;
   st.style.color = 'var(--good)'; st.textContent = 'guardado ✓';
+};
+
+/* De onde veio o cliente deste caso. Grava direto na troca do seletor, como a
+   área na aba Processos: é um campo de um toque, e pedir um botão faria com que
+   ficasse para depois — que é como ele ficou vazio em quase todos os casos. */
+window.mudarOrigemCaso = async (casoId, origemId, el) => {
+  const st = document.getElementById('og-st');
+  const diz = (txt, cor) => { if (st) { st.style.color = cor || 'var(--i3)'; st.textContent = txt; } };
+  diz('guardando…');
+  const { error } = await sb.from('caso')
+    .update({ origem_id: origemId || null, atualizado_em: new Date().toISOString() }).eq('id', casoId);
+  if (error) return diz('não deu: ' + error.message, 'var(--crit)');
+  if (typeof CASO !== 'undefined' && CASO && CASO.id === casoId) CASO.origem_id = origemId || null;
+  const nome = ORIGENS.find(o => o.id === origemId)?.nome;
+  registrarAcao('definiu', 'caso', 'origem do lead: ' + (nome || 'não informada'));
+  diz('guardado ✓', 'var(--good)');
+  if (st) setTimeout(() => { if (st.textContent === 'guardado ✓') st.textContent = ''; }, 2500);
 };
 
 window.aplicarLista = async mid => {
