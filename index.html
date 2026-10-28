@@ -607,6 +607,12 @@ async function telaInicio(){
   const PZ = pz.data||[], EV = ev.data||[], LC = lc.data||[];
   const dia = e => String(e.inicio).slice(0,10);
   const vencidos  = PZ.filter(p => p.data_fatal <  h);
+  /* Vencido de ontem e vencido de julho pedem coisas diferentes: o primeiro ainda dá
+     para correr atrás, o segundo é pendência de baixa. Misturar os dois foi o que
+     entupiu esta tela — com cinco linhas antigas no topo, ninguém lê mais o quadro. */
+  const d7atras   = new Date(Date.now() - 7*864e5).toISOString().slice(0,10);
+  const vencNovos = vencidos.filter(p => p.data_fatal >= d7atras);
+  const vencVelhos= vencidos.filter(p => p.data_fatal <  d7atras);
   const prHoje    = PZ.filter(p => p.data_fatal === h);
   const pr7       = PZ.filter(p => p.data_fatal >  h && p.data_fatal <= d7);
   const evHoje    = EV.filter(e => dia(e) === h);
@@ -637,7 +643,9 @@ async function telaInicio(){
   <main><h1>Bom dia, ${esc((ESC_NOME||'').split(' ')[0] || 'Breno')}</h1>
   <p class="meta">O que precisa da sua atenção hoje, ${br(h)}.</p>
   <div class="kpis">
-    <div class="kpi ${vencidos.length?'al':''}"><div class="n">${vencidos.length}</div><div class="l">prazos já vencidos</div></div>
+    <div class="kpi ${vencidos.length?'al':''}"${vencidos.length
+      ? ' onclick="location.hash=\'#/prazos\'" style="cursor:pointer" title="abrir a lista completa em Prazos e publicações"'
+      : ''}><div class="n">${vencidos.length}</div><div class="l">prazos já vencidos</div></div>
     <div class="kpi ${prHoje.length?'al':''}"><div class="n">${prHoje.length}</div><div class="l">prazos hoje</div></div>
     <div class="kpi"><div class="n">${pr7.length}</div><div class="l">prazos nos próximos 7 dias</div></div>
     <div class="kpi"><div class="n">${aud7.length}</div><div class="l">audiências na semana</div></div>
@@ -656,11 +664,30 @@ async function telaInicio(){
       <a class="btn" style="text-decoration:none" href="#/minutas">Minutar uma peça</a>
     </div></div>
   <div class="card"><h2>Hoje</h2>
-    <p class="nota">Prazo que vence hoje, compromisso do dia e o que ficou para trás.</p>
+    <p class="nota">Prazo que vence hoje, compromisso do dia e o que venceu na última semana —
+      esse ainda dá para resolver.</p>
     <div style="padding:0 18px 18px">
-      ${(vencidos.map(linhaPz).join('') + prHoje.map(linhaPz).join('') + evHoje.map(linhaEv).join(''))
-        || '<div class="vazio">Nada marcado para hoje e nada vencido. Bom sinal.</div>'}
+      ${(vencNovos.map(linhaPz).join('') + prHoje.map(linhaPz).join('') + evHoje.map(linhaEv).join(''))
+        || '<div class="vazio">Nada marcado para hoje e nada vencido na semana. Bom sinal.</div>'}
     </div></div>
+  ${vencVelhos.length?`<div class="card" style="border-left:3px solid var(--warn)"><h2>Ficou para trás</h2>
+    <p class="nota"><b>${vencVelhos.length}</b> prazo(s) venceram há mais de uma semana e continuam abertos —
+      o mais antigo em <b>${br(vencVelhos[0].data_fatal)}</b>. Saíram do quadro de cima para ele voltar a ser lido,
+      mas não saíram do sistema. Se já foi protocolado, dê baixa aqui: é esse clique que limpa a lista e
+      alimenta a Métrica e a Jurimetria. O que <i>não</i> foi protocolado precisa de decisão, não de lista.</p>
+    <details style="padding:0 18px 18px">
+      <summary style="cursor:pointer" class="sub">ver os ${vencVelhos.length}</summary>
+      <table style="margin-top:10px"><thead><tr><th style="width:90px">Dar baixa</th>
+        <th style="width:150px">Venceu</th><th>O quê</th><th>Cliente / caso</th></tr></thead>
+      <tbody>${vencVelhos.map(p=>`<tr>
+        <td style="text-align:center"><input type="checkbox" title="marcar como cumprido"
+          onchange="riscar('prazo','${p.id}',this)"></td>
+        <td class="dt"><b>${br(p.data_fatal)}</b><span class="sub">há ${humano(-dias(p.data_fatal))}</span></td>
+        <td><b>${esc(p.descricao)}</b></td>
+        <td>${p.caso?`<a class="lnk" href="#/caso/${p.caso.id}">${esc(p.caso.titulo)}</a>`
+                   :'<span class="sub" style="display:inline">sem caso vinculado</span>'}</td>
+      </tr>`).join('')}</tbody></table>
+    </details></div>`:''}
   <div class="card"><h2>Os próximos sete dias</h2>
     <div style="padding:0 18px 18px">
       ${(pr7.map(linhaPz).join('') + ev7.map(linhaEv).join(''))
