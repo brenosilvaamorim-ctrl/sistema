@@ -66,6 +66,7 @@ button,input,select,textarea{font:inherit}
 input[type=date],input[type=email],input[type=search],input[type=text],select,textarea{padding:5px 9px;border-radius:8px;border:1px solid var(--ln);background:var(--s0);color:var(--ink);font-size:12.5px}
 textarea{width:100%;resize:vertical;line-height:1.45}
 .aviso{background:var(--s1);border:1px solid var(--crit);border-left-width:3px;border-radius:8px;padding:12px 15px;margin-bottom:18px;font-size:13.4px;color:var(--i2)}
+.nfc{display:flex;flex-direction:column;gap:3px}.nfc .sub{margin:0}
 .aviso b{color:var(--ink)}.vazio{padding:28px;text-align:center;color:var(--i3)}
 .login{max-width:400px;margin:12vh auto;background:var(--s1);border:1px solid var(--ln);border-radius:14px;padding:28px}
 .login h1{font-size:19px;margin-bottom:6px}.login p{color:var(--i2);font-size:13.5px;margin:0 0 18px}
@@ -231,7 +232,7 @@ let ESC_NOME = 'Breno S. Amorim Advocacia', ESC_LOGO = null, ESC_ID = null, ESC_
    depois o que se escreve, depois a conta do escritório, e só no fim o sistema.
    Quem já tinha mexido na ordem continua com a dele — a troca abaixo só alcança
    quem nunca personalizou. */
-const MENU_PADRAO = [['inicio','Início'],['prazos','Prazos e publicações'],['agenda','Agenda'],['mensageria','Mensagens'],['whatsapp','Conversas do WhatsApp'],['captacao','Captação'],['clientes','Clientes'],['parceiros','Parceiros'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['minutas','Minutas'],['playbook','Playbook'],['documentos','Documentos'],['dicionario','Dicionário'],['aprender','Aprender'],['financeiro','Financeiro'],['metricas','Métricas'],['jurimetria','Jurimetria'],['projetos','Ideias e projetos'],['pessoal','Casa e família ↗'],['investir','Investir'],['manual','Manual'],['tutoriais','Tutoriais'],['regras','Regras'],['importar','Importar antigos'],['config','Configurações']];
+const MENU_PADRAO = [['inicio','Início'],['prazos','Prazos e publicações'],['agenda','Agenda'],['mensageria','Mensagens'],['whatsapp','Conversas do WhatsApp'],['captacao','Captação'],['clientes','Clientes'],['parceiros','Parceiros'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['minutas','Minutas'],['playbook','Playbook'],['documentos','Documentos'],['dicionario','Dicionário'],['aprender','Aprender'],['financeiro','Financeiro'],['notas','Notas fiscais'],['metricas','Métricas'],['jurimetria','Jurimetria'],['projetos','Ideias e projetos'],['pessoal','Casa e família ↗'],['investir','Investir'],['manual','Manual'],['tutoriais','Tutoriais'],['regras','Regras'],['importar','Importar antigos'],['config','Configurações']];
 /* Ordem anterior, guardada só para reconhecer quem nunca mexeu no menu. */
 const MENU_ORDEM_ANTIGA = ['inicio','prazos','agenda','captacao','casos','processos','andamento','clientes','mensageria','metricas','jurimetria','financeiro','parceiros','minutas','playbook','aprender','dicionario','documentos','tutoriais','regras','importar','manual','investir','pessoal','config'];
 let MENUCFG = MENU_PADRAO.map(([k,r]) => ({ k, r, v:true }));
@@ -354,7 +355,7 @@ const GRUPOS = [
   ['Pessoas',           ['captacao','clientes','parceiros']],
   ['Casos e processos', ['casos','processos','andamento']],
   ['Escrever',          ['minutas','playbook','documentos','dicionario','aprender']],
-  ['Escritório',        ['financeiro','metricas','jurimetria','projetos']],
+  ['Escritório',        ['financeiro','notas','metricas','jurimetria','projetos']],
   ['Meu bolso',         ['pessoal','investir']],
   ['Sistema',           ['manual','tutoriais','regras','importar','config']],
 ];
@@ -5522,6 +5523,26 @@ Número pequeno é indício, não estatística. A taxa de êxito só passa a val
 
 Contas a receber e a pagar, por caso, cliente e categoria. Honorário por êxito amarrado ao caso. Projeção do mês e do ano. A baixa é manual: marque quando entrar ou sair de verdade.
 
+## 13a. Notas fiscais
+
+Fica no grupo **Escritório**. Emite a NFS-e direto no **Emissor Nacional**, assinada com o certificado A1 do escritório — o Simples Nacional emite obrigatoriamente pelo Emissor Nacional desde 1º/11/2026 (Resolução CGSN 191/2026), mesmo em Petrolina.
+
+**O caminho mais curto.** No Financeiro, depois de dar baixa num recebimento, clique em **Nota** ao lado dele. A tela abre com cliente, caso, valor e competência já preenchidos. Confira a descrição e emita. A resposta do governo vem na hora: número da nota, ou o motivo da recusa.
+
+**Com parceria.** Marque *Houve parceria*, escolha o escritório parceiro, informe o total recebido e o que foi repassado. O valor da nota é a diferença, e a descrição sai no modelo do escritório, citando o art. 15, § 9º, do EAOAB, a razão social e o CNPJ do parceiro e os dois valores. Razão social e CNPJ ficam guardados no cadastro do parceiro para a próxima vez.
+
+**O que o sistema exige do cliente.** CPF ou CNPJ, sempre. Para pessoa física o endereço é opcional; para empresa (ou com ISS retido) o governo exige endereço completo — logradouro com número, bairro e CEP.
+
+**Valor errado.** Para o Simples, valor, tomador e competência não se corrigem por substituição: cancela-se a nota e emite-se outra.
+
+**ISS retido.** Só existe quando o cliente é empresa e a lei do município dela manda reter. A nota passa a informar a alíquota de ISS do Simples, que fica em Configuração. Na dúvida, pergunte ao contador antes.
+
+**Depois de emitida.** *Imprimir* gera o DANFSe com QR Code (a impressão oficial; a API do governo que fazia o PDF foi suspensa em agosto de 2026). *XML* baixa o arquivo fiscal. *WhatsApp* monta a mensagem com o link de conferência no portal nacional. *Cancelar* (só o titular) registra o evento de cancelamento no governo.
+
+**Se a conexão cair no meio.** A nota fica como *enviando*. Use **Conferir**: o sistema pergunta ao governo se ela saiu e, se saiu, traz o número.
+
+**Teste antes.** O sistema começa no modo de teste (produção restrita), onde nada tem valor fiscal. Quando as notas de teste saírem certas, o titular troca para produção em Configuração.
+
 ## 13b. Ideias e projetos
 
 Fica no grupo **Escritório**. Serve para a ideia que surge numa conversa não morrer na conversa.
@@ -5639,7 +5660,7 @@ Vale saber, para não contar com o que não existe:
 - **Não protocola.** Nenhuma peça sai daqui para o PJe. Minuta é minuta.
 - **Não envia mensagem sozinho.** WhatsApp e e-mail sempre saem pela sua mão.
 - **Não usa o seu certificado digital nem entra no PJe por você.**
-- **Não emite boleto nem nota fiscal** — precisaria contratar um gateway.
+- **Não emite boleto.** Nota fiscal, sim: veja "Notas fiscais" (NFS-e pelo Emissor Nacional).
 - **Não tem portal do cliente** — por decisão sua.
 - **Não dá parecer.** A confiança que ele mostra é do robô que leu o texto, não do advogado que responde pelo caso.
 - **Não busca jurisprudência sozinho.** O banco de precedentes é alimentado pelas suas peças; a conferência do inteiro teor é feita por você, pelos links de busca.
@@ -6596,7 +6617,7 @@ function linhaLanc(l, aberto){
     <td><b>${esc(l.descricao||'—')}</b><span class="sub">${esc(l.cliente?.nome || l.contraparte || '')}</span></td>
     <td class="dt" style="font-weight:600;color:${l.tipo==='entrada'?'var(--good)':'var(--ink)'}">${rs(l.valor)}</td>
     <td>${aberto?`<button class="btn ok" onclick="baixar('${l.id}')">${l.tipo==='entrada'?'Recebido':'Pago'}</button>`
-                :`<span class="sub">${br(l.pagamento)}</span>`}</td></tr>`;
+                :`<span class="sub">${br(l.pagamento)}</span>${l.tipo==='entrada'?` <a class="btn" style="text-decoration:none" href="#/notas?lanc=${l.id}" title="emitir NFS-e deste recebimento">Nota</a>`:''}`}</td></tr>`;
 }
 async function telaFinanceiro(){
   const [lc, ct, cl] = await Promise.all([
@@ -6672,6 +6693,430 @@ async function telaFinanceiro(){
     <tbody>${pagos.slice(0,20).map(l=>linhaLanc(l,false)).join('')}</tbody></table></div>`:''}
   </main>` + rodape();
 }
+
+/* -------------------------------------------------------------- notas fiscais */
+/* Emissão de NFS-e pelo Emissor Nacional. Quem assina e envia é a função
+   nota-fiscal (no servidor, com o certificado A1); esta tela só prepara os
+   dados, mostra o que foi emitido e imprime o DANFSe.
+   A descrição com parceria segue o modelo do escritório, com base no
+   art. 15, § 9º, do EAOAB: a nota sai só pela parte que ficou com o escritório. */
+let NF = { cfg:null, notas:[], cli:[], parc:[], casos:[], procs:[], lancs:[], perfil:null, form:{}, descEditada:false, diag:null };
+const NF_SIT = { emitida:['good','emitida'], enviando:['warn','enviando'], rejeitada:['crit','rejeitada'], cancelada:['cin','cancelada'] };
+const nfNum = s => { s = String(s ?? '').trim().replace(/[R$\s]/g,''); if (s.includes(',')) s = s.replace(/\./g,'').replace(',','.'); const n = Number(s); return isFinite(n) ? Math.round(n*100)/100 : NaN; };
+const nfValor = v => Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2, maximumFractionDigits:2});
+const nfDoc = d => { d = so(d); return d.length===14 ? d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,'$1.$2.$3/$4-$5')
+  : d.length===11 ? d.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/,'$1.$2.$3-$4') : d; };
+
+async function telaNotas(){
+  const lancId = new URLSearchParams((location.hash.split('?')[1]||'')).get('lanc');
+  const desde = new Date(Date.now() - 150*864e5).toISOString().slice(0,10);
+  const [cf, nt, cl, pa, ca, pr, la, eu] = await Promise.all([
+    sb.from('nfse_config').select('*').maybeSingle(),
+    sb.from('nota_fiscal').select('id,lancamento_id,cliente_id,caso_id,parceiro_id,ambiente,serie,numero_dps,competencia,valor_servico,valor_total_recebido,valor_parceria,iss_retido,descricao,tomador,situacao,chave_acesso,numero_nfse,emitida_em,erros,cancelada_em,motivo_cancelamento,criado_em')
+      .order('criado_em', { ascending:false }).limit(300),
+    sb.from('cliente').select('id,nome,tipo,cpf_cnpj,endereco,cep,cidade,uf').order('nome'),
+    sb.from('parceiro').select('id,nome,escritorio,razao_social,cnpj,ativo').order('nome'),
+    sb.from('caso').select('id,titulo,cliente_id').order('titulo').limit(3000),
+    sb.from('processo').select('id,caso_id,numero_cnj,numero_formatado').limit(5000),
+    sb.from('lancamento').select('id,descricao,valor,pagamento,vencimento,cliente_id,caso_id,situacao,tipo,cliente:cliente_id(nome)')
+      .eq('tipo','entrada').eq('situacao','pago').gte('pagamento', desde).order('pagamento', { ascending:false }),
+    sb.from('usuario').select('perfil').eq('id', USER.id).maybeSingle(),
+  ]);
+  if (nt.error) return erro(/nota_fiscal/.test(nt.error.message)
+    ? 'a tabela de notas ainda não existe no banco — rode o arquivo banco/30_notas_fiscais.sql no Supabase' : nt.error.message);
+  NF.cfg = cf.data; NF.notas = nt.data||[]; NF.cli = cl.data||[]; NF.parc = pa.data||[];
+  NF.casos = ca.data||[]; NF.procs = pr.data||[]; NF.perfil = eu.data?.perfil;
+  const comNota = new Set(NF.notas.filter(n => ['emitida','enviando'].includes(n.situacao)).map(n => n.lancamento_id));
+  NF.lancs = (la.data||[]).filter(l => !comNota.has(l.id));
+  NF.form = { competencia: hoje(), parceria:false, iss_retido:false };
+  NF.descEditada = false;
+  if (lancId) usarLancamento(lancId, true);
+  desenharNotas();
+}
+
+function nfResumoMes(){
+  const mes = hoje().slice(0,7), ano = hoje().slice(0,4);
+  const ok = NF.notas.filter(n => n.situacao==='emitida' && n.ambiente===(NF.cfg?.ambiente||2));
+  const soma = a => a.reduce((t,n)=>t+Number(n.valor_servico||0),0);
+  return { mes: ok.filter(n => String(n.competencia).slice(0,7)===mes), ano: ok.filter(n => String(n.competencia).slice(0,4)===ano), soma };
+}
+
+function desenharNotas(){
+  const c = NF.cfg, f = NF.form, titular = NF.perfil === 'titular';
+  const teste = (c?.ambiente ?? 2) !== 1;
+  const r = nfResumoMes();
+  const pend = NF.notas.filter(n => n.situacao==='enviando');
+  const casosCli = NF.casos.filter(k => !f.cliente_id || k.cliente_id === f.cliente_id);
+  const procsCaso = NF.procs.filter(p => f.caso_id && p.caso_id === f.caso_id);
+  const cli = NF.cli.find(x => x.id === f.cliente_id);
+  const docCli = so(cli?.cpf_cnpj);
+  const avisosCli = !cli ? [] : [
+    ...(docCli.length!==11 && docCli.length!==14 ? ['<b>sem CPF/CNPJ</b> no cadastro — a nota não sai sem ele'] : []),
+    ...(!cli.endereco || so(cli.cep).length!==8 ? [docCli.length===14 || f.iss_retido
+      ? '<b>sem endereço completo</b> — para cliente empresa a nota exige endereço (logradouro com número, bairro e CEP)'
+      : 'sem endereço completo (a nota sai sem endereço do tomador, o que é permitido para pessoa física)'] : []),
+  ];
+  const parc = NF.parc.find(p => p.id === f.parceiro_id);
+  if (!NF.descEditada) f.descricao = nfDescricao();
+  const valorNota = f.parceria ? Math.round(((nfNum(f.total)||0) - (nfNum(f.repasse)||0))*100)/100 : nfNum(f.valor);
+
+  app.innerHTML = menu('notas') + `
+  <main><h1>Notas fiscais</h1>
+  <p class="meta">NFS-e pelo Emissor Nacional, assinada com o certificado do escritório. O Simples Nacional emite obrigatoriamente
+    pelo Emissor Nacional desde 1º/11/2026 (Resolução CGSN 191/2026), mesmo em Petrolina.</p>
+  ${!c ? `<div class="aviso"><b>Falta configurar.</b> Rode <code>banco/30_notas_fiscais.sql</code> no Supabase e instale o certificado (veja o LEIAME de funcoes).</div>` : ''}
+  ${c && teste ? `<div class="aviso" style="border-color:var(--warn)"><b>Modo de teste (produção restrita).</b> As notas emitidas aqui não têm valor fiscal.
+    Quando os testes derem certo, o titular troca para produção em Configuração, logo abaixo.</div>` : ''}
+  ${pend.length ? `<div class="aviso"><b>${pend.length} nota(s) ficaram sem resposta do governo.</b> Use "Conferir" na lista: se saíram, aparecem; se não, podem ser emitidas de novo.</div>` : ''}
+  <div class="kpis">
+    <div class="kpi"><div class="n">${r.mes.length}</div><div class="l">notas neste mês</div></div>
+    <div class="kpi"><div class="n">${rs(r.soma(r.mes))}</div><div class="l">faturado no mês (competência)</div></div>
+    <div class="kpi"><div class="n">${rs(r.soma(r.ano))}</div><div class="l">faturado em ${hoje().slice(0,4)}</div></div>
+    <div class="kpi"><div class="n">${NF.lancs.length}</div><div class="l">recebimentos sem nota (150 dias)</div></div>
+  </div>
+
+  <div class="card"><h2>Emitir nota</h2>
+    <p class="nota">Comece por um recebimento já baixado no Financeiro, ou preencha direto.</p>
+    <div style="padding:0 18px 18px;display:grid;gap:12px">
+      <label class="nfc"><span class="sub">Recebimento do Financeiro</span>
+        <select onchange="usarLancamento(this.value)"><option value="">— nenhum (preencher direto) —</option>
+          ${NF.lancs.map(l=>`<option value="${l.id}" ${f.lancamento_id===l.id?'selected':''}>${br(l.pagamento)} · ${esc(l.cliente?.nome||'sem cliente')} · ${esc(l.descricao||'')} · ${rs(l.valor)}</option>`).join('')}
+        </select></label>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <label class="nfc" style="flex:2;min-width:230px"><span class="sub">Tomador (cliente)</span>
+          <select onchange="nfSet('cliente_id',this.value,true)"><option value="">— escolher —</option>
+            ${NF.cli.map(x=>`<option value="${x.id}" ${f.cliente_id===x.id?'selected':''}>${esc(x.nome)}${x.cpf_cnpj?' · '+esc(nfDoc(x.cpf_cnpj)):''}</option>`).join('')}</select></label>
+        <label class="nfc" style="flex:2;min-width:230px"><span class="sub">Caso</span>
+          <select onchange="nfSet('caso_id',this.value,true)"><option value="">— sem caso —</option>
+            ${casosCli.map(k=>`<option value="${k.id}" ${f.caso_id===k.id?'selected':''}>${esc(k.titulo)}</option>`).join('')}</select></label>
+        <label class="nfc" style="flex:1;min-width:200px"><span class="sub">Nº do processo (vai na descrição)</span>
+          <input type="text" list="nfprocs" value="${esc(f.processo||'')}" oninput="nfSet('processo',this.value)" placeholder="0000000-00.0000.0.00.0000">
+          <datalist id="nfprocs">${procsCaso.map(p=>`<option value="${esc(p.numero_formatado||p.numero_cnj)}">`).join('')}</datalist></label>
+        <label class="nfc" style="min-width:150px"><span class="sub">Competência</span>
+          <input type="date" value="${esc(f.competencia||'')}" max="${hoje()}" onchange="nfSet('competencia',this.value)"></label>
+      </div>
+      ${avisosCli.length ? `<p class="nota" style="margin:0;color:var(--crit)">Cadastro do cliente: ${avisosCli.join('; ')}. <a href="#/clientes">Corrigir em Clientes</a>.</p>` : ''}
+      <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" ${f.parceria?'checked':''} onchange="nfSet('parceria',this.checked,true)">
+        <span>Houve parceria — a nota sai só pela parte do escritório (art. 15, § 9º, EAOAB)</span></label>
+      ${f.parceria ? `<div style="display:flex;gap:10px;flex-wrap:wrap;padding:12px;border:1px solid var(--ln);border-radius:10px">
+        <label class="nfc" style="flex:2;min-width:220px"><span class="sub">Escritório parceiro</span>
+          <select onchange="nfSet('parceiro_id',this.value,true)"><option value="">— escolher —</option>
+            ${NF.parc.filter(p=>p.ativo!==false).map(p=>`<option value="${p.id}" ${f.parceiro_id===p.id?'selected':''}>${esc(p.razao_social||p.escritorio||p.nome)}</option>`).join('')}
+          </select></label>
+        <label class="nfc" style="flex:2;min-width:240px"><span class="sub">Razão social do parceiro (como no CNPJ)</span>
+          <input type="text" value="${esc(f.parc_razao ?? parc?.razao_social ?? parc?.escritorio ?? '')}" oninput="nfSet('parc_razao',this.value)" ${parc?'':'disabled'}></label>
+        <label class="nfc" style="min-width:170px"><span class="sub">CNPJ do parceiro</span>
+          <input type="text" value="${esc(f.parc_cnpj ?? nfDoc(parc?.cnpj||''))}" oninput="nfSet('parc_cnpj',this.value)" ${parc?'':'disabled'} placeholder="00.000.000/0000-00"></label>
+        <label class="nfc" style="min-width:150px"><span class="sub">Total recebido (R$)</span>
+          <input type="text" inputmode="decimal" value="${esc(f.total||'')}" oninput="nfSet('total',this.value)" onchange="desenharNotas()" placeholder="20.721,90"></label>
+        <label class="nfc" style="min-width:150px"><span class="sub">Repassado ao parceiro (R$)</span>
+          <input type="text" inputmode="decimal" value="${esc(f.repasse||'')}" oninput="nfSet('repasse',this.value)" onchange="desenharNotas()" placeholder="10.360,95"></label>
+        <div class="nfc" style="min-width:150px"><span class="sub">Valor da nota</span>
+          <b style="font-size:17px;padding-top:4px">${valorNota>0 ? rs(valorNota) : '—'}</b></div>
+        <p class="nota" style="margin:0;width:100%">Vale o que foi efetivamente repassado, não o percentual combinado. Razão social e CNPJ ficam salvos no cadastro do parceiro.</p>
+      </div>` : `<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+        <label class="nfc" style="min-width:160px"><span class="sub">Valor da nota (R$)</span>
+          <input type="text" inputmode="decimal" value="${esc(f.valor||'')}" oninput="nfSet('valor',this.value)" placeholder="0,00"></label></div>`}
+      <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" ${f.iss_retido?'checked':''} onchange="nfSet('iss_retido',this.checked,true)" ${docCli.length===14?'':'disabled'}>
+        <span>O tomador vai reter o ISS ${docCli.length===14?'':'<span class="sub" style="display:inline">(só existe quando o cliente é empresa)</span>'}</span></label>
+      ${f.iss_retido ? `<p class="nota" style="margin:0">Com retenção, a nota informa a alíquota de ISS do Simples (${c?.aliquota_iss_sn ? nfValor(c.aliquota_iss_sn)+'%' : '<b style="color:var(--crit)">não configurada</b>'}). Confirme com o contador antes.</p>` : ''}
+      <label class="nfc"><span class="sub">Descrição do serviço ${NF.descEditada ? '· <a onclick="nfDescAuto()" style="cursor:pointer;color:var(--serie)">voltar ao modelo</a>' : '· gerada pelo modelo — pode editar'}</span>
+        <textarea rows="${f.parceria?6:3}" maxlength="1000" oninput="nfDescMudou(this.value)">${esc(f.descricao||'')}</textarea></label>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button class="btn ok" onclick="emitirNota()" ${c?'':'disabled'}>${teste?'Emitir nota de teste':'Emitir nota'}</button>
+        <span class="sub" id="nf-st" style="margin:0"></span>
+      </div>
+    </div></div>
+
+  <div class="card" style="margin-top:18px"><h2>Notas</h2>
+    <p class="nota">As mais recentes primeiro. "Imprimir" gera o DANFSe com QR Code; "XML" baixa o arquivo oficial.</p>
+    ${NF.notas.length ? `<table><thead><tr><th>Competência</th><th>Nº</th><th>Tomador</th><th>Valor</th><th>Situação</th><th></th></tr></thead><tbody>
+      ${NF.notas.map(linhaNota).join('')}</tbody></table>` : '<div class="vazio">Nenhuma nota ainda.</div>'}
+  </div>
+
+  ${c ? blocoConfigNota(titular) : ''}
+  </main>` + rodape();
+}
+
+function linhaNota(n){
+  const [k, rot] = NF_SIT[n.situacao] || ['cin', n.situacao];
+  const t = n.tomador || {};
+  const erros = (n.situacao==='rejeitada' && Array.isArray(n.erros)) ? n.erros : [];
+  return `<tr>
+    <td class="dt"><b>${br(n.competencia)}</b><span class="sub">${n.ambiente===1?'produção':'teste'}</span></td>
+    <td>${n.numero_nfse ? '<b>'+esc(n.numero_nfse)+'</b>' : '—'}<span class="sub">DPS ${esc(n.serie)}-${n.numero_dps}</span></td>
+    <td><b>${esc(t.nome||'')}</b><span class="sub">${esc(nfDoc(t.doc||''))}${n.valor_parceria?' · parceria':''}</span></td>
+    <td class="dt" style="font-weight:600">${rs(n.valor_servico)}</td>
+    <td><span class="pill ${k}">${rot}</span>
+      ${erros.length ? `<span class="sub" style="color:var(--crit);white-space:normal">${erros.map(e=>esc((e.codigo?e.codigo+' — ':'')+e.descricao+(e.complemento?' ('+e.complemento+')':''))).join('<br>')}</span>` : ''}
+      ${n.situacao==='cancelada' ? `<span class="sub">${br(n.cancelada_em)} · ${esc(n.motivo_cancelamento||'')}</span>` : ''}</td>
+    <td><div style="display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end">
+      ${['emitida','cancelada'].includes(n.situacao) ? `<button class="btn" onclick="imprimirDanfse('${n.id}')">Imprimir</button>
+        <button class="btn" onclick="baixarXmlNota('${n.id}')">XML</button>` : ''}
+      ${n.situacao==='emitida' ? `<button class="btn" onclick="whatsNota('${n.id}')">WhatsApp</button>` : ''}
+      ${n.situacao==='enviando' ? `<button class="btn ok" onclick="conferirNota('${n.id}')">Conferir</button>` : ''}
+      ${n.situacao==='rejeitada' ? `<button class="btn" onclick="refazerNota('${n.id}')">Corrigir e emitir</button>` : ''}
+      ${n.situacao==='emitida' && NF.perfil==='titular' ? `<button class="btn" style="color:var(--crit)" onclick="cancelarNota('${n.id}')">Cancelar</button>` : ''}
+    </div></td></tr>`;
+}
+
+function blocoConfigNota(titular){
+  const c = NF.cfg, dis = titular ? '' : 'disabled';
+  const d = NF.diag;
+  return `<div class="card" style="margin-top:18px"><h2>Configuração</h2>
+    <p class="nota">Dados fixos do prestador. ${titular ? 'Só o titular altera.' : 'Só o titular altera; aqui você apenas vê.'}</p>
+    <div style="padding:0 18px 18px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+      <div class="nfc" style="min-width:260px"><span class="sub">Prestador</span><b>${esc(c.razao_social)}</b><span class="sub">CNPJ ${esc(nfDoc(c.cnpj))} · Petrolina/PE (${esc(c.cod_municipio)})</span></div>
+      <label class="nfc"><span class="sub">Ambiente</span>
+        <select id="nfc-amb" ${dis}><option value="2" ${c.ambiente!==1?'selected':''}>Teste (produção restrita)</option>
+          <option value="1" ${c.ambiente===1?'selected':''}>Produção — notas valem</option></select></label>
+      <label class="nfc" title="Preencha só se o escritório estiver no cadastro nacional (CNC) de Petrolina; se não estiver, informar a IM faz o governo recusar a nota."><span class="sub">Inscrição municipal (só se no CNC)</span><input type="text" id="nfc-im" value="${esc(c.inscricao_municipal||'')}" ${dis} style="width:130px"></label>
+      <label class="nfc"><span class="sub">Cód. tributação nacional</span><input type="text" id="nfc-trib" value="${esc(c.cod_trib_nac)}" ${dis} style="width:90px" title="17.14.01 = advocacia"></label>
+      <label class="nfc"><span class="sub">Código NBS</span><input type="text" id="nfc-nbs" value="${esc(c.cod_nbs||'')}" ${dis} style="width:110px" placeholder="9 dígitos"></label>
+      <label class="nfc"><span class="sub">% aprox. tributos (Simples)</span><input type="text" id="nfc-ptot" value="${nfValor(c.p_tot_trib_sn)}" ${dis} style="width:80px" title="Lei 12.741/2012 — alíquota efetiva do DAS"></label>
+      <label class="nfc"><span class="sub">Alíquota ISS p/ retenção (%)</span><input type="text" id="nfc-iss" value="${c.aliquota_iss_sn!=null?nfValor(c.aliquota_iss_sn):''}" ${dis} style="width:80px"></label>
+      <label class="nfc" style="flex:1;min-width:240px"><span class="sub">Descrição padrão (sem processo)</span><input type="text" id="nfc-desc" value="${esc(c.descricao_padrao)}" ${dis}></label>
+      ${titular ? `<button class="btn ok" onclick="salvarConfigNota()">Salvar</button>` : ''}
+      <button class="btn" onclick="diagnosticoNota()">Testar certificado e conexão</button>
+      <span class="sub" id="nfc-st" style="margin:0"></span>
+    </div>
+    ${d ? `<div style="padding:0 18px 18px"><pre style="white-space:pre-wrap;font-size:12px;background:var(--s0);border:1px solid var(--ln);border-radius:8px;padding:10px;margin:0">${esc(d)}</pre></div>` : ''}
+  </div>`;
+}
+
+/* ---------- descrição */
+function nfDescricao(){
+  const f = NF.form, c = NF.cfg;
+  const proc = String(f.processo||'').trim();
+  if (f.parceria) {
+    const parc = NF.parc.find(p => p.id === f.parceiro_id);
+    const razao = String(f.parc_razao ?? parc?.razao_social ?? parc?.escritorio ?? '').trim().toUpperCase() || '[ESCRITÓRIO PARCEIRO]';
+    const cnpj = nfDoc(f.parc_cnpj ?? parc?.cnpj ?? '') || '[CNPJ]';
+    const tot = nfNum(f.total), rep = nfNum(f.repasse);
+    return `HONORÁRIOS REFERENTES AO PROCESSO N. ${proc || '[PROCESSO]'}. O valor desta nota fiscal corresponde efetivamente à parcela da receita que coube ao ora emitente, com exclusão da receita transferida a título de parceria ao escritório ${razao}, inscrito no CNPJ/MF sob o n. ${cnpj}, nos termos do art. 15, § 9º, da Lei n. 8.906/94. Valor total dos honorários recebidos na ocasião: R$ ${tot>0?nfValor(tot):'[TOTAL]'}; Valor transferido a título de parceria: R$ ${rep>0?nfValor(rep):'[REPASSE]'}.`;
+  }
+  return proc ? `HONORÁRIOS ADVOCATÍCIOS REFERENTES AO PROCESSO N. ${proc}.` : (c?.descricao_padrao || 'Honorários advocatícios.');
+}
+window.nfDescMudou = v => { NF.form.descricao = v; if (!NF.descEditada) { NF.descEditada = true; } };
+window.nfDescAuto = () => { NF.descEditada = false; desenharNotas(); };
+window.nfSet = (k, v, redesenhar) => {
+  NF.form[k] = v;
+  if (k === 'cliente_id') { const c = NF.casos.find(x => x.id === NF.form.caso_id); if (c && c.cliente_id !== v) NF.form.caso_id = ''; }
+  if (k === 'caso_id') { const ps = NF.procs.filter(p => p.caso_id === v); if (ps.length === 1) NF.form.processo = ps[0].numero_formatado || ps[0].numero_cnj;
+    const c = NF.casos.find(x => x.id === v); if (c?.cliente_id && !NF.form.cliente_id) NF.form.cliente_id = c.cliente_id; }
+  if (k === 'parceiro_id') { delete NF.form.parc_razao; delete NF.form.parc_cnpj; }
+  if (k === 'cliente_id') { const cl = NF.cli.find(x => x.id === v); if (so(cl?.cpf_cnpj).length !== 14) NF.form.iss_retido = false; }
+  if (redesenhar) return desenharNotas();
+  // sem redesenhar (para não perder o foco do campo): só atualiza a descrição
+  if (!NF.descEditada) { NF.form.descricao = nfDescricao(); const ta = document.querySelector('main textarea'); if (ta) ta.value = NF.form.descricao; }
+};
+window.usarLancamento = (id, semDesenhar) => {
+  const l = NF.lancs.find(x => x.id === id);
+  NF.form = { competencia: hoje(), parceria:false, iss_retido:false };
+  NF.descEditada = false;
+  if (l) {
+    Object.assign(NF.form, { lancamento_id: l.id, cliente_id: l.cliente_id || '', caso_id: l.caso_id || '',
+      competencia: (l.pagamento || hoje()).slice(0,10), valor: nfValor(l.valor), total: nfValor(l.valor) });
+    const ps = NF.procs.filter(p => p.caso_id === l.caso_id);
+    if (ps.length === 1) NF.form.processo = ps[0].numero_formatado || ps[0].numero_cnj;
+  }
+  if (!semDesenhar) desenharNotas();
+};
+
+/* ---------- emitir */
+window.emitirNota = async () => {
+  const f = NF.form, st = document.getElementById('nf-st');
+  const cli = NF.cli.find(x => x.id === f.cliente_id);
+  if (!cli) return alert('Escolha o cliente (tomador).');
+  const doc = so(cli.cpf_cnpj);
+  if (doc.length !== 11 && doc.length !== 14) return alert('O cliente está sem CPF/CNPJ no cadastro. Corrija em Clientes antes.');
+  if (!f.competencia || f.competencia > hoje()) return alert('A competência não pode ser depois de hoje.');
+  const descricao = String(f.descricao||'').trim();
+  if (/\[(PROCESSO|TOTAL|REPASSE|CNPJ|ESCRITÓRIO PARCEIRO)\]/.test(descricao)) return alert('A descrição ainda tem campos por preencher entre colchetes.');
+  let corpo = { acao:'emitir', cliente_id: cli.id, caso_id: f.caso_id || null, lancamento_id: f.lancamento_id || null,
+    competencia: f.competencia, descricao, iss_retido: !!f.iss_retido };
+  if (f.parceria) {
+    const parc = NF.parc.find(p => p.id === f.parceiro_id);
+    if (!parc) return alert('Escolha o escritório parceiro.');
+    const razao = String(f.parc_razao ?? parc.razao_social ?? parc.escritorio ?? '').trim();
+    const cnpj = so(f.parc_cnpj ?? parc.cnpj);
+    if (!razao || cnpj.length !== 14) return alert('Informe a razão social e o CNPJ do parceiro.');
+    const tot = nfNum(f.total), rep = nfNum(f.repasse);
+    if (!(tot > 0) || !(rep > 0) || rep >= tot) return alert('Confira o total recebido e o valor repassado.');
+    // guarda no cadastro do parceiro, para a próxima nota já vir pronta
+    if (razao !== (parc.razao_social||'') || cnpj !== so(parc.cnpj)) {
+      const { error } = await sb.from('parceiro').update({ razao_social: razao, cnpj }).eq('id', parc.id);
+      if (error) return alert('Não consegui salvar o CNPJ do parceiro: ' + error.message);
+      parc.razao_social = razao; parc.cnpj = cnpj;
+    }
+    corpo = { ...corpo, parceiro_id: parc.id, valor_total_recebido: tot, valor_parceria: rep, valor_servico: Math.round((tot-rep)*100)/100 };
+  } else {
+    const v = nfNum(f.valor);
+    if (!(v > 0)) return alert('Informe o valor da nota.');
+    corpo.valor_servico = v;
+  }
+  const teste = (NF.cfg?.ambiente ?? 2) !== 1;
+  const ok = confirm(`${teste ? '[TESTE — sem valor fiscal]\n\n' : ''}Emitir NFS-e de ${rs(corpo.valor_servico)} para ${cli.nome} (${nfDoc(doc)}), competência ${br(f.competencia)}?\n\n${descricao.slice(0,400)}${descricao.length>400?'…':''}`);
+  if (!ok) return;
+  st.textContent = 'assinando e enviando ao Emissor Nacional…';
+  try {
+    let r;
+    try { r = await chamarFuncao('nota-fiscal', corpo); }
+    catch (e) {
+      if (/já tem nota/.test(e.message) && confirm('Este recebimento já tem nota. Emitir outra mesmo assim?'))
+        r = await chamarFuncao('nota-fiscal', { ...corpo, mesmo_assim: true });
+      else throw e;
+    }
+    if (r.situacao === 'emitida') { alert(`Nota ${r.numero_nfse || ''} emitida.${r.alertas?.length ? '\n\nAvisos do governo:\n' + r.alertas.map(a=>'• '+(a.descricao||a.Descricao||JSON.stringify(a))).join('\n') : ''}`); }
+    else if (r.situacao === 'rejeitada') { alert('O governo recusou a nota:\n\n' + (r.erros||[]).map(e=>'• '+(e.codigo?e.codigo+' — ':'')+e.descricao+(e.complemento?' ('+e.complemento+')':'')).join('\n')); }
+    else if (r.aviso) alert(r.aviso);
+    location.hash = '#/notas'; telaNotas();
+  } catch (e) { st.textContent = ''; alert('Não foi possível: ' + e.message); }
+};
+window.refazerNota = id => {
+  const n = NF.notas.find(x => x.id === id); if (!n) return;
+  NF.form = { lancamento_id: n.lancamento_id||'', cliente_id: n.cliente_id||'', caso_id: n.caso_id||'', competencia: n.competencia,
+    parceria: !!n.parceiro_id, parceiro_id: n.parceiro_id||'', iss_retido: n.iss_retido,
+    valor: nfValor(n.valor_servico), total: n.valor_total_recebido ? nfValor(n.valor_total_recebido) : '',
+    repasse: n.valor_parceria ? nfValor(n.valor_parceria) : '', descricao: n.descricao };
+  NF.descEditada = true;
+  desenharNotas(); window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+window.conferirNota = async id => {
+  try { const r = await chamarFuncao('nota-fiscal', { acao:'conferir', nota_id:id }); if (r.aviso) alert(r.aviso); telaNotas(); }
+  catch (e) { alert('Não foi possível: ' + e.message); }
+};
+window.cancelarNota = async id => {
+  const n = NF.notas.find(x => x.id === id); if (!n) return;
+  const cod = prompt(`Cancelar a nota ${n.numero_nfse} (${rs(n.valor_servico)} — ${n.tomador?.nome}).\n\nMotivo:\n1 — Erro na emissão\n2 — Serviço não prestado\n9 — Outros\n\nDigite 1, 2 ou 9:`, '1');
+  if (!cod) return;
+  if (!['1','2','9'].includes(cod.trim())) return alert('Use 1, 2 ou 9.');
+  const motivo = prompt('Explique em uma frase (mínimo 15 letras). Vai para o registro do governo:');
+  if (!motivo) return;
+  if (motivo.trim().length < 15) return alert('O motivo precisa de pelo menos 15 letras.');
+  try { await chamarFuncao('nota-fiscal', { acao:'cancelar', nota_id:id, codigo:cod.trim(), motivo:motivo.trim() }); alert('Nota cancelada.'); telaNotas(); }
+  catch (e) { alert('Não foi possível cancelar: ' + e.message + '\n\nSe o prazo de cancelamento passou, o caminho é a substituição ou o pedido à prefeitura.'); }
+};
+
+/* ---------- configuração */
+window.salvarConfigNota = async () => {
+  const st = document.getElementById('nfc-st'), g = id => document.getElementById(id).value.trim();
+  const amb = Number(g('nfc-amb'));
+  if (amb === 1 && NF.cfg.ambiente !== 1 && !confirm('Passar para PRODUÇÃO? A partir daí as notas emitidas valem de verdade.')) return;
+  const ptot = nfNum(g('nfc-ptot')), iss = g('nfc-iss') ? nfNum(g('nfc-iss')) : null;
+  if (!/^\d{6}$/.test(g('nfc-trib'))) return alert('Código de tributação nacional: 6 dígitos (advocacia = 171401).');
+  if (g('nfc-nbs') && !/^\d{9}$/.test(so(g('nfc-nbs')))) return alert('Código NBS: 9 dígitos.');
+  if (!(ptot >= 0 && ptot < 100)) return alert('Percentual de tributos inválido.');
+  st.textContent = 'salvando…';
+  const { error } = await sb.from('nfse_config').update({ ambiente: amb, inscricao_municipal: g('nfc-im') || null,
+    cod_trib_nac: g('nfc-trib'), cod_nbs: so(g('nfc-nbs')) || null, p_tot_trib_sn: ptot, aliquota_iss_sn: iss,
+    descricao_padrao: g('nfc-desc') || 'Honorários advocatícios.', atualizado_em: new Date().toISOString() })
+    .eq('escritorio_id', NF.cfg.escritorio_id);
+  st.textContent = error ? 'erro: ' + error.message : 'salvo ✓';
+  if (!error) telaNotas();
+};
+window.diagnosticoNota = async () => {
+  const st = document.getElementById('nfc-st'); st.textContent = 'consultando…';
+  try {
+    const r = await chamarFuncao('nota-fiscal', { acao:'diagnostico' });
+    const c = r.certificado;
+    NF.diag = `Ambiente: ${r.ambiente}\nCertificado: ${c.titular}\n  CNPJ ${c.cnpj ? nfDoc(c.cnpj) : '(não identificado)'} — ${c.confere_com_cadastro ? 'confere com o prestador' : 'NÃO confere com o prestador'}\n  válido até ${br(c.valido_ate)}${c.vencido ? ' — VENCIDO' : ''}\n\nConvênio de Petrolina no Sistema Nacional (resposta do governo, HTTP ${r.convenio.status_http}):\n${typeof r.convenio.resposta === 'string' ? r.convenio.resposta : JSON.stringify(r.convenio.resposta, null, 2)}`;
+  } catch (e) { NF.diag = 'Falhou: ' + e.message + '\n\nSe a mensagem for de rede/sem resposta, a conexão com certificado (TLS mútuo) não funcionou no servidor — veja o LEIAME de funcoes, plano B.'; }
+  desenharNotas();
+};
+
+/* ---------- XML, WhatsApp e DANFSe */
+async function xmlNota(id){
+  const { data, error } = await sb.from('nota_fiscal').select('xml_nfse,chave_acesso,numero_nfse').eq('id', id).single();
+  if (error || !data?.xml_nfse) throw new Error(error?.message || 'XML não encontrado');
+  return data;
+}
+window.baixarXmlNota = async id => {
+  try { const d = await xmlNota(id);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([d.xml_nfse], { type:'application/xml' }));
+    a.download = `NFSe-${d.numero_nfse || d.chave_acesso}.xml`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  } catch (e) { alert('Não foi possível: ' + e.message); }
+};
+window.whatsNota = async id => {
+  const n = NF.notas.find(x => x.id === id); if (!n) return;
+  const cli = NF.cli.find(x => x.id === n.cliente_id);
+  const { data: cc } = await sb.from('cliente').select('whatsapp,telefone').eq('id', n.cliente_id).maybeSingle();
+  const nome = nomeProprio(String(n.tomador?.nome||'').split(' ')[0]);
+  const txt = `Olá, ${nome}. Segue a nota fiscal n. ${n.numero_nfse} referente aos honorários (${rs(n.valor_servico)}).\n\nVocê pode conferir a autenticidade no portal nacional da NFS-e:\nhttps://www.nfse.gov.br/ConsultaPublica/?tpc=1&chave=${n.chave_acesso}`;
+  const link = linkWa(cc?.whatsapp || cc?.telefone, txt);
+  if (!link) return alert('O cliente não tem WhatsApp cadastrado.' + (cli ? '' : ''));
+  window.open(link, '_blank');
+};
+window.imprimirDanfse = async id => {
+  let d; try { d = await xmlNota(id); } catch (e) { return alert('Não foi possível: ' + e.message); }
+  const n = NF.notas.find(x => x.id === id);
+  const x = new DOMParser().parseFromString(d.xml_nfse, 'application/xml');
+  const q = (sel, raiz) => { const e = (raiz||x).getElementsByTagName(sel)[0]; return e ? e.textContent : ''; };
+  const no = sel => x.getElementsByTagName(sel)[0];
+  const dps = no('infDPS'), prest = no('prest'), toma = no('toma'), emit = no('emit');
+  const chave = d.chave_acesso || (no('infNFSe')?.getAttribute('Id')||'').replace(/^NFS/,'');
+  const dh = s => s ? br(s.slice(0,10)) + ' ' + s.slice(11,19) : '—';
+  const teste = q('tpAmb', dps) === '2';
+  const cancelada = n?.situacao === 'cancelada';
+  const urlConsulta = 'https://www.nfse.gov.br/ConsultaPublica/?tpc=1&chave=' + chave;
+  const endEmit = emit ? [q('xLgr', emit), q('nro', emit), q('xCpl', emit), q('xBairro', emit)].filter(Boolean).join(', ') : '';
+  const endToma = toma ? [q('xLgr', toma), q('nro', toma), q('xCpl', toma), q('xBairro', toma)].filter(Boolean).join(', ') : '';
+  const opSN = { '1':'Não optante', '2':'Optante — MEI', '3':'Optante — ME/EPP' }[q('opSimpNac', prest)] || '—';
+  const regAp = { '1':'Tributos federais e municipal pelo SN', '2':'Federais pelo SN; ISSQN fora', '3':'Federais e municipal fora do SN' }[q('regApTribSN', prest)] || '—';
+  const ret = { '1':'Não retido', '2':'Retido pelo tomador', '3':'Retido pelo intermediário' }[q('tpRetISSQN', dps)] || '—';
+  const campo = (rot, val, larg) => `<div class="c" style="flex:${larg||1}"><span>${esc(rot)}</span><b>${esc(val || '—')}</b></div>`;
+  const w = window.open('', '_blank');
+  if (!w) return alert('O navegador bloqueou a janela. Libere as janelas pop-up para este site.');
+  w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>DANFSe ${esc(d.numero_nfse||'')}</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script>
+  <style>@page{size:A4;margin:8mm}body{font:8pt/1.3 Arial,sans-serif;color:#000;margin:0}
+  .pag{position:relative;max-width:194mm;margin:auto}.blk{border:1px solid #000;margin-top:-1px}
+  .tit{background:#eee;font-weight:700;font-size:7.5pt;padding:2px 5px;border-bottom:1px solid #000;text-transform:uppercase}
+  .lin{display:flex}.c{padding:2px 5px;border-right:1px solid #ccc;min-width:0}.c:last-child{border-right:0}
+  .c span{display:block;font-size:6pt;text-transform:uppercase;color:#333}.c b{font-weight:400;font-size:8pt;word-break:break-word}
+  .cab{display:flex;align-items:center;gap:8px;padding:6px}.cab h1{font-size:11pt;margin:0;text-align:center;flex:1}
+  .desc{padding:4px 6px;white-space:pre-wrap;font-size:8pt;min-height:40px}
+  .marca{position:absolute;top:38%;left:0;right:0;text-align:center;font-size:54pt;color:rgba(200,0,0,.18);transform:rotate(-24deg);font-weight:700;pointer-events:none}
+  #qr{width:58px;height:58px}.qrtxt{font-size:6pt;width:150px}
+  @media print{.naoimprime{display:none}}</style></head><body><div class="pag">
+  ${cancelada ? '<div class="marca">CANCELADA</div>' : ''}${teste ? '<div class="marca" style="top:60%">SEM VALOR FISCAL</div>' : ''}
+  <div class="blk"><div class="cab"><b style="font-size:13pt;color:#1a7f4b">NFS-e</b>
+    <h1>DANFSe v1.0<br><span style="font-size:8pt;font-weight:400">Documento Auxiliar da NFS-e</span></h1>
+    <div style="text-align:right;font-size:7pt">Município: Petrolina/PE<br>Ambiente: ${teste ? 'Produção restrita (teste)' : 'Produção'}</div></div></div>
+  <div class="blk"><div class="tit">Dados da NFS-e</div>
+    <div class="lin"><div style="flex:1">
+      <div class="lin">${campo('Chave de acesso da NFS-e', chave, 3)}</div>
+      <div class="lin">${campo('Número da NFS-e', q('nNFSe'))}${campo('Competência', br(q('dCompet', dps)))}${campo('Data e hora da emissão da NFS-e', dh(q('dhProc')))}</div>
+      <div class="lin">${campo('Número da DPS', q('nDPS', dps))}${campo('Série da DPS', q('serie', dps))}${campo('Data e hora da emissão da DPS', dh(q('dhEmi', dps)))}</div>
+      <div class="lin">${campo('Emitente da NFS-e', 'Prestador')}${campo('Situação', cancelada ? 'Cancelada' : 'Gerada')}</div>
+    </div><div style="padding:4px 6px;display:flex;flex-direction:column;align-items:center;gap:3px"><div id="qr"></div>
+      <div class="qrtxt">A autenticidade desta NFS-e pode ser verificada pela leitura deste código QR ou pela consulta da chave de acesso no portal nacional da NFS-e</div></div></div></div>
+  <div class="blk"><div class="tit">Prestador / Fornecedor</div>
+    <div class="lin">${campo('CNPJ / CPF', nfDoc(q('CNPJ', prest)))}${campo('Inscrição municipal', q('IM', emit))}${campo('Telefone', q('fone', emit))}</div>
+    <div class="lin">${campo('Nome / Nome empresarial', q('xNome', emit), 2)}${campo('E-mail', q('email', emit))}</div>
+    <div class="lin">${campo('Endereço', endEmit, 2)}${campo('Município / UF', 'Petrolina/PE')}${campo('CEP', q('CEP', emit))}</div>
+    <div class="lin">${campo('Simples Nacional na data de competência', opSN)}${campo('Regime de apuração tributária pelo SN', regAp, 2)}</div></div>
+  <div class="blk"><div class="tit">Tomador / Adquirente</div>
+    <div class="lin">${campo('CNPJ / CPF', nfDoc(q('CNPJ', toma) || q('CPF', toma)))}${campo('Inscrição municipal', q('IM', toma))}${campo('Telefone', q('fone', toma))}</div>
+    <div class="lin">${campo('Nome / Nome empresarial', q('xNome', toma), 2)}${campo('E-mail', q('email', toma))}</div>
+    <div class="lin">${campo('Endereço', endToma, 2)}${campo('Código IBGE / CEP', [q('cMun', toma), q('CEP', toma)].filter(Boolean).join(' / '))}</div></div>
+  <div class="blk"><div class="tit">Intermediário do serviço</div><div class="lin">${campo('', 'Intermediário do serviço não identificado na NFS-e')}</div></div>
+  <div class="blk"><div class="tit">Serviço prestado</div>
+    <div class="lin">${campo('Código de tributação nacional', q('cTribNac', dps))}${campo('Código da NBS', q('cNBS', dps))}${campo('Local da prestação', 'Petrolina/PE')}</div>
+    <div class="lin">${campo('Descrição do código de tributação nacional', q('xTribNac') || 'Advocacia', 3)}</div>
+    <div class="tit" style="background:#fff;border-top:1px solid #ccc">Descrição do serviço</div><div class="desc">${esc(q('xDescServ', dps))}</div></div>
+  <div class="blk"><div class="tit">Tributação municipal (ISSQN)</div>
+    <div class="lin">${campo('Tributação do ISSQN', 'Operação tributável')}${campo('Município de incidência', q('xLocIncid') || 'Petrolina/PE')}${campo('Regime especial de tributação', 'Nenhum')}</div>
+    <div class="lin">${campo('Base de cálculo', q('vBC') ? 'R$ ' + nfValor(q('vBC')) : '—')}${campo('Alíquota aplicada', q('pAliqAplic') ? nfValor(q('pAliqAplic')) + '%' : '—')}${campo('Retenção do ISSQN', ret)}${campo('ISSQN apurado', q('vISSQN') ? 'R$ ' + nfValor(q('vISSQN')) : '—')}</div></div>
+  <div class="blk"><div class="tit">Tributação federal</div><div class="lin">${campo('IRRF', '—')}${campo('Contribuição previdenciária retida', '—')}${campo('Contribuições sociais retidas', '—')}</div></div>
+  <div class="blk"><div class="tit">Valor total da NFS-e</div>
+    <div class="lin">${campo('Valor do serviço', 'R$ ' + nfValor(q('vServ', dps)))}${campo('Desconto incondicionado', '—')}${campo('Total das retenções', q('vTotalRet') ? 'R$ ' + nfValor(q('vTotalRet')) : 'R$ 0,00')}${campo('Valor líquido da NFS-e', 'R$ ' + nfValor(q('vLiq') || q('vServ', dps)))}</div></div>
+  <div class="blk"><div class="tit">Informações complementares</div><div class="desc" style="min-height:24px">Documento emitido por ME ou EPP optante pelo Simples Nacional. Valor aproximado dos tributos (Lei 12.741/2012): ${q('pTotTribSN', dps) ? nfValor(q('pTotTribSN', dps)) + '%' : '—'}.${cancelada ? ' NFS-e CANCELADA.' : ''}</div></div>
+  <p class="naoimprime" style="text-align:center;margin:14px"><button onclick="print()">Imprimir / salvar em PDF</button></p>
+  </div><script>window.onload=()=>{try{new QRCode(document.getElementById('qr'),{text:${JSON.stringify(urlConsulta)},width:58,height:58,correctLevel:QRCode.CorrectLevel.M})}catch(e){document.getElementById('qr').textContent='QR indisponível'}};<\/script>
+  </body></html>`);
+  w.document.close();
+};
 
 /* -------------------------------------------------------------- mensageria */
 let MSG = [], MSGF = 'novidade', MSGFOCO = null, ESCRITORIO = null;
@@ -10547,6 +10992,7 @@ async function rota(){
   if(h.startsWith('#/importar'))   return telaImportar();
   if(h.startsWith('#/manual'))     return telaManual();
   if(h.startsWith('#/financeiro')) return telaFinanceiro();
+  if(h.startsWith('#/notas'))      return telaNotas();
   if(h.startsWith('#/parceiros'))  return telaParceiros();
   if(h.startsWith('#/mensagens'))  return telaMensageria();
   if(h.startsWith('#/minutas'))    return telaMinutas();
