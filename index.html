@@ -5523,9 +5523,11 @@ Número pequeno é indício, não estatística. A taxa de êxito só passa a val
 
 Contas a receber e a pagar, por caso, cliente e categoria. Honorário por êxito amarrado ao caso. Projeção do mês e do ano. A baixa é manual: marque quando entrar ou sair de verdade.
 
+**Editar.** Todo lançamento tem *Editar*: descrição, cliente, categoria, valor, datas e parceria. Num honorário parcelado, a mudança de descrição, cliente, categoria e parceria pode valer para todas as parcelas de uma vez; valor e data mudam só na parcela editada. Num lançamento já baixado, *Desfazer baixa* devolve para Em aberto.
+
 **Parcelado.** Em *Novo lançamento*, informe o número de parcelas, se o valor é o total ou de cada parcela, e o 1º vencimento: o sistema cria uma linha por mês ("parcela 2/5 de R$ 20.000,00").
 
-**Parceria.** Escolha o parceiro e o percentual dele (vem preenchido com o % padrão do cadastro). Cada linha mostra quanto cabe ao parceiro naquela parcela e no total. Na hora da nota fiscal desse recebimento, a parceria e o valor do repasse já vêm preenchidos.
+**Parceria.** Escolha o parceiro e o percentual dele (vem preenchido com o % padrão do cadastro). Parceiro que ainda não está cadastrado: escolha *+ cadastrar parceiro novo…* e digite o nome (o CNPJ é opcional, mas a nota fiscal precisa dele). Cada linha mostra quanto cabe ao parceiro naquela parcela e no total. Na hora da nota fiscal desse recebimento, a parceria e o valor do repasse já vêm preenchidos.
 
 ## 13a. Notas fiscais
 
@@ -6627,27 +6629,61 @@ window.finPrevia = () => {
   const f = document.getElementById('fin-form'); if (!f) return;
   const { n, total, valores } = finParcelas(f);
   const pct = finNum(f.elements.percentual_parceiro?.value);
-  const parc = PARC_FIN.find(p => p.id === f.elements.parceiro_id?.value);
+  const sp = f.elements.parceiro_id?.value;
+  const parc = sp === '__novo' ? { nome: f.elements.parceiro_nome.value.trim() || 'parceiro novo' } : PARC_FIN.find(p => p.id === sp);
   const el = document.getElementById('fin-previa');
   if (!(total > 0)) { el.textContent = ''; return; }
   let txt = n > 1 ? `${n} parcelas: ${valores[0] === valores[n-1] ? rs(valores[0]) + ' cada' : rs(valores[0]) + ' (a última ' + rs(valores[n-1]) + ')'} — total ${rs(total)}.` : `Total ${rs(total)}.`;
   if (parc && pct > 0) txt += ` Parceiro ${parc.razao_social || parc.escritorio || parc.nome} (${String(pct).replace('.', ',')}%): ${rs(total * pct / 100)} no total` + (n > 1 ? `, ${rs(valores[0] * pct / 100)} por parcela.` : '.');
   el.textContent = txt;
 };
+/* Parceiro + percentual, com a opção de cadastrar um parceiro novo pelo nome.
+   Usado no "Novo lançamento" e na edição. */
+function finCamposParceiro(l){
+  const sel = l.parceiro_id || '';
+  return `<label class="nfc"><span class="sub">Parceiro (se houver)</span><select name="parceiro_id" onchange="finParceiroMudou(this)">
+      <option value="">— sem parceria —</option>
+      ${PARC_FIN.filter(p => p.ativo !== false || p.id === sel).map(p => `<option value="${p.id}" ${p.id===sel?'selected':''}>${esc(p.razao_social||p.escritorio||p.nome)}</option>`).join('')}
+      <option value="__novo">+ cadastrar parceiro novo…</option></select></label>
+    <label class="nfc fin-novo" style="display:none;min-width:220px"><span class="sub">Nome do parceiro (escritório)</span><input name="parceiro_nome" type="text" placeholder="ex.: Elvis Lima Sociedade Individual de Advocacia"></label>
+    <label class="nfc fin-novo" style="display:none"><span class="sub">CNPJ (opcional)</span><input name="parceiro_cnpj" type="text" placeholder="00.000.000/0000-00" style="width:150px"></label>
+    <label class="nfc"><span class="sub">% do parceiro</span><input name="percentual_parceiro" type="text" inputmode="decimal" placeholder="ex.: 30" style="width:80px" value="${l.percentual_parceiro ? String(l.percentual_parceiro).replace('.', ',') : ''}"></label>`;
+}
 window.finParceiroMudou = sel => {
-  const p = PARC_FIN.find(x => x.id === sel.value), campo = document.getElementById('fin-form').elements.percentual_parceiro;
+  const form = sel.form, campo = form.elements.percentual_parceiro;
+  const novo = sel.value === '__novo';
+  form.querySelectorAll('.fin-novo').forEach(e => e.style.display = novo ? '' : 'none');
+  if (novo) { form.elements.parceiro_nome.focus(); return finPrevia(); }
+  const p = PARC_FIN.find(x => x.id === sel.value);
   if (p?.percentual_padrao && !campo.value) campo.value = String(p.percentual_padrao).replace('.', ',');
   if (!p) campo.value = '';
   finPrevia();
 };
+/* Devolve o id do parceiro escolhido no formulário; se for "novo", cadastra. */
+async function finParceiroDoForm(form, escId){
+  const v = form.elements.parceiro_id.value;
+  if (v !== '__novo') return v || null;
+  const nome = form.elements.parceiro_nome.value.trim();
+  if (!nome) { alert('Digite o nome do parceiro.'); return undefined; }
+  const cnpj = so(form.elements.parceiro_cnpj.value);
+  if (cnpj && cnpj.length !== 14) { alert('O CNPJ do parceiro tem 14 dígitos. Confira, ou deixe em branco.'); return undefined; }
+  const pct = finNum(form.elements.percentual_parceiro.value);
+  const { data, error } = await sb.from('parceiro').insert({ escritorio_id: escId, nome, escritorio: nome,
+    razao_social: nome.toUpperCase(), cnpj: cnpj || null, percentual_padrao: pct > 0 && pct < 100 ? pct : null, ativo: true })
+    .select('id,nome,escritorio,razao_social,percentual_padrao,ativo').single();
+  if (error) { alert('Não consegui cadastrar o parceiro: ' + error.message); return undefined; }
+  PARC_FIN.push(data);
+  return data.id;
+}
 window.novoLancamento = async (ev) => {
   ev.preventDefault();
   const f = ev.target, v = n => f.elements[n].value || null;
   const { n, total, valores } = finParcelas(f);
   if (!(total > 0)) return alert('Informe o valor.');
-  const parceiro = v('parceiro_id'), pct = parceiro ? finNum(f.elements.percentual_parceiro.value) : null;
-  if (parceiro && !(pct > 0 && pct < 100)) return alert('Informe o percentual do parceiro (entre 0 e 100).');
+  const temParc = !!v('parceiro_id'), pct = temParc ? finNum(f.elements.percentual_parceiro.value) : null;
+  if (temParc && !(pct > 0 && pct < 100)) return alert('Informe o percentual do parceiro (entre 0 e 100).');
   const { data: esc1 } = await sb.from('escritorio').select('id').limit(1).single();
+  const parceiro = await finParceiroDoForm(f, esc1.id); if (parceiro === undefined) return;
   const grupo = n > 1 ? crypto.randomUUID() : null, primeira = v('vencimento');
   const linhas = valores.map((valor, i) => ({
     escritorio_id: esc1.id,
@@ -6660,6 +6696,61 @@ window.novoLancamento = async (ev) => {
   const { error } = await sb.from('lancamento').insert(linhas);
   if (error) alert('Não foi possível: ' + error.message); else rota();
 };
+/* ---------- editar um lançamento já criado */
+let FIN_EDIT = null;
+function finFormEdicao(l){
+  const opt = (lista, sel, vazio) => `<option value="">${vazio}</option>` + lista.map(x => `<option value="${x.id}" ${x.id===sel?'selected':''}>${esc(x.nome)}</option>`).join('');
+  const irmas = l.grupo_parcelas ? LANC.filter(x => x.grupo_parcelas === l.grupo_parcelas).length : 0;
+  return `<tr><td colspan="5" style="background:var(--s0)">
+    <form id="fin-edit" onsubmit="salvarLanc(event,'${l.id}')" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;padding:6px 0">
+      <label class="nfc" style="flex:1;min-width:190px"><span class="sub">Descrição</span><input name="descricao" type="text" required value="${esc(l.descricao||'')}"></label>
+      <label class="nfc"><span class="sub">Cliente</span><select name="cliente_id">${opt(CLI2, l.cliente_id, '— nenhum —')}</select></label>
+      <label class="nfc"><span class="sub">Categoria</span><select name="categoria_id">${opt(CATS, l.categoria_id, '— nenhuma —')}</select></label>
+      <label class="nfc"><span class="sub">Valor (R$)</span><input name="valor" type="text" inputmode="decimal" required style="width:110px" value="${Number(l.valor).toLocaleString('pt-BR',{minimumFractionDigits:2})}"></label>
+      <label class="nfc"><span class="sub">Vencimento</span><input name="vencimento" type="date" required value="${esc(l.vencimento||'')}"></label>
+      ${l.situacao==='pago' ? `<label class="nfc"><span class="sub">${l.tipo==='entrada'?'Recebido em':'Pago em'}</span><input name="pagamento" type="date" value="${esc(l.pagamento||'')}"></label>` : ''}
+      ${l.tipo==='entrada' ? finCamposParceiro(l) : ''}
+      ${irmas > 1 ? `<label style="display:flex;gap:6px;align-items:center;width:100%;font-size:13px"><input type="checkbox" name="todas" checked>
+        aplicar descrição, cliente, categoria e parceria às ${irmas} parcelas deste honorário (valor e datas mudam só nesta)</label>` : ''}
+      <button class="btn ok" type="submit">Salvar</button>
+      <button class="btn" type="button" onclick="FIN_EDIT=null;telaFinanceiro()">Cancelar</button>
+      ${l.situacao==='pago' ? `<button class="btn" type="button" onclick="reabrirLanc('${l.id}')" title="volta para Em aberto">Desfazer baixa</button>` : ''}
+    </form></td></tr>`;
+}
+window.editarLanc = id => { FIN_EDIT = id; telaFinanceiro(); };
+window.salvarLanc = async (ev, id) => {
+  ev.preventDefault();
+  const f = ev.target, v = n => f.elements[n]?.value || null;
+  const l = LANC.find(x => x.id === id); if (!l) return;
+  const valor = finNum(f.elements.valor.value);
+  if (!(valor > 0)) return alert('Informe o valor.');
+  let parceiro = null, pct = null;
+  if (l.tipo === 'entrada') {
+    if (v('parceiro_id')) {
+      pct = finNum(f.elements.percentual_parceiro.value);
+      if (!(pct > 0 && pct < 100)) return alert('Informe o percentual do parceiro (entre 0 e 100).');
+    }
+    parceiro = await finParceiroDoForm(f, l.escritorio_id); if (parceiro === undefined) return;
+    if (!parceiro) pct = null;
+  }
+  const comuns = { descricao: v('descricao'), cliente_id: v('cliente_id'), categoria_id: v('categoria_id'),
+    ...(l.tipo === 'entrada' ? { parceiro_id: parceiro, percentual_parceiro: pct } : {}) };
+  const so1 = { valor: Math.round(valor * 100) / 100, vencimento: v('vencimento'), ...(f.elements.pagamento ? { pagamento: v('pagamento') } : {}) };
+  const { error } = await sb.from('lancamento').update({ ...comuns, ...so1 }).eq('id', id);
+  if (error) return alert('Não foi possível salvar: ' + error.message);
+  if (f.elements.todas?.checked && l.grupo_parcelas) {
+    const { error: e2 } = await sb.from('lancamento').update(comuns).eq('grupo_parcelas', l.grupo_parcelas).neq('id', id);
+    if (e2) alert('Esta parcela foi salva, mas as outras não: ' + e2.message);
+  }
+  FIN_EDIT = null; telaFinanceiro();
+};
+window.reabrirLanc = async id => {
+  if (!confirm('Desfazer a baixa? O lançamento volta para "Em aberto".')) return;
+  const { error } = await sb.from('lancamento').update({ situacao: 'previsto', pagamento: null }).eq('id', id);
+  if (error) return alert('Não foi possível: ' + error.message);
+  FIN_EDIT = null; telaFinanceiro();
+};
+
 function finLinhaParceiro(l){
   const pct = Number(l.percentual_parceiro || 0);
   if (!l.parceiro_id || !(pct > 0)) return '';
@@ -6669,6 +6760,7 @@ function finLinhaParceiro(l){
   return `<span class="sub" style="color:var(--presc)">parceiro ${esc(nome)} · ${String(pct).replace('.', ',')}%: ${rs(Number(l.valor) * pct / 100)}${tot ? ' nesta parcela · ' + rs(tot * pct / 100) + ' no total' : ''}</span>`;
 }
 function linhaLanc(l, aberto){
+  if (FIN_EDIT === l.id) return finFormEdicao(l);
   const d = dias(l.vencimento);
   const k = !aberto ? 'good' : (d < 0 ? 'crit' : (d <= 7 ? 'ser' : 'cin'));
   const rot = !aberto ? 'liquidado' : (d < 0 ? 'atrasado '+(-d)+'d' : (d===0?'vence hoje':'em '+d+' dias'));
@@ -6677,8 +6769,8 @@ function linhaLanc(l, aberto){
     <td>${l.tipo==='entrada'?'↑ entrada':'↓ saída'}<span class="sub">${esc(l.categoria?.nome||'sem categoria')}</span></td>
     <td><b>${esc(l.descricao||'—')}</b><span class="sub">${esc(l.cliente?.nome || l.contraparte || '')}${l.total_parcelas>1 ? ` · parcela ${l.parcela}/${l.total_parcelas}${GRUPO_FIN[l.grupo_parcelas] ? ' de ' + rs(GRUPO_FIN[l.grupo_parcelas]) : ''}` : ''}</span>${finLinhaParceiro(l)}</td>
     <td class="dt" style="font-weight:600;color:${l.tipo==='entrada'?'var(--good)':'var(--ink)'}">${rs(l.valor)}</td>
-    <td>${aberto?`<button class="btn ok" onclick="baixar('${l.id}')">${l.tipo==='entrada'?'Recebido':'Pago'}</button>`
-                :`<span class="sub">${br(l.pagamento)}</span>${l.tipo==='entrada' ? (NF_LANC[l.id]?.situacao==='emitida'
+    <td>${aberto?`<button class="btn ok" onclick="baixar('${l.id}')">${l.tipo==='entrada'?'Recebido':'Pago'}</button> <button class="btn" onclick="editarLanc('${l.id}')">Editar</button>`
+                :`<span class="sub">${br(l.pagamento)}</span> <button class="btn" onclick="editarLanc('${l.id}')">Editar</button>${l.tipo==='entrada' ? (NF_LANC[l.id]?.situacao==='emitida'
         ? ` <a class="pill good" style="text-decoration:none" href="#/notas" title="nota fiscal emitida">NF ${esc(NF_LANC[l.id].numero_nfse||'')}</a>`
         : NF_LANC[l.id] ? ` <a class="pill warn" style="text-decoration:none" href="#/notas" title="há ${NF_LANC[l.id].situacao==='rascunho'?'um rascunho de nota':'uma nota sem resposta do governo'}">${NF_LANC[l.id].situacao==='rascunho'?'rascunho de NF':'NF pendente'}</a>`
         : ` <a class="btn" style="text-decoration:none" href="#/notas?lanc=${l.id}" title="emitir NFS-e deste recebimento">Nota</a>`) : (l.nota_fiscal_id ? ' <span class="pill cin" title="lançado ao emitir a nota com parceria">repasse</span>' : '')}`}</td></tr>`;
@@ -6740,9 +6832,7 @@ async function telaFinanceiro(){
       <label class="nfc"><span class="sub">Parcelas</span><input name="parcelas" type="number" min="1" max="120" value="1" style="width:70px;padding:5px 9px;border-radius:8px;border:1px solid var(--ln);background:var(--s0);color:var(--ink);font-size:12.5px"></label>
       <label class="nfc"><span class="sub">O valor é</span><select name="modo"><option value="total">o total</option><option value="cada">de cada parcela</option></select></label>
       <label class="nfc"><span class="sub">1º vencimento</span><input name="vencimento" type="date" required value="${hoje()}"></label>
-      <label class="nfc"><span class="sub">Parceiro (se houver)</span><select name="parceiro_id" onchange="finParceiroMudou(this)">
-        <option value="">— sem parceria —</option>${PARC_FIN.filter(p=>p.ativo!==false).map(p=>`<option value="${p.id}">${esc(p.razao_social||p.escritorio||p.nome)}</option>`).join('')}</select></label>
-      <label class="nfc"><span class="sub">% do parceiro</span><input name="percentual_parceiro" type="text" inputmode="decimal" placeholder="ex.: 30" style="width:80px"></label>
+      ${finCamposParceiro({})}
       <button class="btn ok" type="submit">Lançar</button>
     </form>
     <p class="nota" id="fin-previa" style="padding:0 18px 16px;margin:0;color:var(--i2)"></p></div>
