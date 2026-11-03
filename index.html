@@ -5527,7 +5527,7 @@ Contas a receber e a pagar, por caso, cliente e categoria. Honorário por êxito
 
 **Parcelado.** Em *Novo lançamento*, informe o número de parcelas, se o valor é o total ou de cada parcela, e o 1º vencimento: o sistema cria uma linha por mês ("parcela 2/5 de R$ 20.000,00").
 
-**Parceria.** Escolha o parceiro e o percentual dele (vem preenchido com o % padrão do cadastro). Parceiro que ainda não está cadastrado: escolha *+ cadastrar parceiro novo…* e digite o nome (o CNPJ é opcional, mas a nota fiscal precisa dele). Cada linha mostra quanto cabe ao parceiro naquela parcela e no total. Na hora da nota fiscal desse recebimento, a parceria e o valor do repasse já vêm preenchidos.
+**Parceria.** Escolha o parceiro e o percentual dele (vem preenchido com o % padrão do cadastro). Em *Nota fiscal*, escolha se a nota sai **só pela parte do escritório** (o parceiro emite a dele, art. 15, § 9º) ou **pelo total** (o parceiro não emite — o sistema sugere isso quando o parceiro não tem CNPJ); o repasse vai para o Financeiro nos dois casos. Parceiro que ainda não está cadastrado: escolha *+ cadastrar parceiro novo…* e digite o nome (o CNPJ é opcional, mas a nota fiscal precisa dele). Cada linha mostra quanto cabe ao parceiro naquela parcela e no total. Na hora da nota fiscal desse recebimento, a parceria e o valor do repasse já vêm preenchidos.
 
 ## 13a. Notas fiscais
 
@@ -5535,7 +5535,7 @@ Fica no grupo **Escritório**. Emite a NFS-e direto no **Emissor Nacional**, ass
 
 **O caminho mais curto.** No Financeiro, depois de dar baixa num recebimento, clique em **Nota** ao lado dele. A tela abre com cliente, caso, valor e competência já preenchidos. Confira a descrição e emita. A resposta do governo vem na hora: número da nota, ou o motivo da recusa.
 
-**Com parceria.** Marque *Houve parceria*, escolha o escritório parceiro, informe o total recebido e o que foi repassado. O valor da nota é a diferença, e a descrição sai no modelo do escritório, citando o art. 15, § 9º, do EAOAB, a razão social e o CNPJ do parceiro e os dois valores. Razão social e CNPJ ficam guardados no cadastro do parceiro para a próxima vez.
+**Com parceria.** Marque *Houve parceria* e escolha se a nota sai **só pela parte do escritório** ou **pelo total recebido** (quando o parceiro não emite nota, por exemplo por não ter CNPJ). Escolha o escritório parceiro, informe o total recebido e o que foi repassado. Pela parte do escritório, o valor da nota é a diferença, e a descrição sai no modelo do escritório, citando o art. 15, § 9º, do EAOAB, a razão social e o CNPJ do parceiro e os dois valores. Razão social e CNPJ ficam guardados no cadastro do parceiro para a próxima vez.
 
 **O que o sistema exige do cliente.** CPF ou CNPJ, sempre. Para pessoa física o endereço é opcional; para empresa (ou com ISS retido) o governo exige endereço completo — logradouro com número, bairro e CEP.
 
@@ -6634,7 +6634,8 @@ window.finPrevia = () => {
   const el = document.getElementById('fin-previa');
   if (!(total > 0)) { el.textContent = ''; return; }
   let txt = n > 1 ? `${n} parcelas: ${valores[0] === valores[n-1] ? rs(valores[0]) + ' cada' : rs(valores[0]) + ' (a última ' + rs(valores[n-1]) + ')'} — total ${rs(total)}.` : `Total ${rs(total)}.`;
-  if (parc && pct > 0) txt += ` Parceiro ${parc.razao_social || parc.escritorio || parc.nome} (${String(pct).replace('.', ',')}%): ${rs(total * pct / 100)} no total` + (n > 1 ? `, ${rs(valores[0] * pct / 100)} por parcela.` : '.');
+  if (parc && pct > 0) txt += ` Parceiro ${parc.razao_social || parc.escritorio || parc.nome} (${String(pct).replace('.', ',')}%): ${rs(total * pct / 100)} no total` + (n > 1 ? `, ${rs(valores[0] * pct / 100)} por parcela.` : '.')
+    + (f.elements.nota_sobre_total?.value === 'total' ? ' A nota fiscal sai pelo total.' : ' A nota fiscal sai só pela parte do escritório.');
   el.textContent = txt;
 };
 /* Parceiro + percentual, com a opção de cadastrar um parceiro novo pelo nome.
@@ -6646,15 +6647,23 @@ function finCamposParceiro(l){
       ${PARC_FIN.filter(p => p.ativo !== false || p.id === sel).map(p => `<option value="${p.id}" ${p.id===sel?'selected':''}>${esc(p.razao_social||p.escritorio||p.nome)}</option>`).join('')}
       <option value="__novo">+ cadastrar parceiro novo…</option></select></label>
     <label class="nfc fin-novo" style="display:none;min-width:220px"><span class="sub">Nome do parceiro (escritório)</span><input name="parceiro_nome" type="text" placeholder="ex.: Elvis Lima Sociedade Individual de Advocacia"></label>
-    <label class="nfc fin-novo" style="display:none"><span class="sub">CNPJ (opcional)</span><input name="parceiro_cnpj" type="text" placeholder="00.000.000/0000-00" style="width:150px"></label>
-    <label class="nfc"><span class="sub">% do parceiro</span><input name="percentual_parceiro" type="text" inputmode="decimal" placeholder="ex.: 30" style="width:80px" value="${l.percentual_parceiro ? String(l.percentual_parceiro).replace('.', ',') : ''}"></label>`;
+    <label class="nfc fin-novo" style="display:none"><span class="sub">CNPJ (opcional)</span><input name="parceiro_cnpj" type="text" placeholder="00.000.000/0000-00" style="width:150px"
+      oninput="this.form.elements.nota_sobre_total.value = so(this.value).length === 14 ? 'parte' : 'total'"></label>
+    <label class="nfc"><span class="sub">% do parceiro</span><input name="percentual_parceiro" type="text" inputmode="decimal" placeholder="ex.: 30" style="width:80px" value="${l.percentual_parceiro ? String(l.percentual_parceiro).replace('.', ',') : ''}"></label>
+    <label class="nfc fin-com-parc" style="${sel ? '' : 'display:none'}"><span class="sub">Nota fiscal</span>
+      <select name="nota_sobre_total">
+        <option value="parte" ${l.nota_sobre_total ? '' : 'selected'}>só pela parte do escritório</option>
+        <option value="total" ${l.nota_sobre_total ? 'selected' : ''}>pelo total (parceiro não emite)</option></select></label>`;
 }
 window.finParceiroMudou = sel => {
   const form = sel.form, campo = form.elements.percentual_parceiro;
   const novo = sel.value === '__novo';
   form.querySelectorAll('.fin-novo').forEach(e => e.style.display = novo ? '' : 'none');
+  form.querySelectorAll('.fin-com-parc').forEach(e => e.style.display = sel.value ? '' : 'none');
   if (novo) { form.elements.parceiro_nome.focus(); return finPrevia(); }
   const p = PARC_FIN.find(x => x.id === sel.value);
+  // parceiro sem CNPJ não emite nota: sugere a nota pelo total
+  if (p) form.elements.nota_sobre_total.value = so(p.cnpj).length === 14 ? 'parte' : 'total';
   if (p?.percentual_padrao && !campo.value) campo.value = String(p.percentual_padrao).replace('.', ',');
   if (!p) campo.value = '';
   finPrevia();
@@ -6670,7 +6679,7 @@ async function finParceiroDoForm(form, escId){
   const pct = finNum(form.elements.percentual_parceiro.value);
   const { data, error } = await sb.from('parceiro').insert({ escritorio_id: escId, nome, escritorio: nome,
     razao_social: nome.toUpperCase(), cnpj: cnpj || null, percentual_padrao: pct > 0 && pct < 100 ? pct : null, ativo: true })
-    .select('id,nome,escritorio,razao_social,percentual_padrao,ativo').single();
+    .select('id,nome,escritorio,razao_social,cnpj,percentual_padrao,ativo').single();
   if (error) { alert('Não consegui cadastrar o parceiro: ' + error.message); return undefined; }
   PARC_FIN.push(data);
   return data.id;
@@ -6692,6 +6701,7 @@ window.novoLancamento = async (ev) => {
     valor, vencimento: finMaisMeses(primeira, i), situacao: 'previsto',
     parcela: n > 1 ? i + 1 : null, total_parcelas: n > 1 ? n : null, grupo_parcelas: grupo,
     parceiro_id: parceiro, percentual_parceiro: parceiro ? pct : null,
+    nota_sobre_total: !!parceiro && f.elements.nota_sobre_total?.value === 'total',
   }));
   const { error } = await sb.from('lancamento').insert(linhas);
   if (error) alert('Não foi possível: ' + error.message); else rota();
@@ -6734,7 +6744,8 @@ window.salvarLanc = async (ev, id) => {
     if (!parceiro) pct = null;
   }
   const comuns = { descricao: v('descricao'), cliente_id: v('cliente_id'), categoria_id: v('categoria_id'),
-    ...(l.tipo === 'entrada' ? { parceiro_id: parceiro, percentual_parceiro: pct } : {}) };
+    ...(l.tipo === 'entrada' ? { parceiro_id: parceiro, percentual_parceiro: pct,
+      nota_sobre_total: !!parceiro && f.elements.nota_sobre_total?.value === 'total' } : {}) };
   const so1 = { valor: Math.round(valor * 100) / 100, vencimento: v('vencimento'), ...(f.elements.pagamento ? { pagamento: v('pagamento') } : {}) };
   const { error } = await sb.from('lancamento').update({ ...comuns, ...so1 }).eq('id', id);
   if (error) return alert('Não foi possível salvar: ' + error.message);
@@ -6757,7 +6768,7 @@ function finLinhaParceiro(l){
   const p = PARC_FIN.find(x => x.id === l.parceiro_id);
   const nome = p ? (p.razao_social || p.escritorio || p.nome) : 'parceiro';
   const tot = GRUPO_FIN[l.grupo_parcelas];
-  return `<span class="sub" style="color:var(--presc)">parceiro ${esc(nome)} · ${String(pct).replace('.', ',')}%: ${rs(Number(l.valor) * pct / 100)}${tot ? ' nesta parcela · ' + rs(tot * pct / 100) + ' no total' : ''}</span>`;
+  return `<span class="sub" style="color:var(--presc)">parceiro ${esc(nome)} · ${String(pct).replace('.', ',')}%: ${rs(Number(l.valor) * pct / 100)}${tot ? ' nesta parcela · ' + rs(tot * pct / 100) + ' no total' : ''}${l.nota_sobre_total ? ' · NF pelo total' : ''}</span>`;
 }
 function linhaLanc(l, aberto){
   if (FIN_EDIT === l.id) return finFormEdicao(l);
@@ -6781,7 +6792,7 @@ async function telaFinanceiro(){
     sb.from('categoria_financeira').select('id,nome,tipo').order('nome'),
     sb.from('cliente').select('id,nome').order('nome'),
     sb.from('nota_fiscal').select('id,lancamento_id,numero_nfse,situacao').not('lancamento_id','is',null).in('situacao',['rascunho','enviando','emitida']),
-    sb.from('parceiro').select('id,nome,escritorio,razao_social,percentual_padrao,ativo').order('nome'),
+    sb.from('parceiro').select('id,nome,escritorio,razao_social,cnpj,percentual_padrao,ativo').order('nome'),
   ]);
   if (lc.error) return erro(lc.error.message);
   // recebimento → nota: emitida vale mais que rascunho
@@ -6885,7 +6896,7 @@ async function telaNotas(){
     sb.from('parceiro').select('id,nome,escritorio,razao_social,cnpj,ativo').order('nome'),
     sb.from('caso').select('id,titulo,cliente_id').order('titulo').limit(3000),
     sb.from('processo').select('id,caso_id,numero_cnj,numero_formatado').limit(5000),
-    sb.from('lancamento').select('id,descricao,valor,pagamento,vencimento,cliente_id,caso_id,situacao,tipo,parcela,total_parcelas,parceiro_id,percentual_parceiro,cliente:cliente_id(nome)')
+    sb.from('lancamento').select('id,descricao,valor,pagamento,vencimento,cliente_id,caso_id,situacao,tipo,parcela,total_parcelas,parceiro_id,percentual_parceiro,nota_sobre_total,cliente:cliente_id(nome)')
       .eq('tipo','entrada').eq('situacao','pago').gte('pagamento', desde).order('pagamento', { ascending:false }),
     sb.from('usuario').select('perfil').eq('id', USER.id).maybeSingle(),
   ]);
@@ -6926,7 +6937,7 @@ function desenharNotas(){
   ];
   const parc = NF.parc.find(p => p.id === f.parceiro_id);
   if (!NF.descEditada) f.descricao = nfDescricao();
-  const valorNota = f.parceria ? Math.round(((nfNum(f.total)||0) - (nfNum(f.repasse)||0))*100)/100 : nfNum(f.valor);
+  const valorNota = f.parceria ? (f.nota_total ? Math.round((nfNum(f.total)||0)*100)/100 : Math.round(((nfNum(f.total)||0) - (nfNum(f.repasse)||0))*100)/100) : nfNum(f.valor);
 
   app.innerHTML = menu('notas') + `
   <main><h1>Notas fiscais</h1>
@@ -6965,15 +6976,21 @@ function desenharNotas(){
       </div>
       ${avisosCli.length ? `<p class="nota" style="margin:0;color:var(--crit)">Cadastro do cliente: ${avisosCli.join('; ')}. <a href="#/clientes">Corrigir em Clientes</a>.</p>` : ''}
       <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" ${f.parceria?'checked':''} onchange="nfSet('parceria',this.checked,true)">
-        <span>Houve parceria — a nota sai só pela parte do escritório (art. 15, § 9º, EAOAB)</span></label>
+        <span>Houve parceria</span></label>
       ${f.parceria ? `<div style="display:flex;gap:10px;flex-wrap:wrap;padding:12px;border:1px solid var(--ln);border-radius:10px">
+        <div style="width:100%;display:grid;gap:4px">
+          <label style="display:flex;gap:8px;align-items:center"><input type="radio" name="nf-base" ${f.nota_total?'':'checked'} onchange="nfSet('nota_total',false,true)">
+            <span><b>Nota só pela parte do escritório</b> — o parceiro emite a dele (art. 15, § 9º, EAOAB)</span></label>
+          <label style="display:flex;gap:8px;align-items:center"><input type="radio" name="nf-base" ${f.nota_total?'checked':''} onchange="nfSet('nota_total',true,true)">
+            <span><b>Nota pelo total recebido</b> — o parceiro não emite nota (ex.: não tem CNPJ)</span></label>
+        </div>
         <label class="nfc" style="flex:2;min-width:220px"><span class="sub">Escritório parceiro</span>
           <select onchange="nfSet('parceiro_id',this.value,true)"><option value="">— escolher —</option>
             ${NF.parc.filter(p=>p.ativo!==false).map(p=>`<option value="${p.id}" ${f.parceiro_id===p.id?'selected':''}>${esc(p.razao_social||p.escritorio||p.nome)}</option>`).join('')}
           </select></label>
         <label class="nfc" style="flex:2;min-width:240px"><span class="sub">Razão social do parceiro (como no CNPJ)</span>
           <input type="text" value="${esc(f.parc_razao ?? parc?.razao_social ?? parc?.escritorio ?? '')}" oninput="nfSet('parc_razao',this.value)" ${parc?'':'disabled'}></label>
-        <label class="nfc" style="min-width:170px"><span class="sub">CNPJ do parceiro</span>
+        <label class="nfc" style="min-width:170px"><span class="sub">CNPJ do parceiro${f.nota_total?' (opcional)':''}</span>
           <input type="text" value="${esc(f.parc_cnpj ?? nfDoc(parc?.cnpj||''))}" oninput="nfSet('parc_cnpj',this.value)" ${parc?'':'disabled'} placeholder="00.000.000/0000-00"></label>
         <label class="nfc" style="min-width:150px"><span class="sub">Total recebido (R$)</span>
           <input type="text" inputmode="decimal" value="${esc(f.total||'')}" oninput="nfSet('total',this.value)" onchange="desenharNotas()" placeholder="20.721,90"></label>
@@ -6981,7 +6998,9 @@ function desenharNotas(){
           <input type="text" inputmode="decimal" value="${esc(f.repasse||'')}" oninput="nfSet('repasse',this.value)" onchange="desenharNotas()" placeholder="10.360,95"></label>
         <div class="nfc" style="min-width:150px"><span class="sub">Valor da nota</span>
           <b style="font-size:17px;padding-top:4px">${valorNota>0 ? rs(valorNota) : '—'}</b></div>
-        <p class="nota" style="margin:0;width:100%">Vale o que foi efetivamente repassado, não o percentual combinado. Razão social e CNPJ ficam salvos no cadastro do parceiro.</p>
+        <p class="nota" style="margin:0;width:100%">${f.nota_total
+          ? 'A nota sai pelo total; o repasse informado vai para o Financeiro como saída ao parceiro.'
+          : 'Vale o que foi efetivamente repassado, não o percentual combinado. Razão social e CNPJ ficam salvos no cadastro do parceiro.'}</p>
       </div>` : `<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
         <label class="nfc" style="min-width:160px"><span class="sub">Valor da nota (R$)</span>
           <input type="text" inputmode="decimal" value="${esc(f.valor||'')}" oninput="nfSet('valor',this.value)" placeholder="0,00"></label></div>`}
@@ -7079,7 +7098,7 @@ function blocoConfigNota(titular){
 function nfDescricao(){
   const f = NF.form, c = NF.cfg;
   const proc = String(f.processo||'').trim();
-  if (f.parceria) {
+  if (f.parceria && !f.nota_total) {
     const parc = NF.parc.find(p => p.id === f.parceiro_id);
     const razao = String(f.parc_razao ?? parc?.razao_social ?? parc?.escritorio ?? '').trim().toUpperCase() || '[ESCRITÓRIO PARCEIRO]';
     const cnpj = nfDoc(f.parc_cnpj ?? parc?.cnpj ?? '') || '[CNPJ]';
@@ -7109,7 +7128,7 @@ window.usarLancamento = (id, semDesenhar) => {
     Object.assign(NF.form, { lancamento_id: l.id, cliente_id: l.cliente_id || '', caso_id: l.caso_id || '',
       competencia: (l.pagamento || hoje()).slice(0,10), valor: nfValor(l.valor), total: nfValor(l.valor) });
     // recebimento em parceria: a nota já vem com o parceiro e o repasse calculado
-    if (l.parceiro_id && Number(l.percentual_parceiro) > 0) Object.assign(NF.form, { parceria: true, parceiro_id: l.parceiro_id,
+    if (l.parceiro_id && Number(l.percentual_parceiro) > 0) Object.assign(NF.form, { parceria: true, parceiro_id: l.parceiro_id, nota_total: !!l.nota_sobre_total,
       repasse: nfValor(Math.round(Number(l.valor) * Number(l.percentual_parceiro)) / 100) });
     const ps = NF.procs.filter(p => p.caso_id === l.caso_id);
     if (ps.length === 1) NF.form.processo = ps[0].numero_formatado || ps[0].numero_cnj;
@@ -7136,16 +7155,21 @@ async function nfValidar(){
     if (!parc) return alert('Escolha o escritório parceiro.');
     const razao = String(f.parc_razao ?? parc.razao_social ?? parc.escritorio ?? '').trim();
     const cnpj = so(f.parc_cnpj ?? parc.cnpj);
-    if (!razao || cnpj.length !== 14) return alert('Informe a razão social e o CNPJ do parceiro.');
+    if (!f.nota_total && (!razao || cnpj.length !== 14)) return alert('Informe a razão social e o CNPJ do parceiro (ou marque "nota pelo total").');
+    if (cnpj && cnpj.length !== 14) return alert('O CNPJ do parceiro tem 14 dígitos. Confira, ou deixe em branco.');
     const tot = nfNum(f.total), rep = nfNum(f.repasse);
     if (!(tot > 0) || !(rep > 0) || rep >= tot) return alert('Confira o total recebido e o valor repassado.');
     // guarda no cadastro do parceiro, para a próxima nota já vir pronta
-    if (razao !== (parc.razao_social||'') || cnpj !== so(parc.cnpj)) {
-      const { error } = await sb.from('parceiro').update({ razao_social: razao, cnpj }).eq('id', parc.id);
-      if (error) return alert('Não consegui salvar o CNPJ do parceiro: ' + error.message);
-      parc.razao_social = razao; parc.cnpj = cnpj;
+    const mudou = {};
+    if (razao && razao !== (parc.razao_social||'')) mudou.razao_social = razao;
+    if (cnpj && cnpj !== so(parc.cnpj)) mudou.cnpj = cnpj;
+    if (Object.keys(mudou).length) {
+      const { error } = await sb.from('parceiro').update(mudou).eq('id', parc.id);
+      if (error) return alert('Não consegui salvar os dados do parceiro: ' + error.message);
+      Object.assign(parc, mudou);
     }
-    corpo = { ...corpo, parceiro_id: parc.id, valor_total_recebido: tot, valor_parceria: rep, valor_servico: Math.round((tot-rep)*100)/100 };
+    corpo = { ...corpo, parceiro_id: parc.id, valor_total_recebido: tot, valor_parceria: rep, nota_total: !!f.nota_total,
+      valor_servico: f.nota_total ? Math.round(tot*100)/100 : Math.round((tot-rep)*100)/100 };
   } else {
     const v = nfNum(f.valor);
     if (!(v > 0)) return alert('Informe o valor da nota.');
@@ -7323,7 +7347,8 @@ window.salvarRascunho = async () => {
 function rascunhoCorpo(r){
   return { acao:'emitir', cliente_id: r.cliente_id, caso_id: r.caso_id, lancamento_id: r.lancamento_id, competencia: r.competencia,
     descricao: r.descricao, iss_retido: !!r.iss_retido, valor_servico: Number(r.valor_servico),
-    ...(r.parceiro_id ? { parceiro_id: r.parceiro_id, valor_total_recebido: Number(r.valor_total_recebido), valor_parceria: Number(r.valor_parceria) } : {}) };
+    ...(r.parceiro_id ? { parceiro_id: r.parceiro_id, valor_total_recebido: Number(r.valor_total_recebido), valor_parceria: Number(r.valor_parceria),
+      nota_total: Math.abs(Number(r.valor_servico) - Number(r.valor_total_recebido)) < 0.005 } : {}) };
 }
 window.editarRascunho = id => {
   const r = NF.rascunhos.find(x => x.id === id); if (!r) return;
@@ -7405,7 +7430,8 @@ window.refazerNota = (id, linha) => {
   NF.form = { lancamento_id: n.lancamento_id||'', cliente_id: n.cliente_id||'', caso_id: n.caso_id||'', competencia: n.competencia,
     parceria: !!n.parceiro_id, parceiro_id: n.parceiro_id||'', iss_retido: n.iss_retido,
     valor: nfValor(n.valor_servico), total: n.valor_total_recebido ? nfValor(n.valor_total_recebido) : '',
-    repasse: n.valor_parceria ? nfValor(n.valor_parceria) : '', descricao: n.descricao };
+    repasse: n.valor_parceria ? nfValor(n.valor_parceria) : '', descricao: n.descricao,
+    nota_total: !!n.parceiro_id && Math.abs(Number(n.valor_servico) - Number(n.valor_total_recebido)) < 0.005 };
   NF.descEditada = true;
   desenharNotas(); window.scrollTo({ top: 0, behavior: 'smooth' });
 };

@@ -406,16 +406,22 @@ if (import.meta.main) Deno.serve(async (req) => {
       if (retido && !(Number(cfg.aliquota_iss_sn) >= 1.8))
         return resp({ erro: 'com ISS retido, informe em Configurações a alíquota de ISS do Simples (mínimo 2%)' }, 400);
 
-      // parceria: o valor da nota tem de ser exatamente o total menos o repasse
+      // parceria: a nota sai pela parte do escritório (total menos repasse,
+      // art. 15, § 9º, EAOAB) ou — quando o parceiro não emite nota — pelo total.
       let parceiro: any = null;
       if (p.parceiro_id) {
         const { data } = await db.from('parceiro').select('id, nome, escritorio, razao_social, cnpj')
           .eq('id', p.parceiro_id).eq('escritorio_id', eu.escritorio_id).maybeSingle();
         if (!data) return resp({ erro: 'parceiro não encontrado' }, 400);
-        if (dig(data.cnpj).length !== 14) return resp({ erro: 'cadastre o CNPJ do parceiro antes' }, 400);
         const tot = Number(p.valor_total_recebido), rep = Number(p.valor_parceria);
-        if (!(tot > 0) || !(rep > 0) || Math.abs(tot - rep - valor) > 0.005)
-          return resp({ erro: 'na parceria, o valor da nota deve ser o total recebido menos o repasse' }, 400);
+        if (!(tot > 0) || !(rep > 0) || rep >= tot)
+          return resp({ erro: 'na parceria, confira o total recebido e o valor repassado' }, 400);
+        const peloTotal = !!p.nota_total;
+        if (peloTotal ? Math.abs(tot - valor) > 0.005 : Math.abs(tot - rep - valor) > 0.005)
+          return resp({ erro: peloTotal ? 'na nota pelo total, o valor da nota deve ser o total recebido'
+            : 'na parceria, o valor da nota deve ser o total recebido menos o repasse' }, 400);
+        // o CNPJ do parceiro só entra na descrição quando a nota exclui a parte dele
+        if (!peloTotal && dig(data.cnpj).length !== 14) return resp({ erro: 'cadastre o CNPJ do parceiro antes' }, 400);
         parceiro = data;
       }
 
