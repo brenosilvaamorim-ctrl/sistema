@@ -810,6 +810,29 @@ window.importarExtrato = async () => {
   setTimeout(()=>{ location.hash = '#/dinheiro'; }, 900);
 };
 
+/* Excluir um arquivo enviado. Se dele já saíram lançamentos, pergunta se vão junto
+   ou se ficam no Dinheiro (sem o vínculo com o arquivo). */
+window.excluirExtrato = async (id) => {
+  if (!id || id === 'undefined') return alert('Este arquivo não chegou a ser guardado; basta sair da tela.');
+  const x = (await sb.from('pessoal_extrato').select('id,arquivo_nome,arquivo_path,tipo').eq('id', id).maybeSingle()).data;
+  if (!x) return alert('Arquivo não encontrado (talvez já tenha sido excluído).');
+  const nome = x.arquivo_nome || (x.tipo === 'fatura' ? 'esta fatura' : 'este extrato');
+  const n = (await sb.from('pessoal_lancamento').select('id').eq('extrato_id', id)).data?.length || 0;
+  let levarLancs = false;
+  if (n) {
+    if (confirm(`Excluir "${nome}"?\n\nDele saíram ${n} lançamento(s) no Dinheiro.\n\nOK = excluir o arquivo E esses ${n} lançamento(s)\nCancelar = ver outra opção`)) levarLancs = true;
+    else if (!confirm(`Excluir só o arquivo e manter os ${n} lançamento(s) no Dinheiro?\n\nOK = sim, manter os lançamentos\nCancelar = não excluir nada`)) return;
+  } else if (!confirm(`Excluir "${nome}"?\n\nNenhum lançamento saiu dele. O arquivo e a leitura somem da lista (e do painel de parcelas).`)) return;
+  if (levarLancs) {
+    const { error } = await sb.from('pessoal_lancamento').delete().eq('extrato_id', id);
+    if (error) return alert('Não consegui apagar os lançamentos: ' + error.message);
+  }
+  if (x.arquivo_path) { try { await sb.storage.from('financeiro').remove([x.arquivo_path]); } catch (e) {} }   // o arquivo guardado; se falhar, segue
+  const { error } = await sb.from('pessoal_extrato').delete().eq('id', id);
+  if (error) return alert('Não consegui excluir: ' + error.message);
+  if (location.hash.startsWith('#/extrato')) location.hash = '#/dinheiro'; else telaPessoal();
+};
+
 window.desfazerImportacao = async (id) => {
   const n = (await sb.from('pessoal_lancamento').select('id').eq('extrato_id', id)).data?.length || 0;
   if (!n) return alert('Nenhum lançamento deste arquivo para desfazer.');
@@ -916,6 +939,7 @@ async function telaExtrato(id, bruto, manterMarcas){
     <span style="flex:1"></span>
     ${bruto.path ? `<button class="btn" onclick="verArquivoExtrato('${esc(bruto.path)}')">Ver o arquivo</button>` : ''}
     ${bruto.situacao === 'importado' ? `<button class="btn" onclick="desfazerImportacao('${id}')">Desfazer a importação</button>` : ''}
+    ${id ? `<button class="btn" style="color:var(--crit)" onclick="excluirExtrato('${id}')">Excluir arquivo</button>` : ''}
     <button class="btn ok" onclick="importarExtrato()">Importar os marcados</button>
     <span class="sub" id="ex-imp" style="margin:0"></span>
   </div></div>
@@ -1110,7 +1134,8 @@ async function telaPessoal(){
         <td class="dt">${x.periodo_ini?br(x.periodo_ini)+' a '+br(x.periodo_fim||x.periodo_ini):'—'}</td>
         <td>${(x.linhas||[]).length}</td>
         <td class="sub">${x.situacao === 'importado' ? 'importado' : 'lido, aguardando conferência'}</td>
-        <td><a class="lnk" href="#/extrato/${x.id}">abrir</a></td></tr>`).join('')}
+        <td style="white-space:nowrap"><a class="lnk" href="#/extrato/${x.id}">abrir</a> ·
+          <a class="lnk" style="color:var(--crit);cursor:pointer" onclick="excluirExtrato('${x.id}')">excluir</a></td></tr>`).join('')}
       </tbody></table>` : ''}
   </div>
 
