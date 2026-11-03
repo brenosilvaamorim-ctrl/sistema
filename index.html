@@ -5549,6 +5549,8 @@ Fica no grupo **Escritório**. Emite a NFS-e direto no **Emissor Nacional**, ass
 
 **Sem o certificado A1: emitir no portal.** Enquanto o escritório não tem o e-CNPJ A1, use **Emitir no portal**. O sistema confere tudo e mostra cada campo do formulário do Emissor Nacional com um botão **Copiar**: competência, tomador, código 17.14.01, NBS, descrição (com a parceria, se houver), valor e tributação. Abra o portal, entre com o gov.br e preencha. Emitida a nota, volte e registre o número — ou anexe o XML baixado do portal, que já traz número e chave e permite imprimir o DANFSe por aqui. Cancelamento de nota do portal é feito no portal; aqui só se marca como cancelada.
 
+**Notas antigas.** Em *Importar notas já emitidas*, suba de uma vez os XML ou PDF das notas tiradas antes do sistema (portal da prefeitura ou Emissor Nacional). O sistema lê cada uma, acha o cliente pelo CPF/CNPJ (ou propõe criá-lo) e o recebimento no Financeiro pelo valor e pela data (ou propõe criar um recebimento pago na data da nota). Confira a prévia, desmarque o que não quiser e importe. Nota cancelada entra como cancelada, sem recebimento. Se a nota foi só pela sua parte numa parceria, ajuste o "valor recebido" para o total.
+
 **Rascunhos.** *Salvar rascunho* guarda a nota pronta para emitir depois. Os rascunhos ficam numa lista própria, cada um com *Emitir no portal*, *Emitir pelo sistema*, *Editar* e *Excluir*; com o certificado A1, *Emitir todos pelo sistema* solta todos de uma vez. Emitida a nota, o rascunho some.
 
 **Ligação com o Financeiro.** O recebimento que já tem nota mostra o número dela (*NF 58*) no lugar do botão *Nota*; se há só rascunho, aparece *rascunho de NF*. Quando a nota sai com parceria, o sistema lança sozinho a **saída do repasse** ao parceiro, com o nome dele, e pergunta se já foi paga (baixa hoje) ou se fica a pagar.
@@ -6878,7 +6880,7 @@ async function telaFinanceiro(){
    dados, mostra o que foi emitido e imprime o DANFSe.
    A descrição com parceria segue o modelo do escritório, com base no
    art. 15, § 9º, do EAOAB: a nota sai só pela parte que ficou com o escritório. */
-let NF = { cfg:null, rascunhos:[], notas:[], cli:[], parc:[], casos:[], procs:[], lancs:[], perfil:null, form:{}, descEditada:false, diag:null, portal:null };
+let NF = { cfg:null, imp:{ linhas:[], lanc:[] }, rascunhos:[], notas:[], cli:[], parc:[], casos:[], procs:[], lancs:[], perfil:null, form:{}, descEditada:false, diag:null, portal:null };
 const NF_SIT = { emitida:['good','emitida'], enviando:['warn','enviando'], rejeitada:['crit','rejeitada'], cancelada:['cin','cancelada'] };
 const nfNum = s => { s = String(s ?? '').trim().replace(/[R$\s]/g,''); if (s.includes(',')) s = s.replace(/\./g,'').replace(',','.'); const n = Number(s); return isFinite(n) ? Math.round(n*100)/100 : NaN; };
 const nfValor = v => Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2, maximumFractionDigits:2});
@@ -7019,6 +7021,8 @@ function desenharNotas(){
       ${NF.portal ? blocoPortal() : ''}
     </div></div>
 
+  ${blocoImportar()}
+
   ${NF.rascunhos.length ? `<div class="card" style="margin-top:18px"><h2>Rascunhos</h2>
     <p class="nota">Notas prontas, ainda não emitidas. Emita no portal agora ou, com o certificado A1, pelo sistema — uma a uma ou todas de uma vez.</p>
     ${NF.rascunhos.length > 1 ? `<div style="padding:0 18px 10px"><button class="btn ok" onclick="emitirTodosRascunhos()">Emitir todos pelo sistema (${NF.rascunhos.length} · ${rs(NF.rascunhos.reduce((t,r)=>t+Number(r.valor_servico||0),0))})</button></div>` : ''}
@@ -7052,7 +7056,7 @@ function linhaNota(n){
   const erros = (n.situacao==='rejeitada' && Array.isArray(n.erros)) ? n.erros : [];
   return `<tr>
     <td class="dt"><b>${br(n.competencia)}</b><span class="sub">${n.ambiente===1?'produção':'teste'}</span></td>
-    <td>${n.numero_nfse ? '<b>'+esc(n.numero_nfse)+'</b>' : '—'}<span class="sub">${n.origem==='portal' ? 'emitida no portal' : n.numero_dps ? 'DPS '+esc(n.serie)+'-'+n.numero_dps : ''}</span></td>
+    <td>${n.numero_nfse ? '<b>'+esc(n.numero_nfse)+'</b>' : '—'}<span class="sub">${n.origem==='portal' ? 'emitida no portal' : n.origem==='importada' ? 'importada' : n.numero_dps ? 'DPS '+esc(n.serie)+'-'+n.numero_dps : ''}</span></td>
     <td><b>${esc(t.nome||'')}</b><span class="sub">${esc(nfDoc(t.doc||''))}${n.valor_parceria?' · parceria':''}</span></td>
     <td class="dt" style="font-weight:600">${rs(n.valor_servico)}</td>
     <td><span class="pill ${k}">${rot}</span>
@@ -7064,9 +7068,9 @@ function linhaNota(n){
       ${n.situacao==='emitida' ? `<button class="btn" onclick="whatsNota('${n.id}')">WhatsApp</button>` : ''}
       ${n.situacao==='enviando' ? `<button class="btn ok" onclick="conferirNota('${n.id}')">Conferir</button>` : ''}
       ${n.situacao==='rejeitada' ? `<button class="btn" onclick="refazerNota('${n.id}')">Corrigir e emitir</button>` : ''}
-      ${n.situacao==='emitida' && NF.perfil==='titular' && n.origem!=='portal' ? `<button class="btn" style="color:var(--crit)" onclick="cancelarNota('${n.id}')">Cancelar</button>` : ''}
-      ${n.origem==='portal' && NF.perfil==='titular' ? `<button class="btn" onclick="anexarXmlNota('${n.id}')" title="anexar o XML baixado do portal, para imprimir o DANFSe por aqui">Anexar XML</button>` : ''}
-      ${n.situacao==='emitida' && NF.perfil==='titular' && n.origem==='portal' ? `<button class="btn" style="color:var(--crit)" onclick="cancelarNotaPortal('${n.id}')" title="depois de cancelar no portal">Marcar cancelada</button>` : ''}
+      ${n.situacao==='emitida' && NF.perfil==='titular' && n.origem==='api' ? `<button class="btn" style="color:var(--crit)" onclick="cancelarNota('${n.id}')">Cancelar</button>` : ''}
+      ${n.origem!=='api' && NF.perfil==='titular' ? `<button class="btn" onclick="anexarXmlNota('${n.id}')" title="anexar o XML baixado do portal, para imprimir o DANFSe por aqui">Anexar XML</button>` : ''}
+      ${n.situacao==='emitida' && NF.perfil==='titular' && n.origem!=='api' ? `<button class="btn" style="color:var(--crit)" onclick="cancelarNotaPortal('${n.id}')" title="depois de cancelar no portal">Marcar cancelada</button>` : ''}
     </div></td></tr>`;
 }
 
@@ -7324,6 +7328,201 @@ window.cancelarNotaPortal = async id => {
   if (error) return alert('Não foi possível: ' + error.message);
   telaNotas();
 };
+/* ---------- importar notas já emitidas (antes do sistema) */
+/* XML (padrão nacional ou ABRASF da prefeitura) é lido aqui mesmo; PDF vai ao
+   leitor de documentos (modo nfse). Nada é gravado antes da conferência:
+   cada nota aparece numa prévia, com o cliente e o recebimento encontrados. */
+function blocoImportar(){
+  const L = NF.imp.linhas, marcadas = L.filter(x => x.marcado).length;
+  const cliOpts = (x) => `<option value="">— escolher —</option>` +
+    (x.tomador_nome ? `<option value="__novo" ${x.cliente_id==='__novo'?'selected':''}>+ criar cliente: ${esc(x.tomador_nome)}</option>` : '') +
+    NF.cli.map(c => `<option value="${c.id}" ${x.cliente_id===c.id?'selected':''}>${esc(c.nome)}${c.cpf_cnpj?' · '+esc(nfDoc(c.cpf_cnpj)):''}</option>`).join('');
+  const finOpts = (x) => [
+    ...x.candidatos.map(l => `<option value="${l.id}" ${x.fin===l.id?'selected':''}>vincular: ${esc(l.descricao||'recebimento')} · ${br(l.pagamento||l.vencimento)} · ${rs(l.valor)}${l.situacao==='pago'?'':' (em aberto)'}</option>`),
+    `<option value="__criar" ${x.fin==='__criar'?'selected':''}>criar recebimento pago em ${br(x.data)}</option>`,
+    `<option value="__nada" ${x.fin==='__nada'?'selected':''}>não lançar no Financeiro</option>`].join('');
+  return `<div class="card" style="margin-top:18px"><h2>Importar notas já emitidas</h2>
+    <p class="nota">Suba de uma vez os XML ou PDF das notas que você já tirou (portal da prefeitura ou Emissor Nacional). O sistema lê cada uma,
+      procura o cliente pelo CPF/CNPJ e o recebimento no Financeiro pelo valor e pela data — e só grava depois que você conferir. XML é lido na hora; PDF passa pelo leitor de documentos (alguns segundos cada).</p>
+    <div style="padding:0 18px 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <input type="file" multiple accept=".xml,.pdf,application/xml,text/xml,application/pdf" onchange="nfImportarArquivos(this)">
+      <span class="sub" id="imp-st" style="margin:0">${esc(NF.imp.msg||'')}</span>
+      ${L.length ? `<button class="btn" onclick="NF.imp={linhas:[],lanc:[]};desenharNotas()">Limpar</button>` : ''}
+    </div>
+    ${L.length ? `<table><thead><tr><th style="width:28px"></th><th style="width:130px">Nota</th><th>Tomador, cliente e Financeiro</th></tr></thead><tbody>
+      ${L.map((x, i) => `<tr style="${x.marcado?'':'opacity:.55'}">
+        <td><input type="checkbox" ${x.marcado?'checked':''} onchange="NF.imp.linhas[${i}].marcado=this.checked;desenharNotas()"></td>
+        <td><b>nº ${esc(x.numero||'?')}</b><span class="sub"><b style="color:var(--ink)">${rs(x.valor)}</b></span>
+          <span class="sub">${br(x.data)}${x.situacao==='cancelada'?' · <b style="color:var(--crit)">cancelada</b>':''}</span><span class="sub" style="word-break:break-all">${esc(x.arquivo)}</span></td>
+        <td style="min-width:0"><b>${esc(x.tomador_nome||'—')}</b> <span class="sub" style="display:inline">${esc(nfDoc(x.tomador_doc||''))}</span>
+          ${x.descricao ? `<span class="sub" style="white-space:normal">${esc(x.descricao.slice(0,110))}${x.descricao.length>110?'…':''}</span>` : ''}
+          ${x.avisos.length ? `<span class="sub" style="color:var(--crit);white-space:normal">${x.avisos.map(esc).join(' · ')}</span>` : ''}
+          <div style="display:grid;gap:6px;margin-top:6px">
+            <label class="nfc"><span class="sub">Cliente</span>
+              <select style="width:100%;max-width:340px" onchange="NF.imp.linhas[${i}].cliente_id=this.value;nfImpCandidatos(NF.imp.linhas[${i}]);desenharNotas()">${cliOpts(x)}</select></label>
+            <label class="nfc"><span class="sub">Financeiro</span>
+              <select style="width:100%;max-width:340px" onchange="NF.imp.linhas[${i}].fin=this.value;desenharNotas()">${finOpts(x)}</select></label>
+            ${x.fin==='__criar' ? `<label class="nfc"><span class="sub">valor recebido (se houve parceria, o total)</span>
+              <input type="text" inputmode="decimal" style="width:120px" value="${esc(nfValor(x.valor_recebido))}" onchange="NF.imp.linhas[${i}].valor_recebido=nfNum(this.value)||NF.imp.linhas[${i}].valor"></label>` : ''}
+          </div></td>
+      </tr>`).join('')}</tbody></table>
+      <div style="padding:12px 18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button class="btn ok" onclick="nfImportarConfirmar()" ${marcadas?'':'disabled'}>Importar ${marcadas} nota(s)</button>
+        <span class="sub" style="margin:0">Desmarque o que não quiser. Notas canceladas entram como canceladas, sem recebimento.</span>
+      </div>` : ''}
+  </div>`;
+}
+// Lê o texto de um elemento pelo nome, ignorando namespace; procura dentro de "raiz".
+function nfTag(raiz, ...nomes){
+  for (const n of nomes) { const e = raiz?.getElementsByTagNameNS('*', n)[0] || raiz?.getElementsByTagName(n)[0]; if (e && e.textContent.trim()) return e.textContent.trim(); }
+  return '';
+}
+function nfFilho(raiz, ...nomes){
+  for (const n of nomes) { const e = raiz?.getElementsByTagNameNS('*', n)[0] || raiz?.getElementsByTagName(n)[0]; if (e) return e; }
+  return null;
+}
+function nfLerXmlNotas(xml){
+  const d = new DOMParser().parseFromString(xml, 'application/xml');
+  if (d.getElementsByTagName('parsererror').length) return [];
+  const out = [];
+  // padrão nacional
+  for (const inf of [...d.getElementsByTagNameNS('*', 'infNFSe')]) {
+    const toma = nfFilho(inf, 'toma'), emit = nfFilho(inf, 'emit');
+    out.push({ numero: nfTag(inf, 'nNFSe'), chave: (inf.getAttribute('Id')||'').replace(/^NFS/, ''),
+      data: (nfTag(inf, 'dhProc') || nfTag(inf, 'dhEmi')).slice(0,10), competencia: nfTag(inf, 'dCompet'),
+      prestador_cnpj: so(nfTag(emit, 'CNPJ', 'CPF')), tomador_nome: nfTag(toma, 'xNome'), tomador_doc: so(nfTag(toma, 'CNPJ', 'CPF')),
+      valor: Number(nfTag(inf, 'vServ') || 0), descricao: nfTag(inf, 'xDescServ'), iss_retido: nfTag(inf, 'tpRetISSQN') === '2',
+      situacao: 'normal', xml });
+  }
+  if (out.length) return out;
+  // ABRASF (prefeituras): InfNfse
+  for (const inf of [...d.getElementsByTagNameNS('*', 'InfNfse'), ...d.getElementsByTagName('InfNfse')].filter((e, i, a) => a.indexOf(e) === i)) {
+    // sobe até o CompNfse desta nota (o cancelamento fica ao lado dela, não no arquivo inteiro)
+    let comp = inf.parentNode; while (comp && comp.localName !== 'CompNfse') comp = comp.parentNode;
+    const prest = nfFilho(inf, 'PrestadorServico', 'Prestador', 'IdentificacaoPrestador');
+    const toma = nfFilho(inf, 'TomadorServico', 'Tomador');
+    const cancel = comp ? nfFilho(comp, 'NfseCancelamento') : (d.getElementsByTagNameNS('*', 'InfNfse').length === 1 && nfFilho(d, 'NfseCancelamento'));
+    out.push({ numero: nfTag(inf, 'Numero'), chave: '', data: nfTag(inf, 'DataEmissao').slice(0,10),
+      competencia: nfTag(inf, 'Competencia').slice(0,10), prestador_cnpj: so(nfTag(prest, 'Cnpj', 'Cpf')),
+      tomador_nome: nfTag(toma, 'RazaoSocial', 'NomeRazaoSocial', 'Nome'), tomador_doc: so(nfTag(toma, 'Cnpj', 'Cpf')),
+      valor: Number(nfTag(inf, 'ValorServicos') || 0), descricao: nfTag(inf, 'Discriminacao'),
+      iss_retido: ['1','true'].includes(nfTag(inf, 'IssRetido').toLowerCase()) && nfTag(inf, 'IssRetido') !== '2',
+      situacao: cancel ? 'cancelada' : 'normal', xml });
+  }
+  return out;
+}
+function nfB64(arq){
+  return new Promise((ok, falha) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.onerror = falha; r.readAsDataURL(arq); });
+}
+async function nfLerPdfNotas(arq){
+  const { data: { session } } = await sb.auth.getSession();
+  const r = await fetch(SB_URL + '/functions/v1/ler-documento', { method: 'POST',
+    headers: { 'content-type': 'application/json', apikey: SB_KEY, Authorization: 'Bearer ' + session.access_token },
+    body: JSON.stringify({ arquivo: await nfB64(arq), mime: 'application/pdf', nome: arq.name, modo: 'nfse' }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.erro) throw new Error(j.erro || ('o leitor respondeu ' + r.status));
+  return (j.notas || []).map(n => ({ numero: String(n.numero||'').trim(), chave: so(n.chave).length === 50 ? so(n.chave) : '',
+    data: String(n.data_emissao || n.competencia || '').slice(0,10), competencia: String(n.competencia || '').slice(0,10),
+    prestador_cnpj: so(n.prestador_cnpj), tomador_nome: String(n.tomador_nome||'').trim(), tomador_doc: so(n.tomador_doc),
+    valor: Number(n.valor_servico || 0), descricao: String(n.descricao||'').trim(), iss_retido: !!n.iss_retido,
+    situacao: n.situacao === 'cancelada' ? 'cancelada' : 'normal', xml: null }));
+}
+// Recebimentos do mesmo cliente, com o mesmo valor (ou do qual a nota é parte) e data próxima, ainda sem nota.
+function nfImpCandidatos(x){
+  const ja = new Set([...NF.notas.map(n => n.lancamento_id), ...NF.imp.linhas.filter(y => y !== x && y.marcado).map(y => y.fin)].filter(Boolean));
+  const t = Date.parse(x.data || hoje());
+  x.candidatos = (!x.cliente_id || x.cliente_id === '__novo') ? [] : NF.imp.lanc
+    .filter(l => l.cliente_id === x.cliente_id && !ja.has(l.id) && Number(l.valor) + 0.005 >= x.valor
+      && Math.abs(Date.parse(l.pagamento || l.vencimento) - t) <= 60 * 864e5)
+    .sort((a, b) => Math.abs(Number(a.valor) - x.valor) - Math.abs(Number(b.valor) - x.valor)
+      || Math.abs(Date.parse(a.pagamento||a.vencimento) - t) - Math.abs(Date.parse(b.pagamento||b.vencimento) - t))
+    .slice(0, 5);
+  if (!x.fin || (x.fin !== '__criar' && x.fin !== '__nada' && !x.candidatos.some(l => l.id === x.fin)))
+    x.fin = x.situacao === 'cancelada' ? '__nada' : (x.candidatos[0]?.id || '__criar');
+}
+window.nfImportarArquivos = async input => {
+  const arqs = [...(input.files || [])]; if (!arqs.length) return;
+  if (!NF.imp.lanc.length) {
+    const { data } = await sb.from('lancamento').select('id,descricao,valor,vencimento,pagamento,situacao,cliente_id').eq('tipo','entrada');
+    NF.imp.lanc = data || [];
+  }
+  const st = () => document.getElementById('imp-st');
+  let lidas = 0;
+  for (const [k, arq] of arqs.entries()) {
+    NF.imp.msg = `lendo ${k + 1} de ${arqs.length}: ${arq.name}…`; if (st()) st().textContent = NF.imp.msg;
+    try {
+      const ehXml = /xml/i.test(arq.type) || /\.xml$/i.test(arq.name);
+      const notas = ehXml ? nfLerXmlNotas(await arq.text()) : await nfLerPdfNotas(arq);
+      if (!notas.length) { NF.imp.linhas.push(nfImpLinha({ arquivo: arq.name, numero: '', valor: 0, avisos: ['não encontrei nota fiscal neste arquivo'], marcado: false })); continue; }
+      for (const n of notas) { NF.imp.linhas.push(nfImpLinha({ ...n, arquivo: arq.name })); lidas++; }
+    } catch (e) { NF.imp.linhas.push(nfImpLinha({ arquivo: arq.name, numero: '', valor: 0, avisos: ['erro ao ler: ' + e.message], marcado: false })); }
+  }
+  NF.imp.msg = `${lidas} nota(s) lida(s) de ${arqs.length} arquivo(s). Confira abaixo.`;
+  input.value = '';
+  desenharNotas();
+};
+function nfImpLinha(n){
+  const x = { avisos: [], marcado: true, candidatos: [], ...n };
+  x.valor = Number(x.valor || 0); x.valor_recebido = x.valor; x.data = x.data || x.competencia || '';
+  if (x.numero === '' && !x.avisos.length) x.avisos.push('sem número');
+  const meu = so(NF.cfg?.cnpj);
+  if (x.prestador_cnpj && meu && x.prestador_cnpj !== meu) { x.avisos.push('a nota é de outro prestador (CNPJ ' + nfDoc(x.prestador_cnpj) + ')'); x.marcado = false; }
+  const dup = [...NF.notas, ...NF.imp.linhas].some(y => y !== x && ((x.chave && y.chave_acesso === x.chave) || (x.chave && y.chave === x.chave)
+    || (x.numero && so(y.numero_nfse ?? y.numero) === so(x.numero) && (y.origem ? y.origem !== 'api' : true) && (y.data || y.competencia || '').slice(0,7) === x.data.slice(0,7))));
+  if (dup) { x.avisos.push('parece já registrada no sistema'); x.marcado = false; }
+  if (!(x.valor > 0)) x.marcado = false;
+  const c = x.tomador_doc ? NF.cli.find(c => so(c.cpf_cnpj) === x.tomador_doc) : null;
+  x.cliente_id = c?.id || (x.tomador_nome ? '__novo' : '');
+  if (!c && x.tomador_nome) x.avisos.push('cliente não cadastrado — será criado');
+  nfImpCandidatos(x);
+  return x;
+}
+window.nfImportarConfirmar = async () => {
+  const L = NF.imp.linhas.filter(x => x.marcado);
+  if (!L.length) return;
+  if (L.some(x => !x.cliente_id)) return alert('Escolha o cliente das notas marcadas que estão sem cliente.');
+  const novos = L.filter(x => x.cliente_id === '__novo').length, criar = L.filter(x => x.fin === '__criar').length;
+  if (!confirm(`Importar ${L.length} nota(s), somando ${rs(L.reduce((t,x)=>t+x.valor,0))}?\n\n` +
+      `• ${criar} recebimento(s) novo(s) no Financeiro\n• ${L.filter(x => x.candidatos.some(l => l.id === x.fin)).length} vinculada(s) a recebimento existente\n` +
+      (novos ? `• ${novos} cliente(s) novo(s)\n` : ''))) return;
+  const esc1 = NF.cfg.escritorio_id, res = [], criados = {};
+  for (const x of L) {
+    try {
+      let cli = x.cliente_id;
+      if (cli === '__novo') {
+        if (criados[x.tomador_doc || x.tomador_nome]) cli = criados[x.tomador_doc || x.tomador_nome];
+        else {
+          const { data, error } = await sb.from('cliente').insert({ escritorio_id: esc1, nome: x.tomador_nome,
+            tipo: x.tomador_doc.length === 14 ? 'juridica' : 'fisica', cpf_cnpj: x.tomador_doc ? nfDoc(x.tomador_doc) : null })
+            .select('id,nome,tipo,cpf_cnpj,endereco,cep,cidade,uf').single();
+          if (error) throw new Error('cliente: ' + error.message);
+          cli = criados[x.tomador_doc || x.tomador_nome] = data.id; NF.cli.push(data);
+        }
+      }
+      let lanc = x.candidatos.some(l => l.id === x.fin) ? x.fin : null;
+      if (x.fin === '__criar' && x.situacao !== 'cancelada') {
+        const { data, error } = await sb.from('lancamento').insert({ escritorio_id: esc1, tipo: 'entrada',
+          descricao: `Honorários — NF ${x.numero}`, cliente_id: cli, valor: Math.round(Number(x.valor_recebido || x.valor) * 100) / 100,
+          vencimento: x.data, pagamento: x.data, situacao: 'pago' }).select('id').single();
+        if (error) throw new Error('recebimento: ' + error.message);
+        lanc = data.id;
+      }
+      const { error } = await sb.from('nota_fiscal').insert({ escritorio_id: esc1, origem: 'importada', ambiente: 1,
+        situacao: x.situacao === 'cancelada' ? 'cancelada' : 'emitida', numero_nfse: x.numero || null,
+        chave_acesso: x.chave || null, competencia: x.competencia || x.data, emitida_em: x.data ? x.data + 'T12:00:00-03:00' : null,
+        valor_servico: x.valor, iss_retido: !!x.iss_retido, descricao: x.descricao || '(importada)',
+        tomador: { doc: x.tomador_doc, nome: x.tomador_nome }, cliente_id: cli, lancamento_id: lanc,
+        xml_nfse: x.xml || null, criado_por: USER.id,
+        ...(x.situacao === 'cancelada' ? { cancelada_em: x.data ? x.data + 'T12:00:00-03:00' : null, motivo_cancelamento: 'cancelada antes da importação' } : {}) });
+      if (error) throw new Error(/numero_uk|duplicate/.test(error.message) ? 'já registrada' : error.message);
+      res.push(`✓ nº ${x.numero} — ${x.tomador_nome}`); x.feito = true;
+    } catch (e) { res.push(`✗ nº ${x.numero || '?'} (${x.arquivo}) — ${e.message}`); }
+  }
+  alert('Importação:\n\n' + res.join('\n'));
+  NF.imp.linhas = NF.imp.linhas.filter(x => !x.feito); NF.imp.msg = NF.imp.linhas.length ? 'As que não entraram continuam abaixo.' : '';
+  telaNotas();
+};
+
 /* ---------- rascunhos */
 function nfLinhaRascunho(corpo, cli, doc, descricao){
   return { escritorio_id: NF.cfg.escritorio_id, origem: 'api', ambiente: NF.cfg.ambiente === 1 ? 1 : 2, situacao: 'rascunho',

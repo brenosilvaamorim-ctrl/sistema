@@ -25,6 +25,19 @@ Responda APENAS com JSON, sem comentário e sem cerca de código:
  "fatos":[{"data":"","descricao":"","trecho":"","pagina":1}],
  "observacao":"o que ficou ilegivel ou duvidoso",\n "transcricao":"transcreva aqui, corrido, TODO o texto legivel do documento, na ordem em que aparece; nao resuma, nao interprete e nao complete o que nao estiver escrito"}`;
 
+// Modo "nfse": lê notas fiscais de serviço já emitidas (PDF do DANFSe, do portal
+// nacional ou da prefeitura), para importar ao Financeiro. Também só extrai.
+const SISTEMA_NFSE = `Você lê notas fiscais de serviço eletrônicas (NFS-e) brasileiras — DANFSe do padrão nacional ou nota da prefeitura — e devolve dado estruturado.
+Regras absolutas:
+- Só extraia o que está ESCRITO. Nunca deduza nem complete. Campo ausente: deixe fora.
+- Datas em AAAA-MM-DD. Valores como número (ponto decimal), sem R$ e sem ponto de milhar.
+- CPF e CNPJ só com dígitos.
+- Se o arquivo tiver mais de uma nota, devolva uma por item de "notas".
+- "situacao": "cancelada" se houver qualquer indicação de cancelamento; "substituida" se indicar substituição; senão "normal".
+Responda APENAS com JSON, sem comentário e sem cerca de código:
+{"notas":[{"numero":"","chave":"","data_emissao":"","competencia":"","prestador_cnpj":"","prestador_nome":"","tomador_nome":"","tomador_doc":"","valor_servico":0,"valor_liquido":0,"iss_retido":false,"descricao":"","municipio":"","situacao":"normal"}],
+ "observacao":"o que ficou ilegível ou duvidoso"}`;
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   const key = Deno.env.get('ANTHROPIC_API_KEY');
@@ -38,7 +51,8 @@ Deno.serve(async (req) => {
   if (!user) return resp({ erro: 'sessão inválida' }, 401);
 
   const body = await req.json().catch(() => ({}));
-  const { arquivo, mime, nome = 'documento', caso_id } = body;
+  const { arquivo, mime, nome = 'documento', caso_id, modo } = body;
+  const nfse = modo === 'nfse';
   if (!arquivo) return resp({ erro: 'arquivo obrigatório' }, 400);
   if (arquivo.length > 9_000_000) return resp({ erro: 'arquivo grande demais; mande até ~6 MB' }, 400);
 
@@ -50,7 +64,7 @@ Deno.serve(async (req) => {
     method: 'POST',
     headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     body: JSON.stringify({
-      model: 'claude-sonnet-5', max_tokens: 12000, system: SISTEMA,
+      model: 'claude-sonnet-5', max_tokens: nfse ? 4000 : 12000, system: nfse ? SISTEMA_NFSE : SISTEMA,
       messages: [{ role: 'user', content: [bloco,
         { type: 'text', text: `Arquivo: ${nome}. Extraia o que estiver escrito, no formato pedido.` }] }],
     }),
@@ -62,6 +76,7 @@ Deno.serve(async (req) => {
   let lido: any = null;
   try { lido = JSON.parse(m ? m[0] : txt); } catch { /* devolve cru abaixo */ }
   if (!lido) return resp({ erro: 'não consegui estruturar a leitura', cru: txt.slice(0, 1500) }, 422);
+  if (nfse) return resp({ notas: Array.isArray(lido.notas) ? lido.notas : [], observacao: lido.observacao || '', arquivo: nome });
 
   if (lido.campos) for (const k of Object.keys(lido.campos))
     if (lido.campos[k] === '' || lido.campos[k] === 0 || lido.campos[k] === null) delete lido.campos[k];
