@@ -569,9 +569,120 @@ async function mandarAoLeitorExtrato(b64, mime, nome){
   return r.json();
 }
 
+/* ---- OFX e CSV: lidos aqui mesmo, no navegador, sem passar pelo leitor (sem custo).
+   Devolvem o mesmo formato do leitor de PDF: { documento, lancamentos }. */
+async function textoArquivo(f){
+  const buf = await f.arrayBuffer();
+  const cab = new TextDecoder('latin1').decode(buf.slice(0, 600));
+  const utf = new TextDecoder('utf-8', { fatal: false }).decode(buf);
+  // OFX antigo declara CHARSET:1252; CSV de banco brasileiro às vezes vem em Latin-1 (aparece "�" no UTF-8).
+  if (/CHARSET:\s*1252|ENCODING:\s*USASCII/i.test(cab) && !/encoding="utf-8"/i.test(cab)) return new TextDecoder('windows-1252').decode(buf);
+  return utf.includes('�') ? new TextDecoder('windows-1252').decode(buf) : utf.replace(/^﻿/, '');
+}
+const extParcela = d => { const m = String(d).match(/(?:parc(?:ela)?\.?\s*)?\b(\d{1,2})\s*(?:\/|de)\s*(\d{1,2})\b/i);
+  return m && Number(m[1]) >= 1 && Number(m[2]) >= Number(m[1]) && Number(m[2]) <= 48 ? { parcela: Number(m[1]), total_parcelas: Number(m[2]) } : { parcela: null, total_parcelas: null }; };
+function lerOfx(txt){
+  const tag = (bloco, t) => { const m = bloco.match(new RegExp('<' + t + '>([^<\\r\\n]*)', 'i')); return m ? m[1].trim() : ''; };
+  const dt = s => { const m = String(s).match(/^(\d{4})(\d{2})(\d{2})/); return m ? `${m[1]}-${m[2]}-${m[3]}` : ''; };
+  const num = s => { s = String(s).trim(); if (/,\d{1,2}$/.test(s)) s = s.replace(/\./g, '').replace(',', '.'); return Number(s); };
+  const cartao = /<CCSTMTRS>|<CREDITCARDMSGSRSV1>/i.test(txt);
+  const lancamentos = [];
+  for (const b of txt.split(/<STMTTRN>/i).slice(1)) {
+    const bloco = b.split(/<\/STMTTRN>/i)[0];
+    const v = num(tag(bloco, 'TRNAMT')), desc = [tag(bloco, 'NAME'), tag(bloco, 'MEMO')].filter((x, i, a) => x && a.indexOf(x) === i).join(' — ');
+    if (!isFinite(v) || !v) continue;
+    lancamentos.push({ data: dt(tag(bloco, 'DTPOSTED')), descricao: desc || tag(bloco, 'TRNTYPE'), valor: Math.round(Math.abs(v) * 100) / 100,
+      tipo: v < 0 ? 'saida' : 'entrada', categoria_sugerida: '', ...extParcela(desc) });
+  }
+  const bal = num(tag(txt.split(/<LEDGERBAL>/i)[1] || '', 'BALAMT'));
+  return { documento: { tipo: cartao ? 'fatura' : 'extrato', banco: tag(txt, 'ORG') || tag(txt, 'BANKID') || null,
+      conta: tag(txt, 'ACCTID') || null, periodo_inicio: dt(tag(txt, 'DTSTART')) || null, periodo_fim: dt(tag(txt, 'DTEND')) || null,
+      saldo_final: !cartao && isFinite(bal) ? bal : null, total_fatura: cartao && isFinite(bal) && bal ? Math.abs(bal) : null },
+    lancamentos: lancamentos.filter(l => l.data) };
+}
+/* CSV: cada banco usa um cabeçalho. Procura as colunas de data, descrição e valor
+   (ou débito/crédito separados). Na fatura, valor positivo é compra; negativo é
+   pagamento ou estorno. No extrato, negativo é saída. */
+function lerCsv(txt, tipoDoc){
+  const linhas = txt.split(/\r?\n/).filter(l => l.trim());
+  const amostra = linhas.slice(0, 10).join('\n');
+  const sep = [';', '\t', ','].map(s => [s, amostra.split(s).length]).sort((a, b) => b[1] - a[1])[0][0];
+  const corta = l => { const out = []; let cur = '', q = false;
+    for (const ch of l) { if (ch === '"') q = !q; else if (ch === sep && !q) { out.push(cur); cur = ''; } else cur += ch; }
+    out.push(cur); return out.map(x => x.trim()); };
+  const norm = s => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+  const rows = linhas.map(corta);
+  const ic = rows.findIndex(r => r.some(c => /^(data|date|dt)/.test(norm(c))) && r.some(c => /valor|amount|value|debito|credito/.test(norm(c))));
+  if (ic < 0) throw new Error('não achei o cabeçalho com as colunas de data e valor neste CSV');
+  const cab = rows[ic].map(norm), acha = re => cab.findIndex(c => re.test(c));
+  const k = { data: acha(/^(data|date|dt)/), desc: acha(/descri|historico|title|titulo|estabelecimento|lancamento|memo|detalhe/),
+    valor: acha(/^(valor|amount|value)(?!.*(dolar|us\$|usd))/), deb: acha(/debito|saida/), cred: acha(/credito|entrada/), tipo: acha(/^(tipo|d\/c|natureza)$/), parc: acha(/^parcela/) };
+  if (k.valor < 0) k.valor = acha(/valor.*(r\$|real)|r\$/);
+  const dt = s => { s = String(s).trim(); let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+    m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/); if (m) return `${m[3].length === 2 ? '20' + m[3] : m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`; return ''; };
+  const num = s => { s = String(s ?? '').replace(/[R$\s]/g, ''); if (!s) return NaN; let neg = /^\(.*\)$/.test(s) || /-$/.test(s); s = s.replace(/[()]/g, '').replace(/-$/, '');
+    if (/,\d{1,2}$/.test(s)) s = s.replace(/\./g, '').replace(',', '.'); else s = s.replace(/,/g, ''); const n = Number(s); return neg ? -Math.abs(n) : n; };
+  const lancamentos = [];
+  for (const r of rows.slice(ic + 1)) {
+    const data = dt(r[k.data]); if (!data) continue;
+    let v;
+    if (k.valor >= 0 && r[k.valor] !== '') v = num(r[k.valor]);
+    else { const d = num(r[k.deb]), c = num(r[k.cred]); v = isFinite(c) && c ? Math.abs(c) : (isFinite(d) && d ? -Math.abs(d) : NaN); }
+    if (!isFinite(v) || !v) continue;
+    const marca = k.tipo >= 0 ? norm(r[k.tipo]) : '';
+    let saida = tipoDoc === 'fatura' ? v > 0 : v < 0;
+    if (/^(d|db|deb|debito|saida)$/.test(marca)) saida = true; else if (/^(c|cr|cred|credito|entrada)$/.test(marca)) saida = false;
+    const descricao = (k.desc >= 0 ? r[k.desc] : r.filter((c, i) => i !== k.data && i !== k.valor).join(' ')).trim();
+    const colPar = k.parc >= 0 && /\d/.test(r[k.parc]) ? r[k.parc] : (/\d+\s*\/\s*\d+/.test(marca) ? r[k.tipo] : '');
+    const par = colPar ? extParcela(colPar) : extParcela(descricao);
+    lancamentos.push({ data, descricao: descricao + (colPar && par.parcela && !/\d+\s*\/\s*\d+/.test(descricao) ? ` (${par.parcela}/${par.total_parcelas})` : ''),
+      valor: Math.round(Math.abs(v) * 100) / 100, tipo: saida ? 'saida' : 'entrada', categoria_sugerida: '', ...par });
+  }
+  const ds = lancamentos.map(l => l.data).sort();
+  return { documento: { tipo: tipoDoc, banco: null, conta: null, periodo_inicio: ds[0] || null, periodo_fim: ds[ds.length - 1] || null, saldo_final: null, total_fatura: null }, lancamentos };
+}
+/* Sugere a categoria pelo que já foi lançado antes com a mesma descrição. */
+async function categoriasPeloHistorico(linhas){
+  const { data } = await sb.from('pessoal_lancamento').select('descricao,categoria_id').not('categoria_id', 'is', null).order('data', { ascending: false }).limit(3000);
+  const nome = Object.fromEntries((PES?.cats || []).map(c => [c.id, c.nome]));
+  const chave = d => String(d || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\d+\s*\/\s*\d+/g, '').replace(/[^a-z]/g, '').slice(0, 14);
+  const m = new Map(); for (const x of (data || [])) { const c = chave(x.descricao); if (c.length >= 4 && !m.has(c) && nome[x.categoria_id]) m.set(c, nome[x.categoria_id]); }
+  for (const l of linhas) if (!l.categoria_sugerida) l.categoria_sugerida = m.get(chave(l.descricao)) || '';
+}
+async function lerExtratoLocal(f, input, st){
+  st.style.color = 'var(--i3)'; st.textContent = 'lendo o arquivo…';
+  try {
+    const txt = await textoArquivo(f);
+    const ehOfx = /\.(ofx|qfx)$/i.test(f.name) || /<OFX>/i.test(txt);
+    const tipoCsv = document.getElementById('ex-tipo')?.value || 'fatura';
+    const r = ehOfx ? lerOfx(txt) : lerCsv(txt, tipoCsv);
+    const linhas = r.lancamentos.sort((a, b) => a.data.localeCompare(b.data));
+    if (!linhas.length) { st.style.color = 'var(--crit)'; input.value = '';
+      return st.textContent = 'não encontrei nenhuma linha de movimento neste arquivo.'; }
+    if (!PES) await carregarPessoal();
+    await categoriasPeloHistorico(linhas);
+    const doc = r.documento;
+    const obs = null;   // leitura local: nada ficou sem ler
+    st.textContent = 'guardando o arquivo…';
+    const reg = (await sb.from('pessoal_extrato').insert({
+      dono_id: PES.uid, familia_id: PES.fam, arquivo_nome: f.name, tipo: doc.tipo, banco: doc.banco, conta: doc.conta,
+      periodo_ini: doc.periodo_inicio, periodo_fim: doc.periodo_fim, saldo_final: doc.saldo_final, total_fatura: doc.total_fatura,
+      vencimento: null, linhas, observacao: obs,
+    }).select('id').maybeSingle()).data;
+    if (reg) {
+      const caminho = `${PES.fam}/${reg.id}/${Date.now()}-${f.name.replace(/[^A-Za-z0-9._-]/g,'-').slice(-70)}`;
+      const up = await sb.storage.from('financeiro').upload(caminho, f, { upsert:false, contentType: 'text/plain' });
+      if (!up.error) await sb.from('pessoal_extrato').update({ arquivo_path: caminho }).eq('id', reg.id);
+    }
+    st.textContent = ''; input.value = '';
+    telaExtrato(reg?.id, { doc, linhas, obs, descartadas: 0, arquivo: f.name, uso: { entrada: 0, saida: 0 } });
+  } catch (e) { st.style.color = 'var(--crit)'; st.textContent = 'não consegui ler: ' + (e.message || e); input.value = ''; }
+}
+
 window.lerExtrato = async (input) => {
   const f = input.files?.[0]; if (!f) return;
   const st = document.getElementById('ex-st');
+  if (/\.(ofx|qfx|csv|txt)$/i.test(f.name)) return lerExtratoLocal(f, input, st);
   const ehPdf = /pdf/i.test(f.type) || /\.pdf$/i.test(f.name);
   if (!ehPdf && f.size > 6*1024*1024) { st.style.color='var(--crit)';
     return st.textContent = 'foto grande demais (máx. 6 MB). Reduza a imagem.'; }
@@ -869,12 +980,15 @@ async function telaPessoal(){
   </div>
 
   <div class="card"><h2>Ler extrato ou fatura</h2>
-    <p class="nota">Mande o PDF do extrato da conta ou da fatura do cartão. O sistema lê, separa
+    <p class="nota">Mande o extrato da conta ou a fatura do cartão em <b>PDF, OFX ou CSV</b>. O sistema lê, separa
       <b>créditos</b> de <b>débitos</b> e mostra linha a linha para você conferir.
-      <b>Nada entra na sua conta sozinho</b> — só o que você marcar. PDF grande é lido em blocos de
+      <b>Nada entra na sua conta sozinho</b> — só o que você marcar. OFX e CSV são lidos na hora e sem custo
+      (a categoria vem do que já foi lançado antes com a mesma descrição). PDF grande é lido em blocos de
       dez páginas. Foto também serve, até 6 MB.</p>
     <div style="padding:0 18px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-      <input type="file" accept="application/pdf,image/*" onchange="lerExtrato(this)">
+      <input type="file" accept="application/pdf,image/*,.ofx,.qfx,.csv,.txt,text/csv" onchange="lerExtrato(this)">
+      <label class="sub" style="margin:0;display:flex;gap:6px;align-items:center">CSV é
+        <select id="ex-tipo"><option value="fatura">fatura do cartão</option><option value="extrato">extrato da conta</option></select></label>
       <span class="sub" id="ex-st" style="margin:0"></span>
     </div>
     ${EXTRATOS.length ? `<table><thead><tr><th>Arquivo</th><th>Tipo</th><th>Período</th>
