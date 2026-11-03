@@ -5541,6 +5541,8 @@ Fica no grupo **Escritório**. Emite a NFS-e direto no **Emissor Nacional**, ass
 
 **Se a conexão cair no meio.** A nota fica como *enviando*. Use **Conferir**: o sistema pergunta ao governo se ela saiu e, se saiu, traz o número.
 
+**Sem o certificado A1: emitir no portal.** Enquanto o escritório não tem o e-CNPJ A1, use **Emitir no portal**. O sistema confere tudo e mostra cada campo do formulário do Emissor Nacional com um botão **Copiar**: competência, tomador, código 17.14.01, NBS, descrição (com a parceria, se houver), valor e tributação. Abra o portal, entre com o gov.br e preencha. Emitida a nota, volte e registre o número — ou anexe o XML baixado do portal, que já traz número e chave e permite imprimir o DANFSe por aqui. Cancelamento de nota do portal é feito no portal; aqui só se marca como cancelada.
+
 **Teste antes.** O sistema começa no modo de teste (produção restrita), onde nada tem valor fiscal. Quando as notas de teste saírem certas, o titular troca para produção em Configuração.
 
 ## 13b. Ideias e projetos
@@ -6700,7 +6702,7 @@ async function telaFinanceiro(){
    dados, mostra o que foi emitido e imprime o DANFSe.
    A descrição com parceria segue o modelo do escritório, com base no
    art. 15, § 9º, do EAOAB: a nota sai só pela parte que ficou com o escritório. */
-let NF = { cfg:null, notas:[], cli:[], parc:[], casos:[], procs:[], lancs:[], perfil:null, form:{}, descEditada:false, diag:null };
+let NF = { cfg:null, notas:[], cli:[], parc:[], casos:[], procs:[], lancs:[], perfil:null, form:{}, descEditada:false, diag:null, portal:null };
 const NF_SIT = { emitida:['good','emitida'], enviando:['warn','enviando'], rejeitada:['crit','rejeitada'], cancelada:['cin','cancelada'] };
 const nfNum = s => { s = String(s ?? '').trim().replace(/[R$\s]/g,''); if (s.includes(',')) s = s.replace(/\./g,'').replace(',','.'); const n = Number(s); return isFinite(n) ? Math.round(n*100)/100 : NaN; };
 const nfValor = v => Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2, maximumFractionDigits:2});
@@ -6712,7 +6714,7 @@ async function telaNotas(){
   const desde = new Date(Date.now() - 150*864e5).toISOString().slice(0,10);
   const [cf, nt, cl, pa, ca, pr, la, eu] = await Promise.all([
     sb.from('nfse_config').select('*').maybeSingle(),
-    sb.from('nota_fiscal').select('id,lancamento_id,cliente_id,caso_id,parceiro_id,ambiente,serie,numero_dps,competencia,valor_servico,valor_total_recebido,valor_parceria,iss_retido,descricao,tomador,situacao,chave_acesso,numero_nfse,emitida_em,erros,cancelada_em,motivo_cancelamento,criado_em')
+    sb.from('nota_fiscal').select('id,origem,lancamento_id,cliente_id,caso_id,parceiro_id,ambiente,serie,numero_dps,competencia,valor_servico,valor_total_recebido,valor_parceria,iss_retido,descricao,tomador,situacao,chave_acesso,numero_nfse,emitida_em,erros,cancelada_em,motivo_cancelamento,criado_em')
       .order('criado_em', { ascending:false }).limit(300),
     sb.from('cliente').select('id,nome,tipo,cpf_cnpj,endereco,cep,cidade,uf').order('nome'),
     sb.from('parceiro').select('id,nome,escritorio,razao_social,cnpj,ativo').order('nome'),
@@ -6736,7 +6738,8 @@ async function telaNotas(){
 
 function nfResumoMes(){
   const mes = hoje().slice(0,7), ano = hoje().slice(0,4);
-  const ok = NF.notas.filter(n => n.situacao==='emitida' && n.ambiente===(NF.cfg?.ambiente||2));
+  const teste = (NF.cfg?.ambiente ?? 2) !== 1;
+  const ok = NF.notas.filter(n => n.situacao==='emitida' && (n.ambiente===1 || teste));
   const soma = a => a.reduce((t,n)=>t+Number(n.valor_servico||0),0);
   return { mes: ok.filter(n => String(n.competencia).slice(0,7)===mes), ano: ok.filter(n => String(n.competencia).slice(0,4)===ano), soma };
 }
@@ -6823,9 +6826,11 @@ function desenharNotas(){
       <label class="nfc"><span class="sub">Descrição do serviço ${NF.descEditada ? '· <a onclick="nfDescAuto()" style="cursor:pointer;color:var(--serie)">voltar ao modelo</a>' : '· gerada pelo modelo — pode editar'}</span>
         <textarea rows="${f.parceria?6:3}" maxlength="1000" oninput="nfDescMudou(this.value)">${esc(f.descricao||'')}</textarea></label>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-        <button class="btn ok" onclick="emitirNota()" ${c?'':'disabled'}>${teste?'Emitir nota de teste':'Emitir nota'}</button>
+        <button class="btn ok" onclick="emitirNota()" ${c?'':'disabled'} title="emite direto pela API do governo (precisa do certificado e-CNPJ A1)">${teste?'Emitir pelo sistema (teste)':'Emitir pelo sistema'}</button>
+        <button class="btn" onclick="prepararPortal()" title="mostra os dados prontos para copiar no Emissor Nacional">Emitir no portal</button>
         <span class="sub" id="nf-st" style="margin:0"></span>
       </div>
+      ${NF.portal ? blocoPortal() : ''}
     </div></div>
 
   <div class="card" style="margin-top:18px"><h2>Notas</h2>
@@ -6844,7 +6849,7 @@ function linhaNota(n){
   const erros = (n.situacao==='rejeitada' && Array.isArray(n.erros)) ? n.erros : [];
   return `<tr>
     <td class="dt"><b>${br(n.competencia)}</b><span class="sub">${n.ambiente===1?'produção':'teste'}</span></td>
-    <td>${n.numero_nfse ? '<b>'+esc(n.numero_nfse)+'</b>' : '—'}<span class="sub">DPS ${esc(n.serie)}-${n.numero_dps}</span></td>
+    <td>${n.numero_nfse ? '<b>'+esc(n.numero_nfse)+'</b>' : '—'}<span class="sub">${n.origem==='portal' ? 'emitida no portal' : 'DPS '+esc(n.serie)+'-'+n.numero_dps}</span></td>
     <td><b>${esc(t.nome||'')}</b><span class="sub">${esc(nfDoc(t.doc||''))}${n.valor_parceria?' · parceria':''}</span></td>
     <td class="dt" style="font-weight:600">${rs(n.valor_servico)}</td>
     <td><span class="pill ${k}">${rot}</span>
@@ -6856,7 +6861,9 @@ function linhaNota(n){
       ${n.situacao==='emitida' ? `<button class="btn" onclick="whatsNota('${n.id}')">WhatsApp</button>` : ''}
       ${n.situacao==='enviando' ? `<button class="btn ok" onclick="conferirNota('${n.id}')">Conferir</button>` : ''}
       ${n.situacao==='rejeitada' ? `<button class="btn" onclick="refazerNota('${n.id}')">Corrigir e emitir</button>` : ''}
-      ${n.situacao==='emitida' && NF.perfil==='titular' ? `<button class="btn" style="color:var(--crit)" onclick="cancelarNota('${n.id}')">Cancelar</button>` : ''}
+      ${n.situacao==='emitida' && NF.perfil==='titular' && n.origem!=='portal' ? `<button class="btn" style="color:var(--crit)" onclick="cancelarNota('${n.id}')">Cancelar</button>` : ''}
+      ${n.origem==='portal' && NF.perfil==='titular' ? `<button class="btn" onclick="anexarXmlNota('${n.id}')" title="anexar o XML baixado do portal, para imprimir o DANFSe por aqui">Anexar XML</button>` : ''}
+      ${n.situacao==='emitida' && NF.perfil==='titular' && n.origem==='portal' ? `<button class="btn" style="color:var(--crit)" onclick="cancelarNotaPortal('${n.id}')" title="depois de cancelar no portal">Marcar cancelada</button>` : ''}
     </div></td></tr>`;
 }
 
@@ -6897,10 +6904,10 @@ function nfDescricao(){
   }
   return proc ? `HONORÁRIOS ADVOCATÍCIOS REFERENTES AO PROCESSO N. ${proc}.` : (c?.descricao_padrao || 'Honorários advocatícios.');
 }
-window.nfDescMudou = v => { NF.form.descricao = v; if (!NF.descEditada) { NF.descEditada = true; } };
+window.nfDescMudou = v => { NF.form.descricao = v; if (NF.portal) { NF.portal = null; document.getElementById('nf-portal')?.remove(); } if (!NF.descEditada) { NF.descEditada = true; } };
 window.nfDescAuto = () => { NF.descEditada = false; desenharNotas(); };
 window.nfSet = (k, v, redesenhar) => {
-  NF.form[k] = v;
+  NF.form[k] = v; NF.portal = null;
   if (k === 'cliente_id') { const c = NF.casos.find(x => x.id === NF.form.caso_id); if (c && c.cliente_id !== v) NF.form.caso_id = ''; }
   if (k === 'caso_id') { const ps = NF.procs.filter(p => p.caso_id === v); if (ps.length === 1) NF.form.processo = ps[0].numero_formatado || ps[0].numero_cnj;
     const c = NF.casos.find(x => x.id === v); if (c?.cliente_id && !NF.form.cliente_id) NF.form.cliente_id = c.cliente_id; }
@@ -6911,7 +6918,7 @@ window.nfSet = (k, v, redesenhar) => {
   if (!NF.descEditada) { NF.form.descricao = nfDescricao(); const ta = document.querySelector('main textarea'); if (ta) ta.value = NF.form.descricao; }
 };
 window.usarLancamento = (id, semDesenhar) => {
-  const l = NF.lancs.find(x => x.id === id);
+  const l = NF.lancs.find(x => x.id === id); NF.portal = null;
   NF.form = { competencia: hoje(), parceria:false, iss_retido:false };
   NF.descEditada = false;
   if (l) {
@@ -6924,8 +6931,10 @@ window.usarLancamento = (id, semDesenhar) => {
 };
 
 /* ---------- emitir */
-window.emitirNota = async () => {
-  const f = NF.form, st = document.getElementById('nf-st');
+/* Confere o formulário e devolve os dados da nota (ou nada, depois de avisar).
+   Serve para as duas formas de emitir: pelo sistema e no portal. */
+async function nfValidar(){
+  const f = NF.form;
   const cli = NF.cli.find(x => x.id === f.cliente_id);
   if (!cli) return alert('Escolha o cliente (tomador).');
   const doc = so(cli.cpf_cnpj);
@@ -6955,6 +6964,13 @@ window.emitirNota = async () => {
     if (!(v > 0)) return alert('Informe o valor da nota.');
     corpo.valor_servico = v;
   }
+  return { corpo, cli, doc, descricao };
+}
+
+window.emitirNota = async () => {
+  const f = NF.form, st = document.getElementById('nf-st');
+  const v = await nfValidar(); if (!v) return;
+  const { corpo, cli, doc, descricao } = v;
   const teste = (NF.cfg?.ambiente ?? 2) !== 1;
   const ok = confirm(`${teste ? '[TESTE — sem valor fiscal]\n\n' : ''}Emitir NFS-e de ${rs(corpo.valor_servico)} para ${cli.nome} (${nfDoc(doc)}), competência ${br(f.competencia)}?\n\n${descricao.slice(0,400)}${descricao.length>400?'…':''}`);
   if (!ok) return;
@@ -6972,6 +6988,128 @@ window.emitirNota = async () => {
     else if (r.aviso) alert(r.aviso);
     location.hash = '#/notas'; telaNotas();
   } catch (e) { st.textContent = ''; alert('Não foi possível: ' + e.message); }
+};
+/* ---------- emitir no portal (enquanto não há e-CNPJ A1) */
+/* O sistema prepara cada campo do formulário do Emissor Nacional com um botão
+   de copiar; depois de emitida lá, a nota é registrada aqui (número, chave e,
+   se houver, o XML baixado do portal) e passa a contar como as outras. */
+function nfCamposPortal(){
+  const { corpo, cli, doc } = NF.portal, c = NF.cfg || {};
+  const tot = Number(c.p_tot_trib_sn || 0);
+  const campos = [
+    ['Data de competência', br(corpo.competencia)],
+    ['Tomador — ' + (doc.length===14 ? 'CNPJ' : 'CPF'), doc, nfDoc(doc)],
+    ['Tomador — nome', cli.nome],
+    ...(so(cli.cep).length===8 ? [['Tomador — CEP', so(cli.cep), nfCep(cli.cep)]] : []),
+    ['Local da prestação', 'Petrolina/PE'],
+    ['Código de tributação nacional', '17.14.01', '17.14.01 — Advocacia'],
+    ...(c.cod_nbs ? [['Código NBS', nfNbs(c.cod_nbs)]] : []),
+    ['Descrição do serviço', corpo.descricao],
+    ['Valor do serviço (R$)', nfValor(corpo.valor_servico)],
+    ['Tributação do ISSQN', 'Operação tributável'],
+    ['ISSQN retido pelo tomador', corpo.iss_retido ? 'Sim' : 'Não'],
+    ...(corpo.iss_retido && c.aliquota_iss_sn ? [['Alíquota do ISSQN (%)', nfValor(c.aliquota_iss_sn)]] : []),
+    ['Simples Nacional', 'Optante — ME/EPP, apuração dos tributos pelo Simples Nacional'],
+    ['Regime especial de tributação', 'Nenhum'],
+    ...(tot ? [['Tributos aproximados — Simples Nacional (%)', nfValor(tot)]] : []),
+    ['Informações complementares', 'Documento emitido por ME ou EPP optante pelo Simples Nacional. Dispensada a retenção de IRRF (IN SRF 765/2007) e de PIS/COFINS/CSLL (Lei 10.833/2003, art. 32).'],
+  ];
+  return campos.map(([rot, v, mostra]) => ({ rot, v: String(v), mostra: String(mostra ?? v) }));
+}
+const nfCep = c => so(c).replace(/^(\d{5})(\d{3})$/, '$1-$2');
+const nfNbs = n => so(n).replace(/^(\d)(\d{4})(\d{2})(\d{2})$/, '$1.$2.$3.$4');
+function blocoPortal(){
+  const campos = NF.portalCampos = nfCamposPortal();
+  return `<div id="nf-portal" style="border:1px solid var(--serie);border-radius:10px;padding:14px 16px;display:grid;gap:12px">
+    <div><b>Emitir no portal do Emissor Nacional</b>
+      <p class="nota" style="margin:4px 0 0">1. Abra o portal e entre com o gov.br (pelo banco ou QR code). 2. Vá em <i>Emitir NFS-e</i> e preencha
+        com os dados abaixo — cada um tem o botão de copiar. 3. Emitida a nota, volte aqui e registre o número (ou anexe o XML).</p></div>
+    <div><a class="btn ok" style="text-decoration:none" href="https://www.nfse.gov.br/EmissorNacional" target="_blank" rel="noopener">Abrir o Emissor Nacional ↗</a>
+      <button class="btn" onclick="NF.portal=null;desenharNotas()">Fechar</button></div>
+    <table><tbody>${campos.map((x, i) => `<tr>
+      <td style="width:210px"><span class="sub" style="margin:0">${esc(x.rot)}</span></td>
+      <td style="white-space:pre-wrap">${esc(x.mostra)}</td>
+      <td style="width:90px;text-align:right"><button class="btn" onclick="nfCopiar(${i}, this)">Copiar</button></td></tr>`).join('')}
+    </tbody></table>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;border-top:1px solid var(--ln);padding-top:12px">
+      <label class="nfc"><span class="sub">Nº da NFS-e emitida</span><input type="text" id="nfp-num" style="width:130px" inputmode="numeric"></label>
+      <label class="nfc" style="flex:1;min-width:260px"><span class="sub">Chave de acesso (50 dígitos, opcional)</span><input type="text" id="nfp-chave" inputmode="numeric"></label>
+      <label class="nfc"><span class="sub">ou anexe o XML baixado do portal</span><input type="file" accept=".xml,application/xml,text/xml" onchange="nfLerXmlPortal(this)"></label>
+      <button class="btn ok" onclick="registrarNotaPortal()">Registrar nota emitida</button>
+    </div>
+  </div>`;
+}
+window.prepararPortal = async () => {
+  const v = await nfValidar(); if (!v) return;
+  NF.portal = v; NF.portalXml = null;
+  desenharNotas();
+  document.getElementById('nf-portal')?.scrollIntoView({ behavior:'smooth', block:'start' });
+};
+window.nfCopiar = async (i, btn) => {
+  const x = NF.portalCampos?.[i]; if (!x) return;
+  try { await navigator.clipboard.writeText(x.v); btn.textContent = 'Copiado ✓'; setTimeout(() => btn.textContent = 'Copiar', 1800); }
+  catch { prompt('Copie o texto abaixo (Cmd+C):', x.v); }
+};
+function nfDadosXml(xml){
+  const d = new DOMParser().parseFromString(xml, 'application/xml');
+  if (d.getElementsByTagName('parsererror').length) return null;
+  const inf = d.getElementsByTagName('infNFSe')[0];
+  const t = n => d.getElementsByTagName(n)[0]?.textContent || '';
+  return { numero: t('nNFSe'), chave: (inf?.getAttribute('Id') || '').replace(/^NFS/, ''), dhProc: t('dhProc'),
+           valor: Number(t('vServ') || 0), doc: t('CPF') || t('CNPJ'), tpAmb: t('tpAmb') };
+}
+window.nfLerXmlPortal = async input => {
+  const arq = input.files?.[0]; if (!arq) return;
+  const xml = await arq.text(), d = nfDadosXml(xml);
+  if (!d || !d.numero) { input.value = ''; return alert('Esse arquivo não parece ser o XML de uma NFS-e.'); }
+  if (Math.abs(d.valor - Number(NF.portal.corpo.valor_servico)) > 0.005 &&
+      !confirm(`O XML é de uma nota de ${rs(d.valor)}, e a preparada aqui é de ${rs(NF.portal.corpo.valor_servico)}. Usar mesmo assim?`)) { input.value = ''; return; }
+  NF.portalXml = xml;
+  document.getElementById('nfp-num').value = d.numero;
+  document.getElementById('nfp-chave').value = d.chave;
+};
+window.registrarNotaPortal = async () => {
+  const { corpo, cli, doc, descricao } = NF.portal;
+  const numero = so(document.getElementById('nfp-num').value);
+  const chave = so(document.getElementById('nfp-chave').value);
+  if (!numero) return alert('Informe o número da NFS-e emitida no portal.');
+  if (chave && chave.length !== 50) return alert('A chave de acesso tem 50 dígitos. Confira, ou deixe em branco.');
+  const xd = NF.portalXml ? nfDadosXml(NF.portalXml) : null;
+  const { error } = await sb.from('nota_fiscal').insert({
+    escritorio_id: NF.cfg.escritorio_id, origem: 'portal', ambiente: xd?.tpAmb === '2' ? 2 : 1,
+    lancamento_id: corpo.lancamento_id, cliente_id: cli.id, caso_id: corpo.caso_id, parceiro_id: corpo.parceiro_id || null,
+    competencia: corpo.competencia, valor_servico: corpo.valor_servico,
+    valor_total_recebido: corpo.valor_total_recebido || null, valor_parceria: corpo.valor_parceria || null,
+    iss_retido: !!corpo.iss_retido, descricao, tomador: { doc, nome: cli.nome },
+    situacao: 'emitida', numero_nfse: numero, chave_acesso: chave || null,
+    emitida_em: xd?.dhProc || new Date().toISOString(), xml_nfse: NF.portalXml || null, criado_por: USER.id,
+  });
+  if (error) return alert(/nota_fiscal_numero_uk|duplicate/.test(error.message)
+    ? `A nota nº ${numero} já está registrada.` : 'Não foi possível registrar: ' + error.message);
+  alert(`Nota nº ${numero} registrada.`);
+  NF.portal = null; NF.portalXml = null; location.hash = '#/notas'; telaNotas();
+};
+window.anexarXmlNota = id => {
+  const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.xml,application/xml,text/xml';
+  inp.onchange = async () => {
+    const arq = inp.files?.[0]; if (!arq) return;
+    const xml = await arq.text(), d = nfDadosXml(xml), n = NF.notas.find(x => x.id === id);
+    if (!d || !d.numero) return alert('Esse arquivo não parece ser o XML de uma NFS-e.');
+    if (n?.numero_nfse && so(n.numero_nfse) !== so(d.numero) && !confirm(`O XML é da nota nº ${d.numero}, e esta é a nº ${n.numero_nfse}. Anexar mesmo assim?`)) return;
+    const { error } = await sb.from('nota_fiscal').update({ xml_nfse: xml, chave_acesso: d.chave || n?.chave_acesso || null }).eq('id', id);
+    if (error) return alert('Não foi possível anexar: ' + error.message);
+    alert('XML anexado. Agora "Imprimir" gera o DANFSe desta nota.'); telaNotas();
+  };
+  inp.click();
+};
+window.cancelarNotaPortal = async id => {
+  const n = NF.notas.find(x => x.id === id); if (!n) return;
+  if (!confirm(`A nota nº ${n.numero_nfse} já foi cancelada no portal do Emissor Nacional?\n\nAqui só se registra o cancelamento; o cancelamento fiscal é feito lá.`)) return;
+  const motivo = prompt('Motivo do cancelamento (para o registro):'); if (!motivo) return;
+  const { error } = await sb.from('nota_fiscal').update({ situacao: 'cancelada', cancelada_em: new Date().toISOString(),
+    motivo_cancelamento: motivo.trim() }).eq('id', id);
+  if (error) return alert('Não foi possível: ' + error.message);
+  telaNotas();
 };
 window.refazerNota = id => {
   const n = NF.notas.find(x => x.id === id); if (!n) return;
@@ -7028,7 +7166,7 @@ window.diagnosticoNota = async () => {
 /* ---------- XML, WhatsApp e DANFSe */
 async function xmlNota(id){
   const { data, error } = await sb.from('nota_fiscal').select('xml_nfse,chave_acesso,numero_nfse').eq('id', id).single();
-  if (error || !data?.xml_nfse) throw new Error(error?.message || 'XML não encontrado');
+  if (error || !data?.xml_nfse) throw new Error(error?.message || 'esta nota foi emitida no portal e ainda não tem o XML. Baixe o XML no Emissor Nacional e use "Anexar XML" (ou imprima o PDF direto no portal).');
   return data;
 }
 window.baixarXmlNota = async id => {
