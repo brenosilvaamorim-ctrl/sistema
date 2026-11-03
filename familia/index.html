@@ -951,6 +951,115 @@ async function telaExtrato(id, bruto, manterMarcas){
   pintarResumoExt();
 }
 
+/* ============================================================ COMPRAS PARCELADAS
+   Montado a partir das faturas de cartão já lidas (PDF, OFX ou CSV). Cada fatura
+   guarda as linhas com "parcela 4 de 12"; a mesma compra aparece de novo na
+   fatura seguinte como 5 de 12. Juntando as duas pelo nome e pelo valor, dá para
+   saber quando a compra começou, quando termina e quanto ainda falta.
+
+   O mês de referência é o da fatura (o mês em que ela é paga): o vencimento,
+   quando a fatura traz; senão, uns dez dias depois do fechamento. */
+const parcChave = d => String(d || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .replace(/\(?\s*(parc(ela)?\.?\s*)?\d{1,2}\s*(\/|de)\s*\d{1,2}\s*\)?/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
+const parcDe = l => {
+  if (l.parcela && l.total_parcelas) return { p: Number(l.parcela), t: Number(l.total_parcelas) };
+  const m = String(l.descricao || '').match(/(?:parc(?:ela)?\.?\s*)?\b(\d{1,2})\s*(?:\/|de)\s*(\d{1,2})\b/i);
+  return m && +m[1] >= 1 && +m[2] >= 2 && +m[2] >= +m[1] && +m[2] <= 48 ? { p: +m[1], t: +m[2] } : null;
+};
+const mesDif = (a, b) => { const [y1, m1] = a.split('-').map(Number), [y2, m2] = b.split('-').map(Number); return (y2 - y1) * 12 + (m2 - m1); };
+const mesCurto = m => { const [a, b] = m.split('-'); return ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'][+b - 1] + '/' + a.slice(2); };
+function mesDaFatura(x){
+  if (x.vencimento) return String(x.vencimento).slice(0, 7);
+  const fim = x.periodo_fim || (x.linhas || []).map(l => l.data).sort().pop();
+  if (!fim) return null;
+  const d = new Date(fim + 'T12:00:00'); d.setDate(d.getDate() + 10); return d.toISOString().slice(0, 7);
+}
+async function dadosParcelas(){
+  const { data } = await sb.from('pessoal_extrato').select('id,arquivo_nome,banco,conta,periodo_fim,vencimento,linhas,criado_em')
+    .eq('tipo', 'fatura').order('criado_em', { ascending: false }).limit(200);
+  const compras = new Map();
+  for (const f of (data || [])) {
+    const F = mesDaFatura(f); if (!F) continue;
+    for (const l of (f.linhas || [])) {
+      if (l.tipo !== 'saida') continue;
+      const pt = parcDe(l); if (!pt) continue;
+      const ini = mesMais(F, -(pt.p - 1));
+      const k = parcChave(l.descricao) + '|' + Number(l.valor).toFixed(2) + '|' + pt.t + '|' + ini;
+      const ja = compras.get(k);
+      if (!ja || pt.p > ja.vista) compras.set(k, { nome: parcChave(l.descricao).toUpperCase() || l.descricao, descricao: l.descricao,
+        valor: Number(l.valor), total: pt.t, vista: pt.p, ini, fim: mesMais(ini, pt.t - 1), cartao: f.conta || f.banco || '', data: l.data });
+    }
+  }
+  const hoje = new Date().toISOString().slice(0, 7);
+  const lista = [...compras.values()].map(c => {
+    const faltam = Math.max(0, mesDif(hoje, c.fim) + 1 - Math.max(0, mesDif(hoje, c.ini)));   // parcelas de hoje em diante
+    const atual = Math.min(c.total, Math.max(1, mesDif(c.ini, hoje) + 1));
+    return { ...c, faltam, atual, aPagar: Math.round(c.valor * faltam * 100) / 100, ativa: c.fim >= hoje };
+  }).sort((a, b) => a.fim.localeCompare(b.fim) || b.valor - a.valor);
+  const ativas = lista.filter(c => c.ativa);
+  const meses = Array.from({ length: 12 }, (_, i) => mesMais(hoje, i)).map(m => ({ mes: m,
+    valor: Math.round(ativas.filter(c => c.ini <= m && c.fim >= m).reduce((s, c) => s + c.valor, 0) * 100) / 100,
+    acabam: ativas.filter(c => c.fim === m).length }));
+  return { lista, ativas, meses, hoje, faturas: (data || []).length,
+    porMes: meses[0].valor, aPagar: Math.round(ativas.reduce((s, c) => s + c.aPagar, 0) * 100) / 100,
+    livre: ativas.length ? ativas.map(c => c.fim).sort().pop() : null };
+}
+/* Resumo que aparece no Dinheiro, com o link para o painel. */
+async function resumoParcelas(){
+  const alvo = document.getElementById('parc-resumo'); if (!alvo) return;
+  try {
+    const d = await dadosParcelas();
+    if (!d.ativas.length) { alvo.innerHTML = `<p class="nota" style="margin:0">Nenhuma compra parcelada em aberto nas faturas lidas${d.faturas ? '' : ' (ainda não há fatura de cartão lida)'}.</p>`; return; }
+    const prox = d.meses[1];
+    alvo.innerHTML = `<p style="margin:0"><b>${d.ativas.length}</b> compra(s) parcelada(s) em aberto · <b>${rs(d.porMes)}</b> por mês agora ·
+      <b>${rs(d.aPagar)}</b> ainda a pagar · a última termina em <b>${mesCurto(d.livre)}</b>.
+      ${prox && prox.valor < d.porMes ? ` Em ${mesCurto(prox.mes)} o peso cai para ${rs(prox.valor)}.` : ''}
+      <a href="#/parcelas">Ver o painel →</a></p>`;
+  } catch (e) { alvo.textContent = ''; }
+}
+async function telaParcelas(){
+  if (!PES) await carregarPessoal();
+  app.innerHTML = menu('dinheiro') + '<main><p class="meta">montando…</p></main>';
+  const d = await dadosParcelas();
+  const max = Math.max(1, ...d.meses.map(m => m.valor));
+  const linha = c => `<tr style="${c.ativa ? '' : 'opacity:.55'}">
+      <td><b>${esc(c.nome)}</b><span class="sub">${esc(c.descricao)}${c.cartao ? ' · ' + esc(c.cartao) : ''}</span></td>
+      <td style="white-space:nowrap">${c.ativa ? `${c.atual} de ${c.total}` : `${c.total} de ${c.total}`}
+        <div style="height:5px;background:var(--ln);border-radius:3px;margin-top:4px;width:90px"><div style="height:5px;border-radius:3px;background:var(--serie,#3b6);width:${Math.round((c.ativa ? c.atual : c.total) / c.total * 100)}%"></div></div></td>
+      <td style="white-space:nowrap">${rs(c.valor)}</td>
+      <td style="white-space:nowrap">${mesCurto(c.fim)}${c.ativa && c.faltam <= 1 ? ' <span class="sub" style="display:inline;color:var(--ok)">última</span>' : ''}</td>
+      <td style="white-space:nowrap">${c.ativa ? rs(c.aPagar) : '—'}</td></tr>`;
+  const encerradas = d.lista.filter(c => !c.ativa && mesDif(c.fim, d.hoje) <= 3);
+  app.innerHTML = menu('dinheiro') + `
+  <main><p><a href="#/dinheiro">← voltar para o Dinheiro</a></p>
+  <h1>Compras parceladas</h1>
+  <p class="meta">Montado a partir das ${d.faturas} fatura(s) de cartão já lidas. Cada compra aparece uma vez, com a parcela do mês
+    de hoje, quando termina e quanto ainda falta. Para ficar em dia, leia a fatura todo mês.</p>
+  <div class="kpis">
+    <div class="kpi"><div class="n">${d.ativas.length}</div><div class="l">compras em aberto</div></div>
+    <div class="kpi"><div class="n">${rs(d.porMes)}</div><div class="l">parcelas neste mês</div></div>
+    <div class="kpi"><div class="n">${rs(d.aPagar)}</div><div class="l">ainda a pagar</div></div>
+    <div class="kpi"><div class="n">${d.livre ? mesCurto(d.livre) : '—'}</div><div class="l">última parcela</div></div>
+  </div>
+  <div class="card"><h2>Peso das parcelas nos próximos 12 meses</h2>
+    <p class="nota">Quanto da fatura de cada mês já está comprometido com compras parceladas feitas até hoje.</p>
+    <div style="padding:0 18px 16px;display:grid;gap:6px">
+      ${d.meses.map(m => `<div style="display:grid;grid-template-columns:62px 1fr 110px;gap:8px;align-items:center;font-size:13px">
+        <span>${mesCurto(m.mes)}</span>
+        <div style="background:var(--ln);border-radius:4px;height:14px"><div style="height:14px;border-radius:4px;background:var(--serie,#3b6);width:${Math.round(m.valor / max * 100)}%"></div></div>
+        <span style="text-align:right">${rs(m.valor)}${m.acabam ? `<span class="sub" style="display:block;margin:0">${m.acabam} termina(m)</span>` : ''}</span></div>`).join('')}
+    </div></div>
+  <div class="card"><h2>Em aberto</h2>
+    ${d.ativas.length ? `<div style="overflow-x:auto"><table><thead><tr><th>Compra</th><th>Parcela</th><th>Por mês</th><th>Termina</th><th>Falta pagar</th></tr></thead>
+      <tbody>${d.ativas.map(linha).join('')}</tbody></table></div>` : '<div class="vazio">Nenhuma compra parcelada em aberto.</div>'}</div>
+  ${encerradas.length ? `<div class="card"><h2>Terminaram há pouco</h2>
+    <div style="overflow-x:auto"><table><thead><tr><th>Compra</th><th>Parcela</th><th>Por mês</th><th>Terminou</th><th></th></tr></thead>
+    <tbody>${encerradas.map(linha).join('')}</tbody></table></div></div>` : ''}
+  <p class="nota">Como é contado: a mesma compra é reconhecida de uma fatura para a outra pelo nome e pelo valor da parcela.
+    O mês é o do pagamento da fatura. Compra feita depois da última fatura lida ainda não aparece.</p>
+  </main>` + rodape();
+}
+
 async function telaPessoal(){
   await carregarPessoal();
   const c = contasPessoal();
@@ -978,6 +1087,8 @@ async function telaPessoal(){
     <div class="kpi"><div class="n">${rs(c.variaveis)}</div><div class="l">variáveis do mês</div></div>
     <div class="kpi ${c.sobra<0?'al':''}"><div class="n">${rs(c.sobra)}</div><div class="l">sobra</div></div>
   </div>
+
+  <div class="card"><h2>Compras parceladas</h2><div id="parc-resumo" style="padding:0 18px 16px"><span class="sub">calculando…</span></div></div>
 
   <div class="card"><h2>Ler extrato ou fatura</h2>
     <p class="nota">Mande o extrato da conta ou a fatura do cartão em <b>PDF, OFX ou CSV</b>. O sistema lê, separa
@@ -1269,6 +1380,7 @@ async function telaPessoal(){
     : (PES.distrib.length?'':'<div class="vazio">Nada lançado neste mês.</div>')}
   </div>
   </main>` + rodape();
+  resumoParcelas();
 }
 function gastoProjTotal(id){ return PES.__projTot?.[id] ?? 0; }
 
@@ -2133,6 +2245,7 @@ async function rota(){
   if (h.startsWith('#/casa'))     return telaCasa();
   if (h.startsWith('#/familia'))  return telaFamiliaTela();
   if (h.startsWith('#/extrato'))  return telaPessoal();
+  if (h.startsWith('#/parcelas')) return telaParcelas();
   return telaPessoal();
 }
 window.addEventListener('hashchange', rota);
