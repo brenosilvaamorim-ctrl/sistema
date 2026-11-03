@@ -7342,10 +7342,10 @@ function blocoImportar(){
     `<option value="__criar" ${x.fin==='__criar'?'selected':''}>criar recebimento pago em ${br(x.data)}</option>`,
     `<option value="__nada" ${x.fin==='__nada'?'selected':''}>não lançar no Financeiro</option>`].join('');
   return `<div class="card" style="margin-top:18px"><h2>Importar notas já emitidas</h2>
-    <p class="nota">Suba de uma vez os XML ou PDF das notas que você já tirou (portal da prefeitura ou Emissor Nacional). O sistema lê cada uma,
-      procura o cliente pelo CPF/CNPJ e o recebimento no Financeiro pelo valor e pela data — e só grava depois que você conferir. XML é lido na hora; PDF passa pelo leitor de documentos (alguns segundos cada).</p>
+    <p class="nota">Suba a planilha de notas do portal da prefeitura (Consultar notas → exportar XLS), ou os XML ou PDF das notas que você já tirou. O sistema lê cada uma,
+      procura o cliente pelo CPF/CNPJ e o recebimento no Financeiro pelo valor e pela data — e só grava depois que você conferir. Planilha e XML são lidos na hora; PDF passa pelo leitor de documentos (alguns segundos cada).</p>
     <div style="padding:0 18px 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-      <input type="file" multiple accept=".xml,.pdf,application/xml,text/xml,application/pdf" onchange="nfImportarArquivos(this)">
+      <input type="file" multiple accept=".xls,.xlsx,.csv,.xml,.pdf,application/xml,text/xml,application/pdf" onchange="nfImportarArquivos(this)">
       <span class="sub" id="imp-st" style="margin:0">${esc(NF.imp.msg||'')}</span>
       ${L.length ? `<button class="btn" onclick="NF.imp={linhas:[],lanc:[]};desenharNotas()">Limpar</button>` : ''}
     </div>
@@ -7411,6 +7411,40 @@ function nfLerXmlNotas(xml){
   }
   return out;
 }
+// Planilha "Consulta de notas" do portal da prefeitura (E&L): uma linha por nota.
+// Lida no navegador, sem passar pelo leitor de documentos.
+function nfLerPlanilhaNotas(linhas){
+  const norm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+  const ic = linhas.findIndex(l => l.some(c => norm(c) === 'numero') && l.some(c => norm(c) === 'tomador'));
+  if (ic < 0) return [];
+  const cab = linhas[ic].map(norm), col = (...n) => cab.findIndex(c => n.includes(c));
+  const k = { num: col('numero'), comp: col('competencia'), ger: col('geracao', 'data emissao', 'emissao'), val: col('valor', 'valor servico'),
+    toma: col('tomador'), prest: col('prestador'), sit: col('situacao'), ret: col('retido'), desc: col('discriminacao servico', 'discriminacao') };
+  const data = v => {
+    if (typeof v === 'number' && v > 20000) return new Date(Math.round((v - 25569) * 864e5)).toISOString().slice(0, 10);
+    const m = String(v ?? '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/); if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+    return String(v ?? '').slice(0, 10);
+  };
+  const parte = s => { const t = String(s ?? ''), i = t.indexOf(' - '); return i < 0 ? { doc: so(t).length >= 11 && !/[a-z]/i.test(t) ? so(t) : '', nome: t.trim() } : { doc: so(t.slice(0, i)), nome: t.slice(i + 3).trim() }; };
+  const out = [];
+  for (const l of linhas.slice(ic + 1)) {
+    const numero = String(l[k.num] ?? '').trim().replace(/\.0+$/, '');
+    if (!numero || !/\d/.test(numero)) continue;
+    const comp = String(l[k.comp] ?? '').match(/(\d{4})\D(\d{1,2})/), toma = parte(l[k.toma]), prest = parte(l[k.prest]);
+    const sit = norm(l[k.sit]);
+    out.push({ numero, chave: '', data: data(l[k.ger]), competencia: comp ? `${comp[1]}-${comp[2].padStart(2,'0')}-01` : '',
+      prestador_cnpj: prest.doc, tomador_nome: toma.nome, tomador_doc: toma.doc,
+      valor: typeof l[k.val] === 'number' ? l[k.val] : (nfNum(l[k.val]) || 0), descricao: String(l[k.desc] ?? '').trim(),
+      iss_retido: norm(l[k.ret]) === 'sim', situacao: /cancel|substitu/.test(sit) ? 'cancelada' : 'normal',
+      avisos: /substitu/.test(sit) ? ['substituída por outra nota — entra como cancelada'] : [], xml: null });
+  }
+  return out;
+}
+async function nfLerArquivoPlanilha(arq){
+  const X = await carregarXlsx();
+  const wb = X.read(await arq.arrayBuffer(), { type: 'array' });
+  return nfLerPlanilhaNotas(X.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: '' }));
+}
 function nfB64(arq){
   return new Promise((ok, falha) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.onerror = falha; r.readAsDataURL(arq); });
 }
@@ -7452,7 +7486,8 @@ window.nfImportarArquivos = async input => {
     NF.imp.msg = `lendo ${k + 1} de ${arqs.length}: ${arq.name}…`; if (st()) st().textContent = NF.imp.msg;
     try {
       const ehXml = /xml/i.test(arq.type) || /\.xml$/i.test(arq.name);
-      const notas = ehXml ? nfLerXmlNotas(await arq.text()) : await nfLerPdfNotas(arq);
+      const ehPlanilha = /\.(xlsx?|csv)$/i.test(arq.name);
+      const notas = ehXml ? nfLerXmlNotas(await arq.text()) : ehPlanilha ? await nfLerArquivoPlanilha(arq) : await nfLerPdfNotas(arq);
       if (!notas.length) { NF.imp.linhas.push(nfImpLinha({ arquivo: arq.name, numero: '', valor: 0, avisos: ['não encontrei nota fiscal neste arquivo'], marcado: false })); continue; }
       for (const n of notas) { NF.imp.linhas.push(nfImpLinha({ ...n, arquivo: arq.name })); lidas++; }
     } catch (e) { NF.imp.linhas.push(nfImpLinha({ arquivo: arq.name, numero: '', valor: 0, avisos: ['erro ao ler: ' + e.message], marcado: false })); }
