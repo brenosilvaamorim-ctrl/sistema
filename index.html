@@ -4426,7 +4426,7 @@ function baixarPlanilha(abas, nome){
     X.writeFile(wb, nome);
   });
 }
-function imprimir(titulo, corpo){
+function imprimir(titulo, corpo, notaRodape){
   const w = window.open('', '_blank');
   if (!w) return alert('O navegador bloqueou a janela. Libere as janelas pop-up para este site.');
   w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
@@ -4445,8 +4445,8 @@ function imprimir(titulo, corpo){
     @media print { .naoimprime { display:none } }
   </style></head><body>${corpo}
   <div class="rodape">${esc(ESC_NOME)} · documento gerado pelo sistema interno em ${br(hoje())}.
-    Os prazos e andamentos aqui listados vêm de leitura automática do diário e do tribunal;
-    a conferência nos autos continua sendo do advogado.</div>
+    ${notaRodape ? esc(notaRodape) : `Os prazos e andamentos aqui listados vêm de leitura automática do diário e do tribunal;
+    a conferência nos autos continua sendo do advogado.`}</div>
   <div class="naoimprime" style="margin-top:20px;font:11pt Arial,sans-serif">
     <button onclick="window.print()" style="padding:8px 16px;font-size:12pt">Imprimir ou salvar em PDF</button></div>
   </body></html>`);
@@ -4690,39 +4690,17 @@ window.relatorioProducaoPdf = async () => {
   imprimir('Produção do escritório — ' + rot, corpo);
 };
 window.relatorioFinanceiroPdf = async () => {
-  const { de, ate, rot } = periodo();
-  const [ln, hn] = await Promise.all([
-    sb.from('lancamento').select('*, caso:caso_id(titulo, cliente:cliente_id(nome))'),
-    sb.from('honorario').select('*, caso:caso_id(titulo, cliente:cliente_id(nome))'),
-  ]);
-  const dentro = d => d && String(d).slice(0,10) >= de && String(d).slice(0,10) <= ate;
-  const L = (ln.data||[]).filter(l => dentro(l.vencimento) || dentro(l.pago_em));
-  const soma = f => L.filter(f).reduce((s,l)=>s+Number(l.valor||0),0);
-  const moeda = v => 'R$ ' + Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});
-  const ent = l => l.tipo === 'entrada', sai = l => l.tipo === 'saida';
-  const pago = l => l.situacao === 'pago';
-  const corpo = `
-  <div class="cab"><h1>Relatório financeiro</h1><div class="sub">Período de ${esc(rot)}</div></div>
-  <h2>Resumo</h2>
-  ${tabelaHtml([['item','Indicador'],['v','Valor']], [
-    {item:'Recebido', v:moeda(soma(l=>ent(l)&&pago(l)))},
-    {item:'A receber', v:moeda(soma(l=>ent(l)&&!pago(l)))},
-    {item:'Pago', v:moeda(soma(l=>sai(l)&&pago(l)))},
-    {item:'A pagar', v:moeda(soma(l=>sai(l)&&!pago(l)))},
-    {item:'Saldo do período', v:moeda(soma(l=>ent(l)&&pago(l)) - soma(l=>sai(l)&&pago(l)))},
-  ])}
-  <h2>Lançamentos</h2>
-  ${tabelaHtml([['venc','Vencimento',1],['tipo','Tipo'],['cliente','Cliente'],['desc','Descrição'],['sit','Situação'],['valor','Valor']],
-    L.sort((a,b)=>String(a.vencimento).localeCompare(String(b.vencimento))).map(l=>({
-      venc:l.vencimento?br(l.vencimento):'—', tipo:l.tipo==='entrada'?'Entrada':'Saída',
-      cliente:l.caso?.cliente?.nome || '—', desc:l.descricao||'—',
-      sit:l.situacao||'—', valor:moeda(l.valor) })))}
-  <h2>Honorários contratados</h2>
-  ${tabelaHtml([['cliente','Cliente'],['caso','Caso'],['mod','Modalidade'],['fixo','Fixo'],['exito','Êxito']],
-    (hn.data||[]).map(h=>({ cliente:h.caso?.cliente?.nome||'—', caso:h.caso?.titulo||'—',
-      mod:h.modalidade||'—', fixo:h.valor_fixo?moeda(h.valor_fixo):'—',
-      exito:h.percentual_exito?h.percentual_exito+'%':'—' })))}`;
-  imprimir('Relatório financeiro — ' + rot, corpo);
+  const { de, ate } = periodo();
+  if (!LANC.length || !CLI2.length) {   // vindo da tela de Métricas: carrega o que o Financeiro carregaria
+    const [lc, cl, nf, pa] = await Promise.all([
+      sb.from('lancamento').select('*,categoria:categoria_id(nome),cliente:cliente_id(nome)').order('vencimento'),
+      sb.from('cliente').select('id,nome').order('nome'),
+      sb.from('nota_fiscal').select('id,lancamento_id,numero_nfse,situacao').not('lancamento_id','is',null).in('situacao',['rascunho','enviando','emitida']),
+      sb.from('parceiro').select('id,nome,escritorio,razao_social,cnpj,percentual_padrao,ativo').order('nome') ]);
+    LANC = lc.data || []; CLI2 = cl.data || []; PARC_FIN = pa.data || [];
+    NF_LANC = {}; for (const n of (nf.data||[])) { const j = NF_LANC[n.lancamento_id]; if (!j || n.situacao === 'emitida') NF_LANC[n.lancamento_id] = n; }
+  }
+  return finRelPdf({ de, ate, base: 'caixa', cli: '', parc: '' });
 };
 window.relatorioPlanilhaGeral = async () => {
   const st = document.getElementById('rel-st');
@@ -5528,6 +5506,8 @@ Contas a receber e a pagar, por caso, cliente e categoria. Honorário por êxito
 **Parcelado.** Em *Novo lançamento*, informe o número de parcelas, se o valor é o total ou de cada parcela, e o 1º vencimento: o sistema cria uma linha por mês ("parcela 2/5 de R$ 20.000,00").
 
 **Parceria.** Escolha o parceiro e o percentual dele (vem preenchido com o % padrão do cadastro). Em *Nota fiscal*, escolha se a nota sai **só pela parte do escritório** (o parceiro emite a dele, art. 15, § 9º) ou **pelo total** (o parceiro não emite — o sistema sugere isso quando o parceiro não tem CNPJ); o repasse vai para o Financeiro nos dois casos. Parceiro que ainda não está cadastrado: escolha *+ cadastrar parceiro novo…* e digite o nome (o CNPJ é opcional, mas a nota fiscal precisa dele). Cada linha mostra quanto cabe ao parceiro naquela parcela e no total. Na hora da nota fiscal desse recebimento, a parceria e o valor do repasse já vêm preenchidos.
+
+**Relatório do período.** No alto do Financeiro, escolha as datas (ou um atalho: este mês, mês passado, últimos 3 meses, este ano, ano passado, últimos 12 meses) e o resumo aparece na hora: recebido, repassado a parceiros, despesas e resultado, mês a mês. *Considerar* muda a régua: **o que entrou e saiu** usa a data do pagamento e só o que tem baixa (é o caixa); **o que venceu no período** usa o vencimento, pago ou não. Dá para filtrar por cliente ou por parceiro. *Relatório em PDF* traz ainda entradas por cliente e por categoria, parcerias, vencidos em aberto, notas fiscais emitidas e a lista de lançamentos; *Planilha (Excel)* traz o mesmo em abas. Repasse de parceria aparece à parte das despesas, e a **receita própria** é o recebido menos os repasses.
 
 ## 13a. Notas fiscais
 
@@ -6832,6 +6812,7 @@ async function telaFinanceiro(){
     <div class="kpi ${recMes-pagMes<0?'al':''}"><div class="n">${rs(recMes-pagMes)}</div><div class="l">saldo do mês</div></div>
   </div>
   ${atras.length?`<div class="aviso"><b>${atras.length} lançamento(s) vencido(s) e em aberto</b>, somando ${rs(soma(atras))}.</div>`:''}
+  ${finRelCard()}
 
   <div class="card"><h2>Novo lançamento</h2>
     <p class="nota">À vista ou parcelado: com mais de uma parcela, o sistema cria uma linha por mês a partir do 1º vencimento.
@@ -6872,7 +6853,189 @@ async function telaFinanceiro(){
     <table><thead><tr><th>Vencimento</th><th>Tipo</th><th>Descrição</th><th>Valor</th><th>Baixa</th></tr></thead>
     <tbody>${pagos.slice(0,20).map(l=>linhaLanc(l,false)).join('')}</tbody></table></div>`:''}
   </main>` + rodape();
+  finRelPintar();
 }
+
+/* ------------------------------------------------- relatório financeiro do período */
+/* Dois jeitos de olhar o período:
+   - caixa: o que de fato entrou e saiu (data do pagamento, só o que tem baixa);
+   - vencimento: o que estava previsto para vencer no período, pago ou não.
+   Repasse de parceria é saída, mas aparece à parte: a receita própria do escritório
+   é o recebido menos o repassado. Lançamento cancelado não entra. */
+let FINREL = null;
+const finRelMes = d => { const [a, m] = d.split('-'); return MES[Number(m)-1] + '/' + a.slice(2); };
+function finRelAtalho(k){
+  const h = hoje(), [a, m] = h.split('-').map(Number), ini = (y, mm) => new Date(Date.UTC(y, mm-1, 1)).toISOString().slice(0,10);
+  const fim = (y, mm) => new Date(Date.UTC(y, mm, 0)).toISOString().slice(0,10);
+  return { mes: [ini(a,m), h], mespassado: [ini(a,m-1), fim(a,m-1)], tri: [ini(a,m-2), h], ano: [a+'-01-01', h],
+    anopassado: [(a-1)+'-01-01', (a-1)+'-12-31'], doze: [ini(a,m-11), h] }[k];
+}
+function finRelCard(){
+  if (!FINREL) { const [de, ate] = finRelAtalho('ano'); FINREL = { de, ate, base:'caixa', cli:'', parc:'' }; }
+  const r = FINREL, at = (k, t) => `<button class="btn" type="button" onclick="finRelSet('atalho','${k}')">${t}</button>`;
+  return `<div class="card"><h2>Relatório do período</h2>
+    <p class="nota">Escolha as datas e veja o resumo aqui mesmo. O PDF sai pela janela de impressão (destino "Salvar como PDF"); a planilha abre no Excel.</p>
+    <div style="padding:0 18px 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+      <label class="nfc"><span class="sub">De</span><input type="date" value="${r.de}" onchange="finRelSet('de',this.value)"></label>
+      <label class="nfc"><span class="sub">Até</span><input type="date" value="${r.ate}" onchange="finRelSet('ate',this.value)"></label>
+      <label class="nfc"><span class="sub">Considerar</span><select onchange="finRelSet('base',this.value)">
+        <option value="caixa" ${r.base==='caixa'?'selected':''}>o que entrou e saiu (data do pagamento)</option>
+        <option value="venc" ${r.base==='venc'?'selected':''}>o que venceu no período (pago ou não)</option></select></label>
+      <label class="nfc"><span class="sub">Cliente</span><select onchange="finRelSet('cli',this.value)" style="max-width:220px">
+        <option value="">todos</option>${CLI2.map(c=>`<option value="${c.id}" ${r.cli===c.id?'selected':''}>${esc(c.nome)}</option>`).join('')}</select></label>
+      <label class="nfc"><span class="sub">Parceiro</span><select onchange="finRelSet('parc',this.value)">
+        <option value="">todos</option>${PARC_FIN.map(p=>`<option value="${p.id}" ${r.parc===p.id?'selected':''}>${esc(p.nome||p.escritorio)}</option>`).join('')}</select></label>
+    </div>
+    <div style="padding:0 18px 10px;display:flex;gap:6px;flex-wrap:wrap">
+      ${at('mes','Este mês')}${at('mespassado','Mês passado')}${at('tri','Últimos 3 meses')}${at('ano','Este ano')}${at('anopassado','Ano passado')}${at('doze','Últimos 12 meses')}
+    </div>
+    <div id="finrel-res"></div>
+    <div style="padding:6px 18px 18px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button class="btn ok" onclick="finRelPdf()">Relatório em PDF</button>
+      <button class="btn" onclick="finRelXlsx()">Planilha (Excel)</button>
+      <span class="sub" id="finrel-st" style="margin:0"></span>
+    </div></div>`;
+}
+window.finRelSet = (k, v) => {
+  if (k === 'atalho') { [FINREL.de, FINREL.ate] = finRelAtalho(v); telaFinanceiroRel(); return; }
+  FINREL[k] = v; finRelPintar();
+};
+// redesenha só o card, sem recarregar a tela
+function telaFinanceiroRel(){
+  const velho = document.getElementById('finrel-res')?.closest('.card'); if (!velho) return;
+  const t = document.createElement('div'); t.innerHTML = finRelCard(); velho.replaceWith(t.firstElementChild); finRelPintar();
+}
+const finNorm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+// repasse lançado para este parceiro: a contraparte traz o nome ou a razão social dele
+const finRepassePara = (l, p) => !!p && [p.razao_social, p.escritorio, p.nome].filter(Boolean).some(n => finNorm(l.contraparte).includes(finNorm(n)) || finNorm(n).includes(finNorm(l.contraparte) || '#'));
+const finEhRepasse = l => l.tipo === 'saida' && (!!l.nota_fiscal_id || /^repasse/i.test(l.descricao || ''));
+function finRelDados(r = FINREL, lista = LANC){
+  const { de, ate } = r, dentro = d => d && String(d).slice(0,10) >= de && String(d).slice(0,10) <= ate;
+  const vivo = l => !/cancel/.test(l.situacao || '');
+  let base = lista.filter(vivo);
+  if (r.cli) base = base.filter(l => l.cliente_id === r.cli);
+  if (r.parc) { const p = PARC_FIN.find(p => p.id === r.parc); base = base.filter(l => l.parceiro_id === r.parc || (finEhRepasse(l) && finRepassePara(l, p))); }
+  const data = l => r.base === 'caixa' ? l.pagamento : l.vencimento;
+  const L = base.filter(l => (r.base === 'caixa' ? l.situacao === 'pago' : true) && dentro(data(l)))
+    .sort((a, b) => String(data(a)).localeCompare(String(data(b))));
+  const soma = a => Math.round(a.reduce((t, l) => t + Number(l.valor || 0), 0) * 100) / 100;
+  const ent = L.filter(l => l.tipo === 'entrada'), sai = L.filter(l => l.tipo === 'saida');
+  const rep = sai.filter(finEhRepasse), desp = sai.filter(l => !finEhRepasse(l));
+  const abertos = base.filter(l => l.situacao !== 'pago' && dentro(l.vencimento));
+  const vencidos = abertos.filter(l => l.vencimento < hoje());
+  // mês a mês
+  const meses = []; for (let d = de.slice(0,7); d <= ate.slice(0,7); ) { meses.push(d); const [a, m] = d.split('-').map(Number); d = m === 12 ? (a+1)+'-01' : a+'-'+String(m+1).padStart(2,'0'); }
+  let acum = 0;
+  const porMes = meses.map(m => { const doMes = L.filter(l => String(data(l)).slice(0,7) === m);
+    const e = soma(doMes.filter(l => l.tipo === 'entrada')), rp = soma(doMes.filter(finEhRepasse)), s = soma(doMes.filter(l => l.tipo === 'saida' && !finEhRepasse(l)));
+    acum = Math.round((acum + e - rp - s) * 100) / 100; return { mes: finRelMes(m), entradas: e, repasses: rp, despesas: s, saldo: Math.round((e - rp - s) * 100) / 100, acumulado: acum }; });
+  const agrupa = (arr, chave) => { const m = new Map(); for (const l of arr) { const k = chave(l); const x = m.get(k) || { nome: k, qtd: 0, valor: 0 }; x.qtd++; x.valor = Math.round((x.valor + Number(l.valor || 0)) * 100) / 100; m.set(k, x); } return [...m.values()].sort((a, b) => b.valor - a.valor); };
+  const parcNome = id => { const p = PARC_FIN.find(p => p.id === id); return p ? (p.nome || p.escritorio) : 'parceiro'; };
+  const semNota = ent.filter(l => !NF_LANC[l.id] || NF_LANC[l.id].situacao !== 'emitida');
+  return { L, ent, sai, rep, desp, abertos, vencidos, porMes, soma, data,
+    totais: { recebido: soma(ent), repasses: soma(rep), despesas: soma(desp), proprio: Math.round((soma(ent) - soma(rep)) * 100) / 100,
+      resultado: Math.round((soma(ent) - soma(rep) - soma(desp)) * 100) / 100,
+      areceber: soma(abertos.filter(l => l.tipo === 'entrada')), apagar: soma(abertos.filter(l => l.tipo === 'saida')),
+      vencidos: soma(vencidos.filter(l => l.tipo === 'entrada')), semNota: soma(semNota), qtdSemNota: semNota.length },
+    porCat: { entradas: agrupa(ent, l => l.categoria?.nome || 'sem categoria'), despesas: agrupa(desp, l => l.categoria?.nome || 'sem categoria') },
+    porCli: agrupa(ent, l => l.cliente?.nome || 'sem cliente'),
+    porParc: [...new Set(ent.filter(l => l.parceiro_id).map(l => l.parceiro_id))].map(id => { const p = PARC_FIN.find(p => p.id === id), doP = ent.filter(l => l.parceiro_id === id);
+      return { nome: parcNome(id), qtd: doP.length, valor: soma(doP), repassado: soma(rep.filter(rp => finRepassePara(rp, p))) }; }).sort((a, b) => b.valor - a.valor),
+    semNota };
+}
+function finRelPintar(){
+  const alvo = document.getElementById('finrel-res'); if (!alvo || !FINREL) return;
+  if (FINREL.de > FINREL.ate) { alvo.innerHTML = '<p class="nota" style="color:var(--crit)">A data inicial está depois da final.</p>'; return; }
+  const d = finRelDados(), t = d.totais, caixa = FINREL.base === 'caixa';
+  const k = (n, l, cls='') => `<div class="kpi ${cls}"><div class="n" style="font-size:20px">${rs(n)}</div><div class="l">${l}</div></div>`;
+  alvo.innerHTML = `<div style="padding:0 18px 4px"><div class="kpis" style="margin:4px 0 10px">
+      ${k(t.recebido, caixa ? 'recebido' : 'entradas previstas')}
+      ${k(t.repasses, 'repassado a parceiros')}
+      ${k(t.despesas, caixa ? 'despesas pagas' : 'despesas previstas')}
+      ${k(t.resultado, 'resultado do período', t.resultado < 0 ? 'al' : '')}
+    </div>
+    <p class="nota" style="margin:0 0 8px;padding:0">${d.L.length} lançamento(s) de ${br(FINREL.de)} a ${br(FINREL.ate)}.
+      Receita própria (recebido menos repasses): <b>${rs(t.proprio)}</b>.
+      ${t.areceber ? ` · A receber com vencimento no período: <b>${rs(t.areceber)}</b>${t.vencidos ? ` (vencido: ${rs(t.vencidos)})` : ''}.` : ''}
+      ${t.apagar ? ` · A pagar: <b>${rs(t.apagar)}</b>.` : ''}
+      ${t.qtdSemNota ? ` · <span style="color:var(--warn)">${t.qtdSemNota} recebimento(s) sem nota fiscal emitida, somando ${rs(t.semNota)}.</span>` : ''}</p>
+    ${d.porMes.length > 1 ? `<div style="overflow-x:auto"><table><thead><tr><th>Mês</th><th>Entradas</th><th>Repasses</th><th>Despesas</th><th>Saldo</th><th>Acumulado</th></tr></thead><tbody>
+      ${d.porMes.map(m => `<tr><td>${m.mes}</td><td>${rs(m.entradas)}</td><td>${rs(m.repasses)}</td><td>${rs(m.despesas)}</td><td style="${m.saldo<0?'color:var(--crit)':''}">${rs(m.saldo)}</td><td>${rs(m.acumulado)}</td></tr>`).join('')}
+    </tbody></table></div>` : ''}</div>`;
+}
+async function finRelNotas(r){
+  const { data } = await sb.from('nota_fiscal').select('numero_nfse,competencia,valor_servico,situacao,origem,ambiente,tomador,cliente:cliente_id(nome)')
+    .eq('situacao','emitida').gte('competencia', r.de).lte('competencia', r.ate).order('competencia');
+  return (data || []).filter(n => n.ambiente === 1 || n.origem !== 'api');
+}
+const finRelRot = r => `${br(r.de)} a ${br(r.ate)}` + (r.base === 'caixa' ? ' · pelo que entrou e saiu (data do pagamento)' : ' · pelo vencimento')
+  + (r.cli ? ' · cliente: ' + (CLI2.find(c => c.id === r.cli)?.nome || '') : '') + (r.parc ? ' · parceiro: ' + (PARC_FIN.find(p => p.id === r.parc)?.nome || '') : '');
+window.finRelPdf = async (r = FINREL) => {
+  const st = document.getElementById('finrel-st'); if (st) st.textContent = 'montando…';
+  const d = finRelDados(r), t = d.totais, notas = await finRelNotas(r), caixa = r.base === 'caixa';
+  const fat = Math.round(notas.reduce((s, n) => s + Number(n.valor_servico || 0), 0) * 100) / 100;
+  const m = v => rs(v);
+  const corpo = `
+  <div class="cab"><h1>Relatório financeiro</h1><div class="sub">${esc(finRelRot(r))}</div></div>
+  <h2>Resumo</h2>
+  ${tabelaHtml([['item','Indicador'],['v','Valor']], [
+    { item: caixa ? 'Recebido' : 'Entradas com vencimento no período', v: m(t.recebido) },
+    { item: 'Repassado a parceiros', v: m(t.repasses) },
+    { item: 'Receita própria (recebido menos repasses)', v: m(t.proprio) },
+    { item: caixa ? 'Despesas pagas' : 'Despesas com vencimento no período', v: m(t.despesas) },
+    { item: 'Resultado do período', v: m(t.resultado) },
+    { item: 'A receber, com vencimento no período (em aberto)', v: m(t.areceber) },
+    { item: '   dos quais já vencidos', v: m(t.vencidos) },
+    { item: 'A pagar, com vencimento no período (em aberto)', v: m(t.apagar) },
+    { item: 'Notas fiscais emitidas no período (' + notas.length + ', pela competência)', v: m(fat) },
+    { item: 'Recebimentos sem nota fiscal emitida (' + t.qtdSemNota + ')', v: m(t.semNota) },
+  ])}
+  ${d.porMes.length > 1 ? `<h2>Mês a mês</h2>${tabelaHtml([['mes','Mês'],['e','Entradas'],['r','Repasses'],['s','Despesas'],['sal','Saldo'],['ac','Acumulado']],
+    d.porMes.map(x => ({ mes: x.mes, e: m(x.entradas), r: m(x.repasses), s: m(x.despesas), sal: m(x.saldo), ac: m(x.acumulado) })))}` : ''}
+  <h2>Entradas por cliente</h2>
+  ${tabelaHtml([['nome','Cliente'],['qtd','Lançamentos'],['v','Valor']], d.porCli.map(x => ({ nome: x.nome, qtd: x.qtd, v: m(x.valor) })))}
+  ${d.porParc.length ? `<h2>Parcerias</h2>${tabelaHtml([['nome','Parceiro'],['qtd','Recebimentos'],['v','Total recebido'],['rep','Repassado']],
+    d.porParc.map(x => ({ nome: x.nome, qtd: x.qtd, v: m(x.valor), rep: m(x.repassado) })))}` : ''}
+  <h2>Entradas por categoria</h2>
+  ${tabelaHtml([['nome','Categoria'],['qtd','Lançamentos'],['v','Valor']], d.porCat.entradas.map(x => ({ nome: x.nome, qtd: x.qtd, v: m(x.valor) })))}
+  <h2>Despesas por categoria</h2>
+  ${tabelaHtml([['nome','Categoria'],['qtd','Lançamentos'],['v','Valor']], d.porCat.despesas.map(x => ({ nome: x.nome, qtd: x.qtd, v: m(x.valor) })))}
+  ${d.vencidos.length ? `<h2>Vencidos e em aberto</h2>${tabelaHtml([['venc','Vencimento',1],['tipo','Tipo'],['cli','Cliente'],['desc','Descrição'],['v','Valor']],
+    d.vencidos.map(l => ({ venc: br(l.vencimento), tipo: l.tipo === 'entrada' ? 'a receber' : 'a pagar', cli: l.cliente?.nome || l.contraparte || '—', desc: l.descricao || '—', v: m(l.valor) })))}` : ''}
+  <h2>Lançamentos do período</h2>
+  ${tabelaHtml([['dt', caixa ? 'Pagamento' : 'Vencimento', 1],['tipo','Tipo'],['cli','Cliente / contraparte'],['desc','Descrição'],['sit','Situação'],['v','Valor']],
+    d.L.map(l => ({ dt: br(d.data(l)), tipo: l.tipo === 'entrada' ? 'Entrada' : (finEhRepasse(l) ? 'Repasse' : 'Saída'),
+      cli: l.cliente?.nome || l.contraparte || '—', desc: (l.descricao || '—') + (l.total_parcelas > 1 ? ` (${l.parcela}/${l.total_parcelas})` : ''),
+      sit: l.situacao, v: m(l.valor) })))}`;
+  imprimir('Relatório financeiro — ' + br(r.de) + ' a ' + br(r.ate), corpo,
+    'Valores conforme os lançamentos do Financeiro do sistema. Repasses de parceria aparecem à parte, como saída.');
+  if (st) st.textContent = '';
+};
+window.finRelXlsx = async (r = FINREL) => {
+  const st = document.getElementById('finrel-st'); if (st) st.textContent = 'montando a planilha…';
+  const d = finRelDados(r), t = d.totais, notas = await finRelNotas(r);
+  await baixarPlanilha([
+    ['Resumo', [ { indicador: 'Período', valor: finRelRot(r) },
+      { indicador: 'Recebido / entradas', valor: t.recebido }, { indicador: 'Repassado a parceiros', valor: t.repasses },
+      { indicador: 'Receita própria', valor: t.proprio }, { indicador: 'Despesas', valor: t.despesas },
+      { indicador: 'Resultado', valor: t.resultado }, { indicador: 'A receber no período (em aberto)', valor: t.areceber },
+      { indicador: 'Vencidos a receber', valor: t.vencidos }, { indicador: 'A pagar no período (em aberto)', valor: t.apagar },
+      { indicador: 'Notas emitidas (competência)', valor: Math.round(notas.reduce((s, n) => s + Number(n.valor_servico || 0), 0) * 100) / 100 },
+      { indicador: 'Recebimentos sem nota emitida', valor: t.semNota } ]],
+    ['Mês a mês', d.porMes],
+    ['Lançamentos', d.L.map(l => ({ data: d.data(l), vencimento: l.vencimento, pagamento: l.pagamento || '', tipo: l.tipo === 'entrada' ? 'entrada' : (finEhRepasse(l) ? 'repasse' : 'saida'),
+      cliente: l.cliente?.nome || '', contraparte: l.contraparte || '', descricao: l.descricao || '', categoria: l.categoria?.nome || '',
+      parcela: l.total_parcelas > 1 ? `${l.parcela}/${l.total_parcelas}` : '', parceiro: l.parceiro_id ? (PARC_FIN.find(p => p.id === l.parceiro_id)?.nome || '') : '',
+      nota_fiscal: NF_LANC[l.id]?.numero_nfse || '', situacao: l.situacao, valor: Number(l.valor) }))],
+    ['Por cliente', d.porCli.map(x => ({ cliente: x.nome, lancamentos: x.qtd, valor: x.valor }))],
+    ['Por categoria', [...d.porCat.entradas.map(x => ({ tipo: 'entrada', categoria: x.nome, lancamentos: x.qtd, valor: x.valor })),
+      ...d.porCat.despesas.map(x => ({ tipo: 'despesa', categoria: x.nome, lancamentos: x.qtd, valor: x.valor }))]],
+    ['Parcerias', d.porParc.map(x => ({ parceiro: x.nome, recebimentos: x.qtd, total_recebido: x.valor, repassado: x.repassado }))],
+    ['Notas fiscais', notas.map(n => ({ numero: n.numero_nfse, competencia: n.competencia, tomador: n.cliente?.nome || n.tomador?.nome || '', valor: Number(n.valor_servico) }))],
+    ['Em aberto', d.abertos.map(l => ({ vencimento: l.vencimento, tipo: l.tipo, cliente: l.cliente?.nome || l.contraparte || '', descricao: l.descricao || '', valor: Number(l.valor), vencido: l.vencimento < hoje() ? 'sim' : '' }))],
+  ], `financeiro-${r.de}-a-${r.ate}.xlsx`);
+  if (st) st.textContent = '';
+};
 
 /* -------------------------------------------------------------- notas fiscais */
 /* Emissão de NFS-e pelo Emissor Nacional. Quem assina e envia é a função
