@@ -5523,6 +5523,10 @@ Número pequeno é indício, não estatística. A taxa de êxito só passa a val
 
 Contas a receber e a pagar, por caso, cliente e categoria. Honorário por êxito amarrado ao caso. Projeção do mês e do ano. A baixa é manual: marque quando entrar ou sair de verdade.
 
+**Parcelado.** Em *Novo lançamento*, informe o número de parcelas, se o valor é o total ou de cada parcela, e o 1º vencimento: o sistema cria uma linha por mês ("parcela 2/5 de R$ 20.000,00").
+
+**Parceria.** Escolha o parceiro e o percentual dele (vem preenchido com o % padrão do cadastro). Cada linha mostra quanto cabe ao parceiro naquela parcela e no total. Na hora da nota fiscal desse recebimento, a parceria e o valor do repasse já vêm preenchidos.
+
 ## 13a. Notas fiscais
 
 Fica no grupo **Escritório**. Emite a NFS-e direto no **Emissor Nacional**, assinada com o certificado A1 do escritório — o Simples Nacional emite obrigatoriamente pelo Emissor Nacional desde 1º/11/2026 (Resolução CGSN 191/2026), mesmo em Petrolina.
@@ -6594,25 +6598,76 @@ async function telaMetricas(){
 }
 
 /* -------------------------------------------------------------- financeiro */
-let LANC = [], CATS = [], CLI2 = [], NF_LANC = {};
+let LANC = [], CATS = [], CLI2 = [], NF_LANC = {}, PARC_FIN = [], GRUPO_FIN = {};
 window.baixar = async (id) => {
   const { error } = await sb.from('lancamento')
     .update({ situacao:'pago', pagamento: hoje() }).eq('id', id);
   if (error) alert('Não foi possível: ' + error.message); else rota();
 };
+/* Lê "20.721,90", "20721,90" ou "20721.90". */
+const finNum = s => { s = String(s ?? '').trim().replace(/[R$\s]/g,''); if (s.includes(',')) s = s.replace(/\./g,'').replace(',','.'); const n = Number(s); return isFinite(n) ? n : NaN; };
+/* Mesma data N meses depois; dia 31 vira o último dia do mês quando preciso. */
+function finMaisMeses(iso, n){
+  const [a, m, d] = iso.split('-').map(Number);
+  const alvo = new Date(Date.UTC(a, m - 1 + n, 1));
+  const ultimo = new Date(Date.UTC(alvo.getUTCFullYear(), alvo.getUTCMonth() + 1, 0)).getUTCDate();
+  alvo.setUTCDate(Math.min(d, ultimo));
+  return alvo.toISOString().slice(0, 10);
+}
+/* Divide o valor em parcelas: as primeiras arredondadas, a última fecha a conta. */
+function finParcelas(f){
+  const n = Math.max(1, Math.min(120, parseInt(f.elements.parcelas?.value || '1', 10) || 1));
+  const v = finNum(f.elements.valor.value);
+  const total = f.elements.modo?.value === 'cada' ? Math.round(v * n * 100) / 100 : Math.round(v * 100) / 100;
+  const base = Math.floor(total / n * 100) / 100;
+  const valores = Array.from({ length: n }, (_, i) => i < n - 1 ? base : Math.round((total - base * (n - 1)) * 100) / 100);
+  return { n, total, valores };
+}
+window.finPrevia = () => {
+  const f = document.getElementById('fin-form'); if (!f) return;
+  const { n, total, valores } = finParcelas(f);
+  const pct = finNum(f.elements.percentual_parceiro?.value);
+  const parc = PARC_FIN.find(p => p.id === f.elements.parceiro_id?.value);
+  const el = document.getElementById('fin-previa');
+  if (!(total > 0)) { el.textContent = ''; return; }
+  let txt = n > 1 ? `${n} parcelas: ${valores[0] === valores[n-1] ? rs(valores[0]) + ' cada' : rs(valores[0]) + ' (a última ' + rs(valores[n-1]) + ')'} — total ${rs(total)}.` : `Total ${rs(total)}.`;
+  if (parc && pct > 0) txt += ` Parceiro ${parc.razao_social || parc.escritorio || parc.nome} (${String(pct).replace('.', ',')}%): ${rs(total * pct / 100)} no total` + (n > 1 ? `, ${rs(valores[0] * pct / 100)} por parcela.` : '.');
+  el.textContent = txt;
+};
+window.finParceiroMudou = sel => {
+  const p = PARC_FIN.find(x => x.id === sel.value), campo = document.getElementById('fin-form').elements.percentual_parceiro;
+  if (p?.percentual_padrao && !campo.value) campo.value = String(p.percentual_padrao).replace('.', ',');
+  if (!p) campo.value = '';
+  finPrevia();
+};
 window.novoLancamento = async (ev) => {
   ev.preventDefault();
   const f = ev.target, v = n => f.elements[n].value || null;
+  const { n, total, valores } = finParcelas(f);
+  if (!(total > 0)) return alert('Informe o valor.');
+  const parceiro = v('parceiro_id'), pct = parceiro ? finNum(f.elements.percentual_parceiro.value) : null;
+  if (parceiro && !(pct > 0 && pct < 100)) return alert('Informe o percentual do parceiro (entre 0 e 100).');
   const { data: esc1 } = await sb.from('escritorio').select('id').limit(1).single();
-  const { error } = await sb.from('lancamento').insert({
+  const grupo = n > 1 ? crypto.randomUUID() : null, primeira = v('vencimento');
+  const linhas = valores.map((valor, i) => ({
     escritorio_id: esc1.id,
-    tipo: v('tipo'), descricao: v('descricao'), contraparte: v('contraparte'),
+    tipo: v('tipo'), descricao: v('descricao'),
     cliente_id: v('cliente_id'), categoria_id: v('categoria_id'),
-    valor: Number(String(f.elements.valor.value).replace(',','.')),
-    vencimento: v('vencimento'), situacao: 'previsto',
-  });
+    valor, vencimento: finMaisMeses(primeira, i), situacao: 'previsto',
+    parcela: n > 1 ? i + 1 : null, total_parcelas: n > 1 ? n : null, grupo_parcelas: grupo,
+    parceiro_id: parceiro, percentual_parceiro: parceiro ? pct : null,
+  }));
+  const { error } = await sb.from('lancamento').insert(linhas);
   if (error) alert('Não foi possível: ' + error.message); else rota();
 };
+function finLinhaParceiro(l){
+  const pct = Number(l.percentual_parceiro || 0);
+  if (!l.parceiro_id || !(pct > 0)) return '';
+  const p = PARC_FIN.find(x => x.id === l.parceiro_id);
+  const nome = p ? (p.razao_social || p.escritorio || p.nome) : 'parceiro';
+  const tot = GRUPO_FIN[l.grupo_parcelas];
+  return `<span class="sub" style="color:var(--presc)">parceiro ${esc(nome)} · ${String(pct).replace('.', ',')}%: ${rs(Number(l.valor) * pct / 100)}${tot ? ' nesta parcela · ' + rs(tot * pct / 100) + ' no total' : ''}</span>`;
+}
 function linhaLanc(l, aberto){
   const d = dias(l.vencimento);
   const k = !aberto ? 'good' : (d < 0 ? 'crit' : (d <= 7 ? 'ser' : 'cin'));
@@ -6620,7 +6675,7 @@ function linhaLanc(l, aberto){
   return `<tr>
     <td class="dt"><b>${br(l.vencimento)}</b><span class="sub"><span class="pill ${k}">${rot}</span></span></td>
     <td>${l.tipo==='entrada'?'↑ entrada':'↓ saída'}<span class="sub">${esc(l.categoria?.nome||'sem categoria')}</span></td>
-    <td><b>${esc(l.descricao||'—')}</b><span class="sub">${esc(l.cliente?.nome || l.contraparte || '')}</span></td>
+    <td><b>${esc(l.descricao||'—')}</b><span class="sub">${esc(l.cliente?.nome || l.contraparte || '')}${l.total_parcelas>1 ? ` · parcela ${l.parcela}/${l.total_parcelas}${GRUPO_FIN[l.grupo_parcelas] ? ' de ' + rs(GRUPO_FIN[l.grupo_parcelas]) : ''}` : ''}</span>${finLinhaParceiro(l)}</td>
     <td class="dt" style="font-weight:600;color:${l.tipo==='entrada'?'var(--good)':'var(--ink)'}">${rs(l.valor)}</td>
     <td>${aberto?`<button class="btn ok" onclick="baixar('${l.id}')">${l.tipo==='entrada'?'Recebido':'Pago'}</button>`
                 :`<span class="sub">${br(l.pagamento)}</span>${l.tipo==='entrada' ? (NF_LANC[l.id]?.situacao==='emitida'
@@ -6629,17 +6684,20 @@ function linhaLanc(l, aberto){
         : ` <a class="btn" style="text-decoration:none" href="#/notas?lanc=${l.id}" title="emitir NFS-e deste recebimento">Nota</a>`) : (l.nota_fiscal_id ? ' <span class="pill cin" title="lançado ao emitir a nota com parceria">repasse</span>' : '')}`}</td></tr>`;
 }
 async function telaFinanceiro(){
-  const [lc, ct, cl, nf] = await Promise.all([
+  const [lc, ct, cl, nf, pa] = await Promise.all([
     sb.from('lancamento').select('*,categoria:categoria_id(nome),cliente:cliente_id(nome)').order('vencimento'),
     sb.from('categoria_financeira').select('id,nome,tipo').order('nome'),
     sb.from('cliente').select('id,nome').order('nome'),
     sb.from('nota_fiscal').select('id,lancamento_id,numero_nfse,situacao').not('lancamento_id','is',null).in('situacao',['rascunho','enviando','emitida']),
+    sb.from('parceiro').select('id,nome,escritorio,razao_social,percentual_padrao,ativo').order('nome'),
   ]);
   if (lc.error) return erro(lc.error.message);
   // recebimento → nota: emitida vale mais que rascunho
   NF_LANC = {};
   for (const n of (nf.data||[])) { const j = NF_LANC[n.lancamento_id]; if (!j || n.situacao === 'emitida') NF_LANC[n.lancamento_id] = n; }
-  LANC = lc.data||[]; CATS = ct.data||[]; CLI2 = cl.data||[];
+  LANC = lc.data||[]; CATS = ct.data||[]; CLI2 = cl.data||[]; PARC_FIN = pa.data||[];
+  GRUPO_FIN = {};
+  for (const l of LANC) if (l.grupo_parcelas) GRUPO_FIN[l.grupo_parcelas] = Math.round(((GRUPO_FIN[l.grupo_parcelas] || 0) + Number(l.valor || 0)) * 100) / 100;
   const abertos = LANC.filter(l => l.situacao==='previsto' || l.situacao==='atrasado');
   const pagos   = LANC.filter(l => l.situacao==='pago').sort((a,b)=>String(b.pagamento).localeCompare(String(a.pagamento)));
   const soma = a => a.reduce((t,l)=>t+Number(l.valor||0), 0);
@@ -6671,17 +6729,23 @@ async function telaFinanceiro(){
   ${atras.length?`<div class="aviso"><b>${atras.length} lançamento(s) vencido(s) e em aberto</b>, somando ${rs(soma(atras))}.</div>`:''}
 
   <div class="card"><h2>Novo lançamento</h2>
-    <p class="nota">Uma linha por vencimento. Para honorário parcelado, lance cada parcela na data dela.</p>
-    <form onsubmit="novoLancamento(event)" style="display:flex;gap:8px;flex-wrap:wrap;padding:0 18px 18px;align-items:center">
-      <select name="tipo" required><option value="entrada">Entrada</option><option value="saida">Saída</option></select>
-      <input name="descricao" type="text" placeholder="descrição" required style="min-width:190px">
-      <select name="cliente_id">${opt(CLI2,'cliente (opcional)')}</select>
-      <select name="categoria_id">${opt(CATS,'categoria')}</select>
-      <input name="contraparte" type="text" placeholder="de / para" style="width:130px">
-      <input name="valor" type="text" inputmode="decimal" placeholder="0,00" required style="width:95px">
-      <input name="vencimento" type="date" required value="${hoje()}">
+    <p class="nota">À vista ou parcelado: com mais de uma parcela, o sistema cria uma linha por mês a partir do 1º vencimento.
+      Em parceria, informe o parceiro e o percentual dele — a nota fiscal desse recebimento já sai com a parceria.</p>
+    <form id="fin-form" onsubmit="novoLancamento(event)" oninput="finPrevia()" style="display:flex;gap:8px;flex-wrap:wrap;padding:0 18px 6px;align-items:flex-end">
+      <label class="nfc"><span class="sub">Tipo</span><select name="tipo" required><option value="entrada">Entrada</option><option value="saida">Saída</option></select></label>
+      <label class="nfc" style="flex:1;min-width:190px"><span class="sub">Descrição</span><input name="descricao" type="text" placeholder="ex.: honorários contratuais" required></label>
+      <label class="nfc"><span class="sub">Cliente</span><select name="cliente_id">${opt(CLI2,'— opcional —')}</select></label>
+      <label class="nfc"><span class="sub">Categoria</span><select name="categoria_id">${opt(CATS,'— escolher —')}</select></label>
+      <label class="nfc"><span class="sub">Valor (R$)</span><input name="valor" type="text" inputmode="decimal" placeholder="0,00" required style="width:110px"></label>
+      <label class="nfc"><span class="sub">Parcelas</span><input name="parcelas" type="number" min="1" max="120" value="1" style="width:70px;padding:5px 9px;border-radius:8px;border:1px solid var(--ln);background:var(--s0);color:var(--ink);font-size:12.5px"></label>
+      <label class="nfc"><span class="sub">O valor é</span><select name="modo"><option value="total">o total</option><option value="cada">de cada parcela</option></select></label>
+      <label class="nfc"><span class="sub">1º vencimento</span><input name="vencimento" type="date" required value="${hoje()}"></label>
+      <label class="nfc"><span class="sub">Parceiro (se houver)</span><select name="parceiro_id" onchange="finParceiroMudou(this)">
+        <option value="">— sem parceria —</option>${PARC_FIN.filter(p=>p.ativo!==false).map(p=>`<option value="${p.id}">${esc(p.razao_social||p.escritorio||p.nome)}</option>`).join('')}</select></label>
+      <label class="nfc"><span class="sub">% do parceiro</span><input name="percentual_parceiro" type="text" inputmode="decimal" placeholder="ex.: 30" style="width:80px"></label>
       <button class="btn ok" type="submit">Lançar</button>
-    </form></div>
+    </form>
+    <p class="nota" id="fin-previa" style="padding:0 18px 16px;margin:0;color:var(--i2)"></p></div>
 
   <div class="card"><h2>Em aberto</h2><p class="nota">Dê baixa quando o dinheiro entrar ou sair de fato.</p>
     <table><thead><tr><th>Vencimento</th><th>Tipo</th><th>Descrição</th><th>Valor</th><th></th></tr></thead>
@@ -6731,7 +6795,7 @@ async function telaNotas(){
     sb.from('parceiro').select('id,nome,escritorio,razao_social,cnpj,ativo').order('nome'),
     sb.from('caso').select('id,titulo,cliente_id').order('titulo').limit(3000),
     sb.from('processo').select('id,caso_id,numero_cnj,numero_formatado').limit(5000),
-    sb.from('lancamento').select('id,descricao,valor,pagamento,vencimento,cliente_id,caso_id,situacao,tipo,cliente:cliente_id(nome)')
+    sb.from('lancamento').select('id,descricao,valor,pagamento,vencimento,cliente_id,caso_id,situacao,tipo,parcela,total_parcelas,parceiro_id,percentual_parceiro,cliente:cliente_id(nome)')
       .eq('tipo','entrada').eq('situacao','pago').gte('pagamento', desde).order('pagamento', { ascending:false }),
     sb.from('usuario').select('perfil').eq('id', USER.id).maybeSingle(),
   ]);
@@ -6794,7 +6858,7 @@ function desenharNotas(){
     <div style="padding:0 18px 18px;display:grid;gap:12px">
       <label class="nfc"><span class="sub">Recebimento do Financeiro</span>
         <select onchange="usarLancamento(this.value)"><option value="">— nenhum (preencher direto) —</option>
-          ${NF.lancs.map(l=>`<option value="${l.id}" ${f.lancamento_id===l.id?'selected':''}>${br(l.pagamento)} · ${esc(l.cliente?.nome||'sem cliente')} · ${esc(l.descricao||'')} · ${rs(l.valor)}</option>`).join('')}
+          ${NF.lancs.map(l=>`<option value="${l.id}" ${f.lancamento_id===l.id?'selected':''}>${br(l.pagamento)} · ${esc(l.cliente?.nome||'sem cliente')} · ${esc(l.descricao||'')}${l.total_parcelas>1?' ('+l.parcela+'/'+l.total_parcelas+')':''} · ${rs(l.valor)}${l.parceiro_id?' · parceria':''}</option>`).join('')}
         </select></label>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <label class="nfc" style="flex:2;min-width:230px"><span class="sub">Tomador (cliente)</span>
@@ -6954,6 +7018,9 @@ window.usarLancamento = (id, semDesenhar) => {
   if (l) {
     Object.assign(NF.form, { lancamento_id: l.id, cliente_id: l.cliente_id || '', caso_id: l.caso_id || '',
       competencia: (l.pagamento || hoje()).slice(0,10), valor: nfValor(l.valor), total: nfValor(l.valor) });
+    // recebimento em parceria: a nota já vem com o parceiro e o repasse calculado
+    if (l.parceiro_id && Number(l.percentual_parceiro) > 0) Object.assign(NF.form, { parceria: true, parceiro_id: l.parceiro_id,
+      repasse: nfValor(Math.round(Number(l.valor) * Number(l.percentual_parceiro)) / 100) });
     const ps = NF.procs.filter(p => p.caso_id === l.caso_id);
     if (ps.length === 1) NF.form.processo = ps[0].numero_formatado || ps[0].numero_cnj;
   }
