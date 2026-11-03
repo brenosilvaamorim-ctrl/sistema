@@ -6791,15 +6791,6 @@ async function telaFinanceiro(){
   const pagMes = soma(pagos.filter(l=>l.tipo==='saida'   && String(l.pagamento).slice(0,7)===mes));
   const atras  = abertos.filter(l=>dias(l.vencimento)<0);
 
-  const porMesTipo = (tipo) => {
-    const h = new Date(), out = [];
-    for (let i=5;i>=0;i--){
-      const d = new Date(Date.UTC(h.getUTCFullYear(), h.getUTCMonth()-i, 1)), ch = d.toISOString().slice(0,7);
-      out.push([MES[d.getUTCMonth()]+'/'+String(d.getUTCFullYear()).slice(2),
-        Math.round(soma(pagos.filter(l=>l.tipo===tipo && String(l.pagamento).slice(0,7)===ch)))]);
-    }
-    return out;
-  };
   const opt = (lista, vazio) => `<option value="">${vazio}</option>` +
     lista.map(x=>`<option value="${x.id}">${esc(x.nome)}</option>`).join('');
 
@@ -6835,10 +6826,7 @@ async function telaFinanceiro(){
     <table><thead><tr><th>Vencimento</th><th>Tipo</th><th>Descrição</th><th>Valor</th><th></th></tr></thead>
     <tbody>${abertos.map(l=>linhaLanc(l,true)).join('') || '<tr><td colspan="5" class="vazio">Nada em aberto.</td></tr>'}</tbody></table></div>
 
-  <div class="duas">
-    ${barras('Entradas por mês','Só o que já foi recebido, em reais.', porMesTipo('entrada'))}
-    ${barras('Saídas por mês','Só o que já foi pago, em reais.', porMesTipo('saida'))}
-  </div>
+  <div class="duas" id="fin-graf"></div>
 
   <div class="card" style="margin-top:18px"><h2>Categorias</h2>
     <p class="nota">Acrescente as categorias que o escritório usa de verdade.</p>
@@ -6943,10 +6931,19 @@ function finRelDados(r = FINREL, lista = LANC){
       return { nome: parcNome(id), qtd: doP.length, valor: soma(doP), repassado: soma(rep.filter(rp => finRepassePara(rp, p))) }; }).sort((a, b) => b.valor - a.valor),
     semNota };
 }
+// Gráficos de entradas e saídas: seguem o período escolhido no relatório.
+function finGraficos(d){
+  const g = document.getElementById('fin-graf'); if (!g) return;
+  const per = `${br(FINREL.de)} a ${br(FINREL.ate)}`, caixa = FINREL.base === 'caixa';
+  g.innerHTML = barras('Entradas por mês', (caixa ? 'O que foi recebido' : 'O que venceu') + ', de ' + per + '.', d.porMes.map(m => [m.mes, m.entradas]))
+    + barras('Saídas por mês', (caixa ? 'O que foi pago' : 'O que venceu') + ' (despesas e repasses), de ' + per + '.', d.porMes.map(m => [m.mes, Math.round((m.despesas + m.repasses) * 100) / 100]));
+  g.querySelectorAll('.val').forEach(v => { const n = Number(v.textContent); if (isFinite(n)) v.textContent = rs(n); });
+}
 function finRelPintar(){
   const alvo = document.getElementById('finrel-res'); if (!alvo || !FINREL) return;
   if (FINREL.de > FINREL.ate) { alvo.innerHTML = '<p class="nota" style="color:var(--crit)">A data inicial está depois da final.</p>'; return; }
   const d = finRelDados(), t = d.totais, caixa = FINREL.base === 'caixa';
+  finGraficos(d);
   const k = (n, l, cls='') => `<div class="kpi ${cls}"><div class="n" style="font-size:20px">${rs(n)}</div><div class="l">${l}</div></div>`;
   alvo.innerHTML = `<div style="padding:0 18px 4px"><div class="kpis" style="margin:4px 0 10px">
       ${k(t.recebido, caixa ? 'recebido' : 'entradas previstas')}
