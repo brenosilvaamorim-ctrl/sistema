@@ -5543,6 +5543,10 @@ Fica no grupo **Escritório**. Emite a NFS-e direto no **Emissor Nacional**, ass
 
 **Sem o certificado A1: emitir no portal.** Enquanto o escritório não tem o e-CNPJ A1, use **Emitir no portal**. O sistema confere tudo e mostra cada campo do formulário do Emissor Nacional com um botão **Copiar**: competência, tomador, código 17.14.01, NBS, descrição (com a parceria, se houver), valor e tributação. Abra o portal, entre com o gov.br e preencha. Emitida a nota, volte e registre o número — ou anexe o XML baixado do portal, que já traz número e chave e permite imprimir o DANFSe por aqui. Cancelamento de nota do portal é feito no portal; aqui só se marca como cancelada.
 
+**Rascunhos.** *Salvar rascunho* guarda a nota pronta para emitir depois. Os rascunhos ficam numa lista própria, cada um com *Emitir no portal*, *Emitir pelo sistema*, *Editar* e *Excluir*; com o certificado A1, *Emitir todos pelo sistema* solta todos de uma vez. Emitida a nota, o rascunho some.
+
+**Ligação com o Financeiro.** O recebimento que já tem nota mostra o número dela (*NF 58*) no lugar do botão *Nota*; se há só rascunho, aparece *rascunho de NF*. Quando a nota sai com parceria, o sistema lança sozinho a **saída do repasse** ao parceiro, com o nome dele, e pergunta se já foi paga (baixa hoje) ou se fica a pagar.
+
 **Teste antes.** O sistema começa no modo de teste (produção restrita), onde nada tem valor fiscal. Quando as notas de teste saírem certas, o titular troca para produção em Configuração.
 
 ## 13b. Ideias e projetos
@@ -6590,7 +6594,7 @@ async function telaMetricas(){
 }
 
 /* -------------------------------------------------------------- financeiro */
-let LANC = [], CATS = [], CLI2 = [];
+let LANC = [], CATS = [], CLI2 = [], NF_LANC = {};
 window.baixar = async (id) => {
   const { error } = await sb.from('lancamento')
     .update({ situacao:'pago', pagamento: hoje() }).eq('id', id);
@@ -6619,15 +6623,22 @@ function linhaLanc(l, aberto){
     <td><b>${esc(l.descricao||'—')}</b><span class="sub">${esc(l.cliente?.nome || l.contraparte || '')}</span></td>
     <td class="dt" style="font-weight:600;color:${l.tipo==='entrada'?'var(--good)':'var(--ink)'}">${rs(l.valor)}</td>
     <td>${aberto?`<button class="btn ok" onclick="baixar('${l.id}')">${l.tipo==='entrada'?'Recebido':'Pago'}</button>`
-                :`<span class="sub">${br(l.pagamento)}</span>${l.tipo==='entrada'?` <a class="btn" style="text-decoration:none" href="#/notas?lanc=${l.id}" title="emitir NFS-e deste recebimento">Nota</a>`:''}`}</td></tr>`;
+                :`<span class="sub">${br(l.pagamento)}</span>${l.tipo==='entrada' ? (NF_LANC[l.id]?.situacao==='emitida'
+        ? ` <a class="pill good" style="text-decoration:none" href="#/notas" title="nota fiscal emitida">NF ${esc(NF_LANC[l.id].numero_nfse||'')}</a>`
+        : NF_LANC[l.id] ? ` <a class="pill warn" style="text-decoration:none" href="#/notas" title="há ${NF_LANC[l.id].situacao==='rascunho'?'um rascunho de nota':'uma nota sem resposta do governo'}">${NF_LANC[l.id].situacao==='rascunho'?'rascunho de NF':'NF pendente'}</a>`
+        : ` <a class="btn" style="text-decoration:none" href="#/notas?lanc=${l.id}" title="emitir NFS-e deste recebimento">Nota</a>`) : (l.nota_fiscal_id ? ' <span class="pill cin" title="lançado ao emitir a nota com parceria">repasse</span>' : '')}`}</td></tr>`;
 }
 async function telaFinanceiro(){
-  const [lc, ct, cl] = await Promise.all([
+  const [lc, ct, cl, nf] = await Promise.all([
     sb.from('lancamento').select('*,categoria:categoria_id(nome),cliente:cliente_id(nome)').order('vencimento'),
     sb.from('categoria_financeira').select('id,nome,tipo').order('nome'),
     sb.from('cliente').select('id,nome').order('nome'),
+    sb.from('nota_fiscal').select('id,lancamento_id,numero_nfse,situacao').not('lancamento_id','is',null).in('situacao',['rascunho','enviando','emitida']),
   ]);
   if (lc.error) return erro(lc.error.message);
+  // recebimento → nota: emitida vale mais que rascunho
+  NF_LANC = {};
+  for (const n of (nf.data||[])) { const j = NF_LANC[n.lancamento_id]; if (!j || n.situacao === 'emitida') NF_LANC[n.lancamento_id] = n; }
   LANC = lc.data||[]; CATS = ct.data||[]; CLI2 = cl.data||[];
   const abertos = LANC.filter(l => l.situacao==='previsto' || l.situacao==='atrasado');
   const pagos   = LANC.filter(l => l.situacao==='pago').sort((a,b)=>String(b.pagamento).localeCompare(String(a.pagamento)));
@@ -6702,7 +6713,7 @@ async function telaFinanceiro(){
    dados, mostra o que foi emitido e imprime o DANFSe.
    A descrição com parceria segue o modelo do escritório, com base no
    art. 15, § 9º, do EAOAB: a nota sai só pela parte que ficou com o escritório. */
-let NF = { cfg:null, notas:[], cli:[], parc:[], casos:[], procs:[], lancs:[], perfil:null, form:{}, descEditada:false, diag:null, portal:null };
+let NF = { cfg:null, rascunhos:[], notas:[], cli:[], parc:[], casos:[], procs:[], lancs:[], perfil:null, form:{}, descEditada:false, diag:null, portal:null };
 const NF_SIT = { emitida:['good','emitida'], enviando:['warn','enviando'], rejeitada:['crit','rejeitada'], cancelada:['cin','cancelada'] };
 const nfNum = s => { s = String(s ?? '').trim().replace(/[R$\s]/g,''); if (s.includes(',')) s = s.replace(/\./g,'').replace(',','.'); const n = Number(s); return isFinite(n) ? Math.round(n*100)/100 : NaN; };
 const nfValor = v => Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2, maximumFractionDigits:2});
@@ -6726,7 +6737,7 @@ async function telaNotas(){
   ]);
   if (nt.error) return erro(/nota_fiscal/.test(nt.error.message)
     ? 'a tabela de notas ainda não existe no banco — rode o arquivo banco/30_notas_fiscais.sql no Supabase' : nt.error.message);
-  NF.cfg = cf.data; NF.notas = nt.data||[]; NF.cli = cl.data||[]; NF.parc = pa.data||[];
+  NF.cfg = cf.data; NF.rascunhos = (nt.data||[]).filter(n => n.situacao==='rascunho'); NF.notas = (nt.data||[]).filter(n => n.situacao!=='rascunho'); NF.cli = cl.data||[]; NF.parc = pa.data||[];
   NF.casos = ca.data||[]; NF.procs = pr.data||[]; NF.perfil = eu.data?.perfil;
   const comNota = new Set(NF.notas.filter(n => ['emitida','enviando'].includes(n.situacao)).map(n => n.lancamento_id));
   NF.lancs = (la.data||[]).filter(l => !comNota.has(l.id));
@@ -6828,10 +6839,29 @@ function desenharNotas(){
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         <button class="btn ok" onclick="emitirNota()" ${c?'':'disabled'} title="emite direto pela API do governo (precisa do certificado e-CNPJ A1)">${teste?'Emitir pelo sistema (teste)':'Emitir pelo sistema'}</button>
         <button class="btn" onclick="prepararPortal()" title="mostra os dados prontos para copiar no Emissor Nacional">Emitir no portal</button>
+        <button class="btn" onclick="salvarRascunho()" title="guarda a nota pronta para emitir depois">${f.rascunho_id ? 'Atualizar rascunho' : 'Salvar rascunho'}</button>
+        ${f.rascunho_id ? `<span class="pill warn">editando um rascunho</span> <a style="cursor:pointer;color:var(--serie);font-size:12.5px" onclick="usarLancamento('')">começar nota nova</a>` : ''}
         <span class="sub" id="nf-st" style="margin:0"></span>
       </div>
       ${NF.portal ? blocoPortal() : ''}
     </div></div>
+
+  ${NF.rascunhos.length ? `<div class="card" style="margin-top:18px"><h2>Rascunhos</h2>
+    <p class="nota">Notas prontas, ainda não emitidas. Emita no portal agora ou, com o certificado A1, pelo sistema — uma a uma ou todas de uma vez.</p>
+    ${NF.rascunhos.length > 1 ? `<div style="padding:0 18px 10px"><button class="btn ok" onclick="emitirTodosRascunhos()">Emitir todos pelo sistema (${NF.rascunhos.length} · ${rs(NF.rascunhos.reduce((t,r)=>t+Number(r.valor_servico||0),0))})</button></div>` : ''}
+    <table><thead><tr><th>Competência</th><th>Tomador e descrição</th><th>Valor</th><th></th></tr></thead><tbody>
+    ${NF.rascunhos.map(r => `<tr>
+      <td class="dt"><b>${br(r.competencia)}</b></td>
+      <td><b>${esc(r.tomador?.nome||'')}</b><span class="sub">${esc(nfDoc(r.tomador?.doc||''))}${r.valor_parceria?' · parceria':''}</span>
+        <span class="sub" style="white-space:normal">${esc(String(r.descricao||'').slice(0,90))}${String(r.descricao||'').length>90?'…':''}</span></td>
+      <td class="dt" style="font-weight:600">${rs(r.valor_servico)}</td>
+      <td style="width:150px"><div style="display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end">
+        <button class="btn" onclick="rascunhoPortal('${r.id}')" title="emitir no portal do Emissor Nacional">Portal</button>
+        <button class="btn ok" onclick="rascunhoSistema('${r.id}')" title="emitir pelo sistema (precisa do certificado A1)">Sistema</button>
+        <button class="btn" onclick="editarRascunho('${r.id}')">Editar</button>
+        <button class="btn" style="color:var(--crit)" onclick="excluirRascunho('${r.id}')">Excluir</button>
+      </div></td></tr>`).join('')}
+    </tbody></table></div>` : ''}
 
   <div class="card" style="margin-top:18px"><h2>Notas</h2>
     <p class="nota">As mais recentes primeiro. "Imprimir" gera o DANFSe com QR Code; "XML" baixa o arquivo oficial.</p>
@@ -6849,7 +6879,7 @@ function linhaNota(n){
   const erros = (n.situacao==='rejeitada' && Array.isArray(n.erros)) ? n.erros : [];
   return `<tr>
     <td class="dt"><b>${br(n.competencia)}</b><span class="sub">${n.ambiente===1?'produção':'teste'}</span></td>
-    <td>${n.numero_nfse ? '<b>'+esc(n.numero_nfse)+'</b>' : '—'}<span class="sub">${n.origem==='portal' ? 'emitida no portal' : 'DPS '+esc(n.serie)+'-'+n.numero_dps}</span></td>
+    <td>${n.numero_nfse ? '<b>'+esc(n.numero_nfse)+'</b>' : '—'}<span class="sub">${n.origem==='portal' ? 'emitida no portal' : n.numero_dps ? 'DPS '+esc(n.serie)+'-'+n.numero_dps : ''}</span></td>
     <td><b>${esc(t.nome||'')}</b><span class="sub">${esc(nfDoc(t.doc||''))}${n.valor_parceria?' · parceria':''}</span></td>
     <td class="dt" style="font-weight:600">${rs(n.valor_servico)}</td>
     <td><span class="pill ${k}">${rot}</span>
@@ -6983,6 +7013,7 @@ window.emitirNota = async () => {
         r = await chamarFuncao('nota-fiscal', { ...corpo, mesmo_assim: true });
       else throw e;
     }
+    if (r.situacao === 'emitida') await nfPosEmissao({ notaId: r.nota_id, corpo, numero: r.numero_nfse, rascunhoId: f.rascunho_id });
     if (r.situacao === 'emitida') { alert(`Nota ${r.numero_nfse || ''} emitida.${r.alertas?.length ? '\n\nAvisos do governo:\n' + r.alertas.map(a=>'• '+(a.descricao||a.Descricao||JSON.stringify(a))).join('\n') : ''}`); }
     else if (r.situacao === 'rejeitada') { alert('O governo recusou a nota:\n\n' + (r.erros||[]).map(e=>'• '+(e.codigo?e.codigo+' — ':'')+e.descricao+(e.complemento?' ('+e.complemento+')':'')).join('\n')); }
     else if (r.aviso) alert(r.aviso);
@@ -7075,7 +7106,7 @@ window.registrarNotaPortal = async () => {
   if (!numero) return alert('Informe o número da NFS-e emitida no portal.');
   if (chave && chave.length !== 50) return alert('A chave de acesso tem 50 dígitos. Confira, ou deixe em branco.');
   const xd = NF.portalXml ? nfDadosXml(NF.portalXml) : null;
-  const { error } = await sb.from('nota_fiscal').insert({
+  const { data: nova, error } = await sb.from('nota_fiscal').insert({
     escritorio_id: NF.cfg.escritorio_id, origem: 'portal', ambiente: xd?.tpAmb === '2' ? 2 : 1,
     lancamento_id: corpo.lancamento_id, cliente_id: cli.id, caso_id: corpo.caso_id, parceiro_id: corpo.parceiro_id || null,
     competencia: corpo.competencia, valor_servico: corpo.valor_servico,
@@ -7083,9 +7114,10 @@ window.registrarNotaPortal = async () => {
     iss_retido: !!corpo.iss_retido, descricao, tomador: { doc, nome: cli.nome },
     situacao: 'emitida', numero_nfse: numero, chave_acesso: chave || null,
     emitida_em: xd?.dhProc || new Date().toISOString(), xml_nfse: NF.portalXml || null, criado_por: USER.id,
-  });
+  }).select('id').single();
   if (error) return alert(/nota_fiscal_numero_uk|duplicate/.test(error.message)
     ? `A nota nº ${numero} já está registrada.` : 'Não foi possível registrar: ' + error.message);
+  await nfPosEmissao({ notaId: nova?.id, corpo, numero, rascunhoId: NF.form.rascunho_id });
   alert(`Nota nº ${numero} registrada.`);
   NF.portal = null; NF.portalXml = null; location.hash = '#/notas'; telaNotas();
 };
@@ -7111,8 +7143,108 @@ window.cancelarNotaPortal = async id => {
   if (error) return alert('Não foi possível: ' + error.message);
   telaNotas();
 };
-window.refazerNota = id => {
-  const n = NF.notas.find(x => x.id === id); if (!n) return;
+/* ---------- rascunhos */
+function nfLinhaRascunho(corpo, cli, doc, descricao){
+  return { escritorio_id: NF.cfg.escritorio_id, origem: 'api', ambiente: NF.cfg.ambiente === 1 ? 1 : 2, situacao: 'rascunho',
+    lancamento_id: corpo.lancamento_id, cliente_id: cli.id, caso_id: corpo.caso_id, parceiro_id: corpo.parceiro_id || null,
+    competencia: corpo.competencia, valor_servico: corpo.valor_servico,
+    valor_total_recebido: corpo.valor_total_recebido || null, valor_parceria: corpo.valor_parceria || null,
+    iss_retido: !!corpo.iss_retido, descricao, tomador: { doc, nome: cli.nome } };
+}
+window.salvarRascunho = async () => {
+  const v = await nfValidar(); if (!v) return;
+  const linha = nfLinhaRascunho(v.corpo, v.cli, v.doc, v.descricao);
+  const id = NF.form.rascunho_id;
+  const { error } = id
+    ? await sb.from('nota_fiscal').update(linha).eq('id', id)
+    : await sb.from('nota_fiscal').insert({ ...linha, criado_por: USER.id });
+  if (error) return alert('Não foi possível salvar o rascunho: ' + error.message);
+  alert(id ? 'Rascunho atualizado.' : 'Rascunho salvo. Ele fica em "Rascunhos", logo abaixo, até ser emitido.');
+  location.hash = '#/notas'; telaNotas();
+};
+// Os dados guardados no rascunho já foram conferidos ao salvar.
+function rascunhoCorpo(r){
+  return { acao:'emitir', cliente_id: r.cliente_id, caso_id: r.caso_id, lancamento_id: r.lancamento_id, competencia: r.competencia,
+    descricao: r.descricao, iss_retido: !!r.iss_retido, valor_servico: Number(r.valor_servico),
+    ...(r.parceiro_id ? { parceiro_id: r.parceiro_id, valor_total_recebido: Number(r.valor_total_recebido), valor_parceria: Number(r.valor_parceria) } : {}) };
+}
+window.editarRascunho = id => {
+  const r = NF.rascunhos.find(x => x.id === id); if (!r) return;
+  refazerNota(id, r);
+  NF.form.rascunho_id = id;
+  desenharNotas(); window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+window.excluirRascunho = async id => {
+  const r = NF.rascunhos.find(x => x.id === id); if (!r) return;
+  if (!confirm(`Excluir o rascunho de ${rs(r.valor_servico)} para ${r.tomador?.nome}?`)) return;
+  const { error } = await sb.from('nota_fiscal').delete().eq('id', id);
+  if (error) return alert('Não foi possível excluir: ' + error.message);
+  if (NF.form.rascunho_id === id) usarLancamento('', true);
+  telaNotas();
+};
+window.rascunhoPortal = id => {
+  const r = NF.rascunhos.find(x => x.id === id); if (!r) return;
+  const cli = NF.cli.find(x => x.id === r.cliente_id);
+  if (!cli) return alert('O cliente deste rascunho não foi encontrado. Use "Editar" e escolha o tomador de novo.');
+  refazerNota(id, r); NF.form.rascunho_id = id;
+  NF.portal = { corpo: rascunhoCorpo(r), cli, doc: so(cli.cpf_cnpj) || r.tomador?.doc, descricao: r.descricao }; NF.portalXml = null;
+  desenharNotas();
+  document.getElementById('nf-portal')?.scrollIntoView({ behavior:'smooth', block:'start' });
+};
+window.rascunhoSistema = async id => {
+  const r = NF.rascunhos.find(x => x.id === id); if (!r) return;
+  const teste = (NF.cfg?.ambiente ?? 2) !== 1;
+  if (!confirm(`${teste ? '[TESTE — sem valor fiscal]\n\n' : ''}Emitir pelo sistema a nota de ${rs(r.valor_servico)} para ${r.tomador?.nome}, competência ${br(r.competencia)}?`)) return;
+  const corpo = rascunhoCorpo(r);
+  try {
+    const x = await chamarFuncao('nota-fiscal', corpo);
+    if (x.situacao === 'emitida') { await nfPosEmissao({ notaId: x.nota_id, corpo, numero: x.numero_nfse, rascunhoId: id }); alert(`Nota ${x.numero_nfse || ''} emitida.`); }
+    else if (x.situacao === 'rejeitada') alert('O governo recusou a nota (o rascunho continua salvo):\n\n' + (x.erros||[]).map(e=>'• '+(e.codigo?e.codigo+' — ':'')+e.descricao).join('\n'));
+    else if (x.aviso) alert(x.aviso);
+  } catch (e) { alert('Não foi possível: ' + e.message); }
+  telaNotas();
+};
+window.emitirTodosRascunhos = async () => {
+  const lista = [...NF.rascunhos];
+  const total = lista.reduce((t,r)=>t+Number(r.valor_servico||0),0);
+  const teste = (NF.cfg?.ambiente ?? 2) !== 1;
+  if (!confirm(`${teste ? '[TESTE — sem valor fiscal]\n\n' : ''}Emitir pelo sistema ${lista.length} notas, somando ${rs(total)}?\n\n` +
+      lista.map(r => `• ${br(r.competencia)} — ${r.tomador?.nome} — ${rs(r.valor_servico)}`).join('\n'))) return;
+  const temRepasse = lista.some(r => r.parceiro_id);
+  const repassePago = temRepasse ? confirm('Os repasses aos parceiros destas notas já foram pagos?\n\nOK = sim, lançar como pagos hoje\nCancelar = lançar como a pagar') : false;
+  const res = [];
+  for (const r of lista) {
+    const corpo = rascunhoCorpo(r);
+    try {
+      const x = await chamarFuncao('nota-fiscal', corpo);
+      if (x.situacao === 'emitida') { await nfPosEmissao({ notaId: x.nota_id, corpo, numero: x.numero_nfse, rascunhoId: r.id, repassePago }); res.push(`✓ ${r.tomador?.nome} — nota ${x.numero_nfse}`); }
+      else res.push(`✗ ${r.tomador?.nome} — ${x.situacao === 'rejeitada' ? 'recusada: ' + (x.erros||[]).map(e=>e.descricao).join('; ') : (x.aviso || x.situacao)}`);
+    } catch (e) { res.push(`✗ ${r.tomador?.nome} — ${e.message}`); }
+  }
+  alert('Resultado:\n\n' + res.join('\n') + '\n\nAs que não saíram continuam em "Rascunhos".');
+  telaNotas();
+};
+
+/* ---------- depois de emitir: repasse no Financeiro e fim do rascunho */
+async function nfPosEmissao({ notaId, corpo, numero, rascunhoId, repassePago }){
+  if (rascunhoId) await sb.from('nota_fiscal').delete().eq('id', rascunhoId).eq('situacao', 'rascunho');
+  if (!corpo.parceiro_id || !(Number(corpo.valor_parceria) > 0) || !notaId) return;
+  const parc = NF.parc.find(p => p.id === corpo.parceiro_id);
+  const nome = parc?.razao_social || parc?.escritorio || parc?.nome || 'parceiro';
+  const pago = repassePago ?? confirm(`Lançar no Financeiro a saída do repasse de ${rs(corpo.valor_parceria)} para ${nome}.\n\nO repasse já foi pago?\nOK = sim, baixa hoje\nCancelar = fica a pagar`);
+  const { error } = await sb.from('lancamento').insert({
+    escritorio_id: NF.cfg.escritorio_id, tipo: 'saida', descricao: `Repasse de parceria — NF ${numero || ''}`.trim(),
+    contraparte: nome, cliente_id: corpo.cliente_id || null, caso_id: corpo.caso_id || null,
+    valor: Number(corpo.valor_parceria), vencimento: hoje(), situacao: pago ? 'pago' : 'previsto', pagamento: pago ? hoje() : null,
+    nota_fiscal_id: notaId, observacoes: parc?.cnpj ? 'CNPJ do parceiro: ' + nfDoc(parc.cnpj) : null,
+  });
+  if (error && !/lancamento_repasse_nota_uk|duplicate/.test(error.message))
+    alert('A nota saiu, mas não consegui lançar o repasse no Financeiro: ' + error.message + '\nLance à mão.');
+}
+
+window.refazerNota = (id, linha) => {
+  const n = linha || NF.notas.find(x => x.id === id); if (!n) return;
+  NF.portal = null;
   NF.form = { lancamento_id: n.lancamento_id||'', cliente_id: n.cliente_id||'', caso_id: n.caso_id||'', competencia: n.competencia,
     parceria: !!n.parceiro_id, parceiro_id: n.parceiro_id||'', iss_retido: n.iss_retido,
     valor: nfValor(n.valor_servico), total: n.valor_total_recebido ? nfValor(n.valor_total_recebido) : '',
