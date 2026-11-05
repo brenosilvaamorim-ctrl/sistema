@@ -10189,17 +10189,32 @@ function prevGerarPendencias(vincs, rems, legenda, hoje){
 }
 /* PREV-CNIS-FIM */
 
-/* PREV-CALC-INICIO — motor de regras das aposentadorias (RGPS). Funções puras:
+/* PREV-CALC-INICIO — motor de regras dos benefícios (RGPS). Funções puras:
    recebem os dados da análise e as tabelas oficiais e devolvem o resultado de cada
    regra, com a memória de cálculo. Não tocam na tela nem no banco.
 
    Tabelas (T): { sm:[{inicio,valor}], teto:[{inicio,valor}], inpc:{'AAAA-MM': variação %},
                   corr:{'AAAA-MM': índice oficial de correção %} (sem ele, usa o INPC),
+                  reclusao:[{inicio,valor}] (limite de baixa renda),
                   sobrevida:[{ano_tabua, idade, expectativa, vigencia_inicio, vigencia_fim}] }
    Tempo é contado em dias comerciais (mês de 30, ano de 360). */
 const PREV_REF = '2019-11-13';             // véspera da vigência da EC 103/2019
 const PREV_REF_SEG = '2019-11-14';
+const PREV_RURAL_LIM = '1991-10-31';       // rural sem contribuição conta como tempo até aqui (art. 55, § 2º, Lei 8.213)
 const PREV_CONV = { '25': { F: 1.2, M: 1.4 }, '20': { F: 1.5, M: 1.75 }, '15': { F: 2.0, M: 2.33 } };
+
+/* Parâmetros que dependem de leitura da lei e da prática do INSS: ficam juntos para
+   ajuste fácil, cada um com a fonte. */
+const PREV_P = {
+  pcdMedia: '100',      // média da aposentadoria da pessoa com deficiência depois da EC 103 (ver nota na tela)
+  hibridaIdadeF: ano => Math.min(62, 60 + 0.5 * Math.max(0, ano - 2019)),   // EC 103, art. 18
+  pcdAnos: { M: { grave: 25, moderada: 29, leve: 33, nenhum: 35 }, F: { grave: 20, moderada: 24, leve: 28, nenhum: 30 } },
+  art142: { 1991: 60, 1992: 60, 1993: 66, 1994: 72, 1995: 78, 1996: 90, 1997: 96, 1998: 102, 1999: 108, 2000: 114,
+            2001: 120, 2002: 126, 2003: 132, 2004: 138, 2005: 144, 2006: 150, 2007: 156, 2008: 162, 2009: 168, 2010: 174 },
+  /* duração da pensão ao cônjuge/companheiro pela idade no óbito (art. 77, § 2º, V, Lei 8.213; Portaria ME 424/2020) */
+  pensaoDuracao: [[22, 3], [28, 6], [31, 10], [42, 15], [45, 20], [999, null]],
+};
+
 const prevDias = t => t.a * 360 + t.m * 30 + t.d;
 const prevDiasTxt = n => { n = Math.max(0, Math.floor(n + 1e-9)); return prevTempoTxt({ a: Math.floor(n / 360), m: Math.floor(n % 360 / 30), d: n % 30 }); };
 const prevMes = iso => iso.slice(0, 7);
@@ -10210,6 +10225,7 @@ const prevMaisMes = (iso, n) => { const [y, m, d] = iso.split('-').map(Number); 
   return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(Math.min(d, ult)).padStart(2, '0')}`; };
 const prevVigente = (lista, iso) => { let v = null; for (const x of lista || []) if (x.inicio <= iso) v = x; return v; };
 const prevArred = (v, c = 2) => Math.round(v * 10 ** c) / 10 ** c;
+const prevEhRural = v => v.tipo === 'segurado_especial';
 
 /* idade em anos (com fração), contando só o que já se completou */
 function prevIdade(nasc, data){
@@ -10219,6 +10235,11 @@ function prevIdade(nasc, data){
   if (m < 0) { a -= 1; m += 12; }
   return { a, m, d, anos: a + m / 12 + d / 365 };
 }
+/* data em que se completa uma idade */
+const prevAniversario = (nasc, anos) => { const [y, m, d] = nasc.split('-').map(Number);
+  const ult = new Date(Date.UTC(y + Math.floor(anos), m, 0)).getUTCDate();
+  let iso = `${y + Math.floor(anos)}-${String(m).padStart(2, '0')}-${String(Math.min(d, ult)).padStart(2, '0')}`;
+  const frac = Math.round((anos - Math.floor(anos)) * 12); return frac ? prevMaisMes(iso, frac) : iso; };
 
 /* períodos que contam até a data, já recortados nela */
 function prevPeriodos(vincs, ate){
@@ -10229,39 +10250,62 @@ function prevPeriodos(vincs, ate){
   }).filter(p => p.fim >= p.inicio);
 }
 
-/* Conta o tempo até a data: bruto (sem conversão), convertido (especial convertido em
-   comum só até 13/11/2019, art. 25, § 2º, EC 103) e o especial efetivo por grau.
-   Concomitância conta uma vez só; se houver especial no trecho, vale o especial. */
-function prevContar(vincs, ate, sexo){
+/* Conta o tempo até a data:
+   - bruto e convertido (especial convertido em comum só até 13/11/2019, art. 25, § 2º, EC 103);
+   - especial efetivo por grau; magistério; tempo como pessoa com deficiência por grau; rural.
+   Concomitância conta uma vez só. Segurado especial sem contribuição só conta como tempo
+   comum até 31/10/1991, salvo nas regras rurais e híbrida (opt.rural). */
+function prevContar(vincs, ate, sexo, opt = {}){
   const ps = prevPeriodos(vincs, ate);
-  const cortes = new Set([PREV_REF_SEG]);
+  const cortes = new Set([PREV_REF_SEG, '1991-11-01']);
   for (const p of ps) { cortes.add(p.inicio); cortes.add(prevMaisDia(p.fim, 1)); }
   const bs = [...cortes].sort();
-  let bruto = 0, conv = 0, ref = 0, refConv = 0; const esp = { '15': 0, '20': 0, '25': 0 };
+  let bruto = 0, conv = 0, ref = 0, refConv = 0, prof = 0, profRef = 0, rural = 0;
+  const esp = { '15': 0, '20': 0, '25': 0 }, pcd = { grave: 0, moderada: 0, leve: 0, nenhum: 0 };
+  let ultRural = null;
   for (let i = 0; i < bs.length - 1; i++){
     const a = bs[i], b = prevMaisDia(bs[i + 1], -1);
     if (b < a) continue;
-    const cob = ps.filter(p => p.inicio <= a && p.fim >= b);
+    let cob = ps.filter(p => p.inicio <= a && p.fim >= b);
     if (!cob.length) continue;
     const dias = prevDias(prevDiff(a, b));
+    if (cob.some(p => p.v.rural || prevEhRural(p.v))) { rural += dias; ultRural = b; }
+    const contrib = cob.filter(p => !prevEhRural(p.v));
+    if (!contrib.length && b > PREV_RURAL_LIM && !opt.rural) continue;
+    if (cob.some(p => p.v.professor)) { prof += dias; if (b <= PREV_REF) profRef += dias; }
+    const gp = ['grave', 'moderada', 'leve'].find(g => cob.some(p => p.v.pcd === g));
+    pcd[gp || 'nenhum'] += dias;
     const g = cob.map(p => p.v.especial).filter(Boolean).sort()[0];   // o grau mais favorável
     const f = g && b <= PREV_REF ? PREV_CONV[g][sexo] : 1;
     bruto += dias; conv += dias * f;
     if (g) esp[g] += dias;
     if (b <= PREV_REF) { ref += dias; refConv += dias * f; }
   }
-  return { bruto, conv, esp, ref, refConv };
+  return { bruto, conv, esp, ref, refConv, prof, profRef, pcd, rural, ultRural };
+}
+
+/* Tempo da pessoa com deficiência convertido para o grau preponderante (art. 7º, LC 142;
+   art. 70-E, Decreto 3.048): fator = anos exigidos no grau de destino ÷ anos do grau de origem. */
+function prevPcdConv(pcd, sexo){
+  const tab = PREV_P.pcdAnos[sexo];
+  const graus = ['grave', 'moderada', 'leve'].filter(g => pcd[g] > 0);
+  if (!graus.length) return null;
+  const prep = graus.sort((x, y) => pcd[y] - pcd[x])[0];
+  let dias = 0;
+  for (const g of ['grave', 'moderada', 'leve', 'nenhum']) dias += pcd[g] * (g === prep ? 1 : prevArred(tab[prep] / tab[g], 2));
+  return { grau: prep, anos: dias / 360, exigido: tab[prep], pcdAnos: (pcd.grave + pcd.moderada + pcd.leve) / 360 };
 }
 
 /* Carência: meses com contribuição. Empregado conta o mês do vínculo; quem recolhe
-   (individual, facultativo) conta o mês recolhido. Benefício não conta. */
-function prevCarencia(vincs, rems, ate){
+   (individual, facultativo) conta o mês recolhido. Benefício não conta. Rural sem
+   contribuição só conta nas regras rurais e híbrida (opt.rural). */
+function prevCarencia(vincs, rems, ate, opt = {}){
   const meses = new Set();
   const remPorV = new Map();
   for (const r of rems || []) if (r.considerar !== false && r.valor > 0) {
     if (!remPorV.has(r.vinculo_id)) remPorV.set(r.vinculo_id, []); remPorV.get(r.vinculo_id).push(r);
   }
-  for (const p of prevPeriodos((vincs || []).filter(v => v.tipo !== 'beneficio'), ate)){
+  for (const p of prevPeriodos((vincs || []).filter(v => v.tipo !== 'beneficio' && (opt.rural || !prevEhRural(v))), ate)){
     const rs = remPorV.get(p.v.id) || [];
     if (['individual', 'facultativo'].includes(p.v.tipo) && rs.length){
       for (const r of rs) if (r.competencia <= ate && r.competencia >= prevMes(p.inicio) + '-01') meses.add(prevMes(r.competencia));
@@ -10272,7 +10316,7 @@ function prevCarencia(vincs, rems, ate){
   return meses.size;
 }
 
-/* Fator de atualização de cada competência até o benefício: INPC acumulado do próprio
+/* Fator de atualização de cada competência até o benefício: índice acumulado do próprio
    mês da competência até o mês anterior ao do início do benefício (art. 33 do
    Decreto 3.048/99; é como saem as tabelas mensais da Previdência — p. ex., para
    DIB 01/2024, a competência 12/2023 tem fator 1,005500 e a de 07/1994, 10,627967). */
@@ -10289,7 +10333,8 @@ function prevFatores(T, dib){
 
 /* Os salários de contribuição de julho/1994 até o mês anterior ao benefício.
    Mês de emprego sem remuneração no CNIS entra pelo mínimo (art. 36, Lei 8.213),
-   e fica marcado. Soma de atividades concomitantes, limitada ao teto. */
+   e fica marcado. Soma de atividades concomitantes, limitada ao teto. Na híbrida,
+   o mês como segurado especial entra pelo mínimo (art. 48, § 4º, Lei 8.213). */
 function prevSalarios(vincs, rems, dib, T, opt = {}){
   const ultimo = prevMesAnt(prevMes(dib));
   const porMes = new Map();
@@ -10305,6 +10350,10 @@ function prevSalarios(vincs, rems, dib, T, opt = {}){
   for (const p of prevPeriodos((vincs || []).filter(v => v.tipo !== 'beneficio'), prevMaisDia(dib, -1))){
     const rs = (remPorV.get(p.v.id) || []).filter(r => r.valor > 0);
     const tem = new Set();
+    if (prevEhRural(p.v) && !rs.length){
+      if (opt.rural) for (let ym = prevMes(p.inicio); ym <= prevMes(p.fim); ym = prevMesSeg(ym)) add(ym, prevVigente(T.sm, ym + '-01')?.valor, 'rural (mínimo)');
+      continue;
+    }
     for (const r of rs){ const ym = prevMes(r.competencia); if (ym >= prevMes(p.inicio) && ym <= prevMes(p.fim)) { add(ym, Number(r.valor), 'cnis'); tem.add(ym); } }
     if (p.v.tipo === 'projecao'){
       for (let ym = prevMes(p.inicio); ym <= prevMes(p.fim); ym = prevMesSeg(ym)) add(ym, opt.scFuturo || prevVigente(T.sm, ym + '-01')?.valor, 'projeção');
@@ -10338,7 +10387,8 @@ function prevMedia(valores, tipo, dib){
   return { media: soma / divisor, usados: k, divisor };
 }
 
-/* Fator previdenciário (art. 29, §§ 7º a 9º, Lei 8.213): a mulher soma 5 anos ao tempo. */
+/* Fator previdenciário (art. 29, §§ 7º a 9º, Lei 8.213): a mulher soma 5 anos ao tempo;
+   professor soma 5 e professora, 10 (§ 9º). */
 function prevExpectativa(T, idadeAnos, dib){
   const tabs = (T.sobrevida || []);
   let tab = tabs.filter(x => x.vigencia_inicio <= dib && (!x.vigencia_fim || x.vigencia_fim >= dib));
@@ -10352,69 +10402,112 @@ function prevExpectativa(T, idadeAnos, dib){
   const e = tab.find(x => x.idade === idade);
   return e ? { es: Number(e.expectativa), ano: e.ano_tabua, aviso } : { es: null, ano: null, aviso: `Falta a expectativa de sobrevida do IBGE para ${idade} anos.` };
 }
-function prevFatorPrev(tcAnos, idadeAnos, es, sexo){
-  const a = 0.31, tc = tcAnos + (sexo === 'F' ? 5 : 0);
+function prevFatorPrev(tcAnos, idadeAnos, es, sexo, professor){
+  const a = 0.31, tc = tcAnos + (sexo === 'F' ? 5 : 0) + (professor ? 5 : 0);
   return prevArred((tc * a / es) * (1 + (idadeAnos + tc * a) / 100), 4);
 }
 
 /* ------------------------------------------------------------ as regras */
 const PREV_REGRAS = [
   { k: 'da_tc', nome: 'Tempo de contribuição (direito adquirido)', base: 'Lei 8.213/91, arts. 52 e 29-C; EC 103/2019, art. 3º', da: true },
-  { k: 'da_idade', nome: 'Idade (direito adquirido)', base: 'Lei 8.213/91, art. 48; EC 103/2019, art. 3º', da: true },
+  { k: 'da_idade', nome: 'Idade (direito adquirido)', base: 'Lei 8.213/91, arts. 48 e 142; EC 103/2019, art. 3º', da: true },
   { k: 'da_especial', nome: 'Especial (direito adquirido)', base: 'Lei 8.213/91, art. 57; EC 103/2019, art. 3º', da: true },
+  { k: 'prof_da', nome: 'Professor (direito adquirido)', base: 'CF, art. 201, § 8º (redação anterior); Lei 8.213/91, art. 56; EC 103/2019, art. 3º', da: true, prof: true },
   { k: 'art15', nome: 'Transição por pontos', base: 'EC 103/2019, art. 15' },
   { k: 'art16', nome: 'Transição por idade mínima progressiva', base: 'EC 103/2019, art. 16' },
   { k: 'art17', nome: 'Transição com pedágio de 50%', base: 'EC 103/2019, art. 17' },
   { k: 'art18', nome: 'Transição da aposentadoria por idade', base: 'EC 103/2019, art. 18' },
   { k: 'art20', nome: 'Transição com pedágio de 100%', base: 'EC 103/2019, art. 20' },
   { k: 'art21', nome: 'Especial — transição por pontos', base: 'EC 103/2019, art. 21' },
+  { k: 'prof15', nome: 'Professor — transição por pontos', base: 'EC 103/2019, art. 15, § 3º', prof: true },
+  { k: 'prof16', nome: 'Professor — transição por idade progressiva', base: 'EC 103/2019, art. 16, § 2º', prof: true },
+  { k: 'prof20', nome: 'Professor — transição com pedágio de 100%', base: 'EC 103/2019, art. 20, § 1º', prof: true },
+  { k: 'pcd_tc', nome: 'Pessoa com deficiência — por tempo', base: 'LC 142/2013, art. 3º, I a III; EC 103/2019, art. 22', pcd: true },
+  { k: 'pcd_idade', nome: 'Pessoa com deficiência — por idade', base: 'LC 142/2013, art. 3º, IV; EC 103/2019, art. 22', pcd: true },
+  { k: 'rural_idade', nome: 'Rural por idade (segurado especial)', base: 'Lei 8.213/91, arts. 39, I, 48, §§ 1º e 2º, e 143', rural: true },
+  { k: 'hibrida', nome: 'Híbrida (rural + urbano)', base: 'Lei 8.213/91, art. 48, §§ 3º e 4º; EC 103/2019, art. 18; STJ, Tema 1007', rural: true },
   { k: 'perm', nome: 'Regra permanente (filiados depois da reforma)', base: 'EC 103/2019, art. 19' },
+  { k: 'prof_perm', nome: 'Professor — regra permanente', base: 'EC 103/2019, art. 19, § 1º, II', prof: true },
 ];
 const prevAnoFrac = iso => Number(iso.slice(0, 4));
 
 /* Confere os requisitos de uma regra com números já contados.
-   n: { tc (anos, convertido), idade (anos), car (meses), esp {15,20,25 em anos}, tcRef (anos em 13/11/2019) } */
+   n: { tc, idade, car, esp{15,20,25}, tcRef, prof, profRef, pcd, rural, carRural, ruralRecente, ano142 } em anos/meses */
 function prevChecar(k, n, D, sexo, grau){
   const F = sexo === 'F', ano = prevAnoFrac(D);
-  const tcMin = F ? 30 : 35;
+  const tcMin = F ? 30 : 35, profMin = F ? 25 : 30;
   const req = [];
   const r = (nome, exigido, cumprido, ok, fmt = 'anos') => req.push({ nome, exigido, cumprido, ok, fmt });
-  if (k === 'da_tc'){ r('Tempo de contribuição', tcMin, n.tc, n.tc >= tcMin); r('Carência', 180, n.car, n.car >= 180, 'meses'); }
-  if (k === 'da_idade'){ r('Idade', F ? 60 : 65, n.idade, n.idade >= (F ? 60 : 65)); r('Carência', 180, n.car, n.car >= 180, 'meses'); }
-  if (k === 'da_especial'){ const g = Number(grau); r(`Tempo especial (${g} anos)`, g, n.esp[grau], n.esp[grau] >= g); r('Carência', 180, n.car, n.car >= 180, 'meses'); }
+  const car = (min = 180) => r('Carência', min, n.car, n.car >= min, 'meses');
+  if (k === 'da_tc'){ r('Tempo de contribuição', tcMin, n.tc, n.tc >= tcMin); car(); }
+  if (k === 'da_idade'){ r('Idade', F ? 60 : 65, n.idade, n.idade >= (F ? 60 : 65)); car(n.car142 || 180); }
+  if (k === 'da_especial'){ const g = Number(grau); r(`Tempo especial (${g} anos)`, g, n.esp[grau], n.esp[grau] >= g); car(); }
+  if (k === 'prof_da'){ r('Tempo de magistério', profMin, n.prof, n.prof >= profMin); car(); }
   if (k === 'art15'){
     const pts = Math.min(F ? 100 : 105, (F ? 86 : 96) + Math.max(0, ano - 2019));
-    r('Tempo de contribuição', tcMin, n.tc, n.tc >= tcMin); r(`Pontos (${ano})`, pts, n.idade + n.tc, n.idade + n.tc >= pts, 'pontos');
-    r('Carência', 180, n.car, n.car >= 180, 'meses');
+    r('Tempo de contribuição', tcMin, n.tc, n.tc >= tcMin); r(`Pontos (${ano})`, pts, n.idade + n.tc, n.idade + n.tc >= pts, 'pontos'); car();
   }
   if (k === 'art16'){
     const id = Math.min(F ? 62 : 65, (F ? 56 : 61) + 0.5 * Math.max(0, ano - 2019));
-    r('Tempo de contribuição', tcMin, n.tc, n.tc >= tcMin); r(`Idade mínima (${ano})`, id, n.idade, n.idade >= id);
-    r('Carência', 180, n.car, n.car >= 180, 'meses');
+    r('Tempo de contribuição', tcMin, n.tc, n.tc >= tcMin); r(`Idade mínima (${ano})`, id, n.idade, n.idade >= id); car();
   }
   if (k === 'art17'){
     const lim = F ? 28 : 33;
     const exig = tcMin + 0.5 * Math.max(0, tcMin - n.tcRef);
     r('Tempo em 13/11/2019 (mais de ' + lim + ' anos)', lim, n.tcRef, n.tcRef > lim);
-    r('Tempo de contribuição com pedágio de 50%', exig, n.tc, n.tc >= exig); r('Carência', 180, n.car, n.car >= 180, 'meses');
+    r('Tempo de contribuição com pedágio de 50%', exig, n.tc, n.tc >= exig); car();
   }
   if (k === 'art18'){
     const id = F ? Math.min(62, 60 + 0.5 * Math.max(0, ano - 2019)) : 65;
-    r(`Idade (${ano})`, id, n.idade, n.idade >= id); r('Tempo de contribuição', 15, n.tc, n.tc >= 15); r('Carência', 180, n.car, n.car >= 180, 'meses');
+    r(`Idade (${ano})`, id, n.idade, n.idade >= id); r('Tempo de contribuição', 15, n.tc, n.tc >= 15); car();
   }
   if (k === 'art20'){
     const exig = tcMin + Math.max(0, tcMin - n.tcRef);
     r('Idade', F ? 57 : 60, n.idade, n.idade >= (F ? 57 : 60));
-    r('Tempo de contribuição com pedágio de 100%', exig, n.tc, n.tc >= exig); r('Carência', 180, n.car, n.car >= 180, 'meses');
+    r('Tempo de contribuição com pedágio de 100%', exig, n.tc, n.tc >= exig); car();
   }
   if (k === 'art21'){
     const g = Number(grau), pts = { 15: 66, 20: 76, 25: 86 }[g];
-    r(`Tempo especial (${g} anos)`, g, n.esp[grau], n.esp[grau] >= g); r('Pontos (idade + tempo)', pts, n.idade + n.tc, n.idade + n.tc >= pts, 'pontos');
-    r('Carência', 180, n.car, n.car >= 180, 'meses');
+    r(`Tempo especial (${g} anos)`, g, n.esp[grau], n.esp[grau] >= g); r('Pontos (idade + tempo)', pts, n.idade + n.tc, n.idade + n.tc >= pts, 'pontos'); car();
+  }
+  if (k === 'prof15'){
+    const pts = Math.min(F ? 92 : 100, (F ? 81 : 91) + Math.max(0, ano - 2019));
+    r('Tempo de magistério', profMin, n.prof, n.prof >= profMin); r(`Pontos (${ano})`, pts, n.idade + n.tc, n.idade + n.tc >= pts, 'pontos'); car();
+  }
+  if (k === 'prof16'){
+    const id = Math.min(F ? 57 : 60, (F ? 51 : 56) + 0.5 * Math.max(0, ano - 2019));
+    r('Tempo de magistério', profMin, n.prof, n.prof >= profMin); r(`Idade mínima (${ano})`, id, n.idade, n.idade >= id); car();
+  }
+  if (k === 'prof20'){
+    const exig = profMin + Math.max(0, profMin - n.profRef);
+    r('Idade', F ? 52 : 55, n.idade, n.idade >= (F ? 52 : 55));
+    r('Magistério com pedágio de 100%', exig, n.prof, n.prof >= exig); car();
+  }
+  if (k === 'prof_perm'){
+    r('Idade', F ? 57 : 60, n.idade, n.idade >= (F ? 57 : 60)); r('Tempo de magistério', 25, n.prof, n.prof >= 25); car();
+  }
+  if (k === 'pcd_tc'){
+    const c = n.pcdConv;
+    if (!c) r('Tempo como pessoa com deficiência', 1, 0, false);
+    else { r(`Tempo convertido para deficiência ${c.grau}`, c.exigido, c.anos, c.anos >= c.exigido); car(); }
+  }
+  if (k === 'pcd_idade'){
+    r('Idade', F ? 55 : 60, n.idade, n.idade >= (F ? 55 : 60));
+    r('Tempo como pessoa com deficiência', 15, n.pcdConv?.pcdAnos || 0, (n.pcdConv?.pcdAnos || 0) >= 15); car();
+  }
+  if (k === 'rural_idade'){
+    r('Idade', F ? 55 : 60, n.idade, n.idade >= (F ? 55 : 60));
+    r('Atividade rural (meses)', 180, n.carRural, n.carRural >= 180, 'meses');
+    r('No campo ao completar a idade ou no requerimento (STJ, Tema 642)', 1, n.ruralRecente ? 1 : 0, !!n.ruralRecente, 'simnao');
+  }
+  if (k === 'hibrida'){
+    const id = F ? PREV_P.hibridaIdadeF(ano) : 65;
+    r(`Idade (${ano})`, id, n.idade, n.idade >= id);
+    r('Tempo rural + urbano', 15, n.tcHib, n.tcHib >= 15);
+    r('Carência (rural + urbano)', 180, n.carHib, n.carHib >= 180, 'meses');
   }
   if (k === 'perm'){
-    r('Idade', F ? 62 : 65, n.idade, n.idade >= (F ? 62 : 65)); r('Tempo de contribuição', F ? 15 : 20, n.tc, n.tc >= (F ? 15 : 20));
-    r('Carência', 180, n.car, n.car >= 180, 'meses');
+    r('Idade', F ? 62 : 65, n.idade, n.idade >= (F ? 62 : 65)); r('Tempo de contribuição', F ? 15 : 20, n.tc, n.tc >= (F ? 15 : 20)); car();
   }
   return { ok: req.length > 0 && req.every(x => x.ok), req };
 }
@@ -10426,14 +10519,31 @@ function prevCoef(tcAnos, sexo, grau){
   return 0.6 + 0.02 * Math.max(0, Math.floor(tcAnos + 1e-9) - base);
 }
 
-/* Números de uma data: tempo, idade, carência. */
+/* Números de uma data: tempo, idade, carência, magistério, deficiência, rural. */
 function prevNumeros(ctx, D){
   const vs = ctx.projetar && D > ctx.dataBase
     ? [...ctx.vincs, { id: '__proj', tipo: 'projecao', inicio: prevMaisDia(ctx.dataBase, 1), fim: D, considerar: true }]
     : ctx.vincs;
   const c = prevContar(vs, D, ctx.sexo);
-  return { tc: c.conv / 360, bruto: c.bruto / 360, idade: prevIdade(ctx.nasc, D).anos, car: prevCarencia(vs, ctx.rems, D),
-           esp: { '15': c.esp['15'] / 360, '20': c.esp['20'] / 360, '25': c.esp['25'] / 360 }, tcRef: ctx.tcRef, vs };
+  const temRural = vs.some(v => v.rural || prevEhRural(v));
+  const cr = temRural ? prevContar(vs, D, ctx.sexo, { rural: true }) : c;
+  const n = { tc: c.conv / 360, bruto: c.bruto / 360, idade: prevIdade(ctx.nasc, D).anos, car: prevCarencia(vs, ctx.rems, D),
+           esp: { '15': c.esp['15'] / 360, '20': c.esp['20'] / 360, '25': c.esp['25'] / 360 }, tcRef: ctx.tcRef,
+           prof: c.prof / 360, profRef: ctx.profRef, pcdConv: prevPcdConv(c.pcd, ctx.sexo),
+           rural: cr.rural / 360, tcHib: cr.conv / 360, vs };
+  if (temRural){
+    n.carHib = prevCarencia(vs, ctx.rems, D, { rural: true });
+    const so = vs.filter(v => v.rural || prevEhRural(v));
+    n.carRural = prevCarencia(so.map(v => ({ ...v, tipo: prevEhRural(v) ? v.tipo : 'empregado' })), [], D, { rural: true });
+    const noCampo = X => so.some(v => v.inicio && v.inicio <= X && (!v.fim || v.fim >= X));
+    n.ruralRecente = noCampo(D) || noCampo(prevAniversario(ctx.nasc, ctx.sexo === 'F' ? 55 : 60));
+  }
+  /* art. 142: filiado antes de 24/07/1991 que completou a idade antes de 2011 */
+  if (ctx.filiacao && ctx.filiacao < '1991-07-24'){
+    const ano = Number(prevAniversario(ctx.nasc, ctx.sexo === 'F' ? 60 : 65).slice(0, 4));
+    if (PREV_P.art142[ano]) n.car142 = PREV_P.art142[ano];
+  }
+  return n;
 }
 
 /* Primeira data em que a regra é cumprida (até 30 anos à frente). */
@@ -10455,55 +10565,69 @@ function prevPrimeiraData(ctx, k, grau){
 /* Calcula a renda de uma regra numa data de início (dib). */
 function prevRenda(ctx, k, grau, dib){
   const T = ctx.T, sexo = ctx.sexo, avisos = [];
-  const da = k.startsWith('da_');
+  const da = k.startsWith('da_') || k === 'prof_da';
+  const rural = k === 'hibrida' || k === 'rural_idade';
   const dibCalc = da ? PREV_REF : dib;                 // direito adquirido: cálculo na data da reforma
   const n = prevNumeros(ctx, dibCalc);
-  const sal = prevSalarios(n.vs, ctx.rems, prevMaisDia(dibCalc, 1), T, { scFuturo: ctx.scFuturo });
-  if (sal.faltamIndices.length) avisos.push(`Índice de correção ainda não publicado de ${sal.faltamIndices.length} mês(es) (${prevFaixas(sal.faltamIndices.map(x => x + '-01'))}): considerado zero.`);
-  const noMin = sal.lista.filter(x => x.origem.includes('mínimo')).length;
-  if (noMin) avisos.push(`${noMin} mês(es) de emprego sem remuneração no CNIS entraram pelo salário mínimo.`);
-  if (sal.lista.some(x => x.origem.includes('projeção'))) avisos.push('Inclui contribuições futuras projetadas (valores em moeda de hoje, sem inflação futura).');
   const sm = prevVigente(T.sm, dib)?.valor, teto = prevVigente(T.teto, dib)?.valor;
   const smCalc = prevVigente(T.sm, dibCalc)?.valor, tetoCalc = prevVigente(T.teto, dibCalc)?.valor;
+  if (k === 'rural_idade')
+    return { rmi: sm, rmiCalc: sm, coef: 1, txt: 'um salário mínimo (art. 39, I, Lei 8.213)', avisos: ['Confira a prova do trabalho rural no período imediatamente anterior ao requerimento ou ao mês em que completou a idade (art. 48, § 2º, Lei 8.213; Decreto 3.048, art. 56, § 1º; STJ, Tema 642).'],
+             salarios: [], n, dibCalc, reajuste: 1, sm, teto };
+  const sal = prevSalarios(n.vs, ctx.rems, prevMaisDia(dibCalc, 1), T, { scFuturo: ctx.scFuturo, rural });
+  if (sal.faltamIndices.length) avisos.push(`Índice de correção ainda não publicado de ${sal.faltamIndices.length} mês(es) (${prevFaixas(sal.faltamIndices.map(x => x + '-01'))}): considerado zero.`);
+  const noMin = sal.lista.filter(x => x.origem.includes('mínimo (sem')).length;
+  if (noMin) avisos.push(`${noMin} mês(es) de emprego sem remuneração no CNIS entraram pelo salário mínimo.`);
+  if (sal.lista.some(x => x.origem.includes('projeção'))) avisos.push('Inclui contribuições futuras projetadas (valores em moeda de hoje, sem inflação futura).');
+  if (k === 'hibrida') avisos.push('Meses rurais entram na média pelo salário mínimo (art. 48, § 4º). O tempo rural remoto anterior a 1991 conta para a carência (STJ, Tema 1007), embora a IN 128 (art. 257, § 1º) ainda exija a condição de rural no requerimento.');
+  if (k.startsWith('pcd')){
+    const alt = prevMedia(sal.lista.map(x => x.corrigido), PREV_P.pcdMedia === '100' ? '80' : '100', dibCalc);
+    const coefAlt = k === 'pcd_tc' ? 1 : Math.min(1, 0.7 + 0.01 * Math.floor(n.car / 12));
+    const rmiAlt = Math.min(Math.max(Math.min(alt.media, tetoCalc ?? Infinity) * coefAlt, smCalc ?? 0), tetoCalc ?? Infinity);
+    avisos.push(`Média de 100% dos salários, como faz o INSS (Decreto 3.048, arts. 70-J e 32). Pela média dos 80% maiores (LC 142, mantida pelo art. 22 da EC 103), a renda seria ${rs(rmiAlt)}: a TNU (Tema 389) estava 4 × 1 por essa tese quando houve pedido de vista (set/2026), e os TRFs divergem.`);
+  }
   const vals = sal.lista.map(x => x.corrigido);
-  let melhor = null;
+  const tcCoef = k === 'hibrida' ? n.tcHib : n.tc;
+  const tipoMedia = da ? '80' : k.startsWith('pcd') ? PREV_P.pcdMedia : '100';
+  const permiteDescarte = !da && !k.startsWith('pcd') && k !== 'hibrida';
 
   const avaliar = (descartar) => {
     const ordem = sal.lista.map((x, i) => i).sort((a, b) => sal.lista[a].corrigido - sal.lista[b].corrigido);
     const fora = new Set(ordem.slice(0, descartar));
     const usados = vals.filter((v, i) => !fora.has(i));
-    const tcAdj = n.tc - descartar / 12, carAdj = n.car - descartar;
-    if (descartar && !prevChecar(k, { ...n, tc: tcAdj, car: carAdj }, dibCalc, sexo, grau).ok) return null;
-    const m = prevMedia(usados, ['da_tc', 'da_idade', 'da_especial'].includes(k) ? '80' : '100', dibCalc);
+    const tcAdj = tcCoef - descartar / 12, carAdj = n.car - descartar;
+    if (descartar && !prevChecar(k, { ...n, tc: n.tc - descartar / 12, car: carAdj, prof: n.prof - descartar / 12 }, dibCalc, sexo, grau).ok) return null;
+    const m = prevMedia(usados, tipoMedia, dibCalc);
     let sb = Math.min(Math.max(m.media, 0), tetoCalc ?? Infinity);
     let coef = 1, fp = null, es = null, txt = '';
-    if (k === 'da_tc' || k === 'art17' || k === 'da_idade'){
+    const prof = k === 'prof_da';
+    if (['da_tc', 'art17', 'da_idade', 'prof_da'].includes(k)){
       const e = prevExpectativa(T, n.idade, dibCalc);
       if (e.aviso) avisos.push(e.aviso);
       es = e.es;
-      if (es) fp = prevFatorPrev(tcAdj, n.idade, es, sexo);
+      if (es) fp = prevFatorPrev(prof ? n.prof : tcAdj, n.idade, es, sexo, prof);
     }
-    if (k === 'da_tc'){
-      const pts = n.idade + n.tc, alvo = sexo === 'F' ? 86 : 96;
+    if (k === 'da_tc' || k === 'prof_da'){
+      const pts = n.idade + (prof ? n.prof + 5 : n.tc), alvo = sexo === 'F' ? 86 : 96;
       if (pts >= alvo) { coef = fp ? Math.max(1, fp) : 1; txt = `pontos ${prevArred(pts, 1)} ≥ ${alvo}: sem fator (ou com ele, se maior que 1)`; }
-      else { coef = fp ?? NaN; txt = 'com fator previdenciário'; }
-    } else if (k === 'da_idade'){
+      else { coef = fp ?? NaN; txt = 'com fator previdenciário' + (prof ? ' (com o acréscimo do magistério)' : ''); }
+    } else if (k === 'da_idade' || k === 'pcd_idade'){
       coef = Math.min(1, 0.7 + 0.01 * Math.floor(carAdj / 12));
-      if (fp && fp > 1) { coef *= fp; txt = '70% + 1% a cada 12 contribuições, com fator (maior que 1)'; }
+      if (k === 'da_idade' && fp && fp > 1) { coef *= fp; txt = '70% + 1% a cada 12 contribuições, com fator (maior que 1)'; }
       else txt = '70% + 1% a cada 12 contribuições';
-    } else if (k === 'da_especial'){ coef = 1; txt = '100% do salário de benefício'; }
+    } else if (k === 'da_especial' || k === 'pcd_tc'){ coef = 1; txt = '100% do salário de benefício'; }
     else if (k === 'art17'){ coef = fp ?? NaN; txt = '100% da média, com fator previdenciário'; }
-    else if (k === 'art20'){ coef = 1; txt = '100% da média'; }
+    else if (k === 'art20' || k === 'prof20'){ coef = 1; txt = '100% da média'; }
     else { coef = prevCoef(tcAdj, sexo, grau); txt = `60% + 2% por ano acima de ${(sexo === 'F' || grau === '15') ? 15 : 20} anos`; }
     let rmi = sb * coef;
     rmi = Math.max(rmi, smCalc ?? 0); if (tetoCalc) rmi = Math.min(rmi, tetoCalc);
     return { descartados: descartar, media: m.media, usados: m.usados, divisor: m.divisor, sb, coef, fp, es, txt, rmi, tcUsado: tcAdj, fora };
   };
 
-  if (!vals.length) return { rmi: smCalc ?? null, avisos: [...avisos, 'Nenhum salário de contribuição desde 07/1994: renda pelo mínimo.'], salarios: sal.lista, n };
-  melhor = avaliar(0);
+  if (!vals.length) return { rmi: smCalc ?? null, rmiCalc: smCalc ?? null, coef: null, avisos: [...avisos, 'Nenhum salário de contribuição desde 07/1994: renda pelo mínimo.'], salarios: [], n, dibCalc, reajuste: 1, sm, teto };
+  let melhor = avaliar(0);
   /* descarte (art. 26, § 6º, EC 103): só nas regras da reforma */
-  if (!da){
+  if (permiteDescarte){
     for (let d = 1; d < vals.length; d++){
       const x = avaliar(d);
       if (!x) break;
@@ -10527,7 +10651,7 @@ function prevRenda(ctx, k, grau, dib){
   return { ...melhor, rmi: rmiDer, rmiCalc: melhor.rmi, reajuste, sm, teto, avisos: [...new Set(avisos)], salarios, n, dibCalc };
 }
 
-/* Avalia todas as regras. a: análise; opt: { projetar, scFuturo } */
+/* Avalia todas as aposentadorias. a: análise; opt: { projetar, scFuturo } */
 function prevCalcular(a, vincs, rems, T, opt = {}){
   const erros = [];
   if (!a.sexo) erros.push('Informe o sexo do segurado (aba Dados e CNIS).');
@@ -10537,18 +10661,24 @@ function prevCalcular(a, vincs, rems, T, opt = {}){
   const dataBase = a.data_base || new Date().toISOString().slice(0, 10);
   const ctx = { sexo: a.sexo, nasc: a.nascimento, dataBase, vincs: vincs.filter(v => v.considerar !== false), rems, T,
                 projetar: !!opt.projetar, scFuturo: Number(opt.scFuturo) || null };
-  ctx.tcRef = prevContar(ctx.vincs, PREV_REF, a.sexo).refConv / 360;
-  const filiacao = ctx.vincs.filter(v => v.inicio && v.tipo !== 'beneficio').map(v => v.inicio).sort()[0] || null;
+  const cRef = prevContar(ctx.vincs, PREV_REF, a.sexo);
+  ctx.tcRef = cRef.refConv / 360; ctx.profRef = cRef.profRef / 360;
+  ctx.filiacao = ctx.vincs.filter(v => v.inicio && v.tipo !== 'beneficio' && !prevEhRural(v)).map(v => v.inicio).sort()[0]
+    || ctx.vincs.filter(v => v.inicio && v.tipo !== 'beneficio').map(v => v.inicio).sort()[0] || null;
+  const filiacao = ctx.filiacao;
   const antes = filiacao && filiacao <= PREV_REF;
   const nHoje = prevNumeros(ctx, dataBase);
   const graus = ['15', '20', '25'].filter(g => nHoje.esp[g] > 0);
+  const temProf = ctx.vincs.some(v => v.professor), temPcd = ctx.vincs.some(v => v.pcd), temRural = ctx.vincs.some(v => v.rural || prevEhRural(v));
   const regras = [];
   for (const R of PREV_REGRAS){
+    if ((R.prof && !temProf) || (R.pcd && !temPcd) || (R.rural && !temRural)) continue;
     const lista = ['da_especial', 'art21'].includes(R.k) ? graus.map(g => ({ ...R, grau: g, nome: R.nome + ` — ${g} anos` })) : [R];
     for (const r of lista){
       const out = { k: r.k, grau: r.grau || null, nome: r.nome, base: r.base, aplicavel: true, motivo: null };
-      if (r.k === 'perm' && antes) { out.aplicavel = false; out.motivo = 'Filiado antes da reforma: valem as regras de transição.'; }
-      if (r.k !== 'perm' && !r.da && !antes) { out.aplicavel = false; out.motivo = 'Filiado depois da reforma: vale a regra permanente.'; }
+      const transicao = !r.da && !r.pcd && !r.rural && !['perm', 'prof_perm'].includes(r.k);
+      if (['perm', 'prof_perm'].includes(r.k) && antes) { out.aplicavel = false; out.motivo = 'Filiado antes da reforma: valem as regras de transição.'; }
+      if (transicao && !antes) { out.aplicavel = false; out.motivo = 'Filiado depois da reforma: vale a regra permanente.'; }
       if (r.da && !antes) { out.aplicavel = false; out.motivo = 'Sem contribuição antes de 13/11/2019.'; }
       if (!out.aplicavel) { regras.push(out); continue; }
       if (r.da){
@@ -10579,9 +10709,223 @@ function prevCalcular(a, vincs, rems, T, opt = {}){
   const futuras = regras.filter(r => !r.cumpre && r.data && r.calc).sort((x, y) => x.data.localeCompare(y.data));
   return { erros, regras: PREV_REGRAS.flatMap(R => regras.filter(r => r.k === R.k)), melhor: melhor ? melhor.k + (melhor.grau || '') : null,
            proxima: futuras[0] ? futuras[0].k + (futuras[0].grau || '') : null, dataBase, tcHoje: nHoje.tc, brutoHoje: nHoje.bruto,
-           idadeHoje: nHoje.idade, carHoje: nHoje.car, tcRef: ctx.tcRef, filiacao, projetar: ctx.projetar, scFuturo: ctx.scFuturo };
+           idadeHoje: nHoje.idade, carHoje: nHoje.car, tcRef: ctx.tcRef, filiacao, projetar: ctx.projetar, scFuturo: ctx.scFuturo,
+           profHoje: nHoje.prof, pcdHoje: nHoje.pcdConv, ruralHoje: nHoje.rural };
 }
 /* PREV-CALC-FIM */
+
+/* PREV-EVENTO-INICIO — benefícios que dependem de um fato (incapacidade, acidente, morte,
+   prisão, parto) e o BPC. Funções puras, como as do bloco acima. */
+
+/* Qualidade de segurado numa data (art. 15, Lei 8.213; art. 14, Decreto 3.048).
+   Mantém-se enquanto contribui ou recebe benefício; depois, pelo período de graça:
+   12 meses (+12 com mais de 120 contribuições sem perda; +12 com desemprego comprovado),
+   ou 6 meses para o facultativo. A perda se dá no dia 16 do 2º mês seguinte ao fim da graça. */
+function prevQualidade(vincs, rems, D, opt = {}){
+  const ps = prevPeriodos((vincs || []).filter(v => v.considerar !== false || v.tipo === 'beneficio'), D);
+  const cobre = ps.find(p => p.inicio <= D && p.fim >= D && (!['individual', 'facultativo'].includes(p.v.tipo)));
+  const remPorV = new Map();
+  for (const r of rems || []) if (r.valor > 0) { if (!remPorV.has(r.vinculo_id)) remPorV.set(r.vinculo_id, []); remPorV.get(r.vinculo_id).push(r.competencia); }
+  /* último mês com contribuição ou benefício, e quem era o segurado naquele mês */
+  let ult = null, tipoUlt = null;
+  for (const p of ps){
+    let fimMes = prevMes(p.fim);
+    if (['individual', 'facultativo'].includes(p.v.tipo)){
+      const cs = (remPorV.get(p.v.id) || []).filter(c => c <= D).sort();
+      if (!cs.length && !p.v.fim) continue;
+      fimMes = cs.length ? prevMes(cs[cs.length - 1]) : fimMes;
+    }
+    if (!ult || fimMes > ult) { ult = fimMes; tipoUlt = p.v.tipo; }
+  }
+  if (cobre && cobre.v.tipo !== 'beneficio') return { mantida: true, motivo: `em atividade na data (${PREV_TIPO_NOME[cobre.v.tipo] || cobre.v.tipo})`, ate: null, ultimo: ult };
+  if (cobre) return { mantida: true, motivo: 'recebendo benefício na data', ate: null, ultimo: ult };
+  if (!ult) return { mantida: false, motivo: 'sem contribuição até a data', ate: null, ultimo: null };
+  const car = prevCarencia(vincs, rems, D);
+  let graca = tipoUlt === 'facultativo' ? 6 : 12;
+  const extras = [];
+  if (tipoUlt !== 'facultativo' && car > 120) { graca += 12; extras.push('+12 meses por mais de 120 contribuições (conferir se não houve perda no meio)'); }
+  if (tipoUlt !== 'facultativo' && opt.desemprego) { graca += 12; extras.push('+12 meses por desemprego involuntário'); }
+  let fimGraca = ult; for (let i = 0; i < graca; i++) fimGraca = prevMesSeg(fimGraca);
+  /* vencimento no dia 15; se não houver expediente bancário, vai para o dia útil seguinte
+     (art. 30, II, Lei 8.212) — aqui só sábados e domingos; feriados, conferir */
+  let ate = prevMesSeg(prevMesSeg(fimGraca)) + '-15';
+  const dow = new Date(ate + 'T12:00:00Z').getUTCDay();
+  if (dow === 6) ate = prevMaisDia(ate, 2); else if (dow === 0) ate = prevMaisDia(ate, 1);
+  return { mantida: D <= ate, ate, ultimo: ult, graca, extras,
+           motivo: `última contribuição em ${ult.slice(5)}/${ult.slice(0, 4)}; período de graça de ${graca} meses${extras.length ? ' (' + extras.join('; ') + ')' : ''}; qualidade mantida até ${br(ate)}` };
+}
+
+/* Média dos salários corrigidos até a data (regra geral do art. 26 da EC 103). */
+function prevMediaAte(vincs, rems, dib, T){
+  const sal = prevSalarios(vincs, rems, dib, T, {});
+  const vals = sal.lista.map(x => x.corrigido);
+  const m = prevMedia(vals, '100', dib);
+  const teto = prevVigente(T.teto, dib)?.valor ?? Infinity;
+  const ult12 = sal.lista.slice(-12);
+  return { sb: Math.min(m.media, teto), media: m.media, n: vals.length, salarios: sal.lista,
+           media12: ult12.length ? ult12.reduce((s, x) => s + x.corrigido, 0) / ult12.length : null, faltam: sal.faltamIndices };
+}
+
+const PREV_EVENTOS = {
+  incap_temp: { nome: 'Auxílio por incapacidade temporária', base: 'Lei 8.213/91, arts. 59 a 63 e 29, § 10; EC 103/2019, art. 26' },
+  incap_perm: { nome: 'Aposentadoria por incapacidade permanente', base: 'Lei 8.213/91, arts. 42 a 45; EC 103/2019, art. 26, §§ 2º e 3º; STF, Tema 1300' },
+  acidente:   { nome: 'Auxílio-acidente', base: 'Lei 8.213/91, art. 86' },
+  pensao:     { nome: 'Pensão por morte', base: 'Lei 8.213/91, arts. 74 a 77; EC 103/2019, art. 23' },
+  reclusao:   { nome: 'Auxílio-reclusão', base: 'Lei 8.213/91, art. 80; EC 103/2019, art. 27' },
+  maternidade:{ nome: 'Salário-maternidade', base: 'Lei 8.213/91, arts. 71 a 73; STF, ADI 2.110 e 2.111' },
+  bpc:        { nome: 'Benefício assistencial (BPC/LOAS)', base: 'Lei 8.742/93, art. 20' },
+};
+
+/* ev: { tipo, data, acidente, isenta, grandeInvalidez, desemprego, dependentes:[{vinculo, nascimento, invalido}],
+         uniaoDesde, aposentadoria (valor que o falecido recebia), rendaFamiliar, pessoas, idoso, pcd, excluir } */
+function prevEvento(a, vincs, rems, T, ev){
+  const E = PREV_EVENTOS[ev.tipo]; if (!E) return { erros: ['Tipo de benefício desconhecido.'] };
+  const D = ev.data;
+  if (!D) return { erros: ['Informe a data do fato.'] };
+  const vs = vincs.filter(v => v.considerar !== false || v.tipo === 'beneficio');
+  const sm = prevVigente(T.sm, D)?.valor, teto = prevVigente(T.teto, D)?.valor;
+  const req = [], avisos = [], memoria = [];
+  const r = (nome, exigido, cumprido, ok, fmt = 'texto') => req.push({ nome, exigido, cumprido, ok, fmt });
+  const qs = prevQualidade(vs, rems, D, { desemprego: ev.desemprego });
+  const car = prevCarencia(vs, rems, prevMaisDia(D, -1));
+  const sexo = a.sexo;
+  let valor = null, duracao = null;
+
+  if (ev.tipo !== 'bpc') r('Qualidade de segurado na data do fato', 'mantida', qs.mantida ? 'mantida' : 'perdida', qs.mantida);
+  if (ev.tipo !== 'bpc') memoria.push(['Qualidade de segurado', qs.motivo]);
+
+  if (ev.tipo === 'incap_temp' || ev.tipo === 'incap_perm'){
+    const isento = ev.acidente || ev.isenta;
+    r('Carência', isento ? 'dispensada' : '12 meses', car + ' meses', isento || car >= 12);
+    if (isento) memoria.push(['Carência', ev.acidente ? 'dispensada: acidente de qualquer natureza (art. 26, II)' : 'dispensada: doença da lista (art. 151 e portaria interministerial)']);
+    const m = prevMediaAte(vs.filter(v => v.tipo !== 'beneficio'), rems, D, T);
+    memoria.push(['Média de todos os salários (corrigidos)', rs(m.media)], ['Salário de benefício', rs(m.sb)]);
+    if (ev.tipo === 'incap_temp'){
+      let v91 = m.sb * 0.91;
+      memoria.push(['91% do salário de benefício', rs(v91)]);
+      if (m.media12 != null && m.media12 < v91) { memoria.push(['Limite: média dos 12 últimos salários (art. 29, § 10)', rs(m.media12)]); v91 = m.media12; }
+      valor = Math.max(v91, sm);
+      const emp = ['empregado', 'domestico', 'avulso'].includes(vs.filter(v => v.inicio <= D && (!v.fim || v.fim >= D))[0]?.tipo);
+      memoria.push(['Início do benefício', emp ? 'empregado: a partir do 16º dia de afastamento (os 15 primeiros são pagos pela empresa)' : 'desde o início da incapacidade, se pedido em até 30 dias']);
+    } else {
+      const c = prevContar(vs.filter(v => v.tipo !== 'beneficio'), D, sexo);
+      const coef = ev.acidente ? 1 : prevCoef(c.conv / 360, sexo);
+      memoria.push(['Coeficiente', ev.acidente ? '100% (acidente do trabalho ou doença profissional, art. 26, § 3º, II, EC 103)' : `${prevPct(coef)} — 60% + 2% por ano acima de ${sexo === 'F' ? 15 : 20} anos (${prevDiasTxt(c.conv)})`]);
+      valor = Math.min(Math.max(m.sb * coef, sm), teto);
+      if (ev.grandeInvalidez) { memoria.push(['Acréscimo de 25% (assistência permanente, art. 45)', rs(valor * 0.25)]); valor *= 1.25; }
+    }
+    if (m.faltam.length) avisos.push('Há meses sem índice de correção publicado: considerado zero.');
+  }
+
+  if (ev.tipo === 'acidente'){
+    const naData = vs.filter(v => v.inicio <= D && (!v.fim || v.fim >= D) && v.tipo !== 'beneficio');
+    const tipos = naData.map(v => v.tipo);
+    const temDireito = tipos.some(t => ['empregado', 'domestico', 'avulso', 'segurado_especial'].includes(t)) || (!tipos.length && qs.mantida);
+    r('Categoria com direito (empregado, doméstico, avulso ou segurado especial)', 'sim', tipos.length ? tipos.map(t => PREV_TIPO_NOME[t]).join(', ') : 'em período de graça', temDireito);
+    r('Carência', 'dispensada', car + ' meses', true);
+    r('Redução da capacidade para o trabalho habitual (sequela consolidada)', 'comprovar', 'depende de perícia', null);
+    if (!tipos.length) avisos.push('Na data do acidente não havia vínculo ativo: em período de graça, o direito depende da última categoria do segurado.');
+    const m = prevMediaAte(vs.filter(v => v.tipo !== 'beneficio'), rems, D, T);
+    valor = m.sb * 0.5;
+    memoria.push(['Salário de benefício (média de todos os salários)', rs(m.sb)], ['50% do salário de benefício', rs(valor)],
+                 ['Início', 'dia seguinte à cessação do auxílio por incapacidade temporária, se houver; acumula com salário, não com aposentadoria']);
+    avisos.push('O auxílio-acidente pode ser menor que o salário mínimo (é indenizatório).');
+    const anterior = vs.filter(v => v.tipo === 'beneficio' && /^(31|91)/.test(v.beneficio_especie || '')).sort((x, y) => (y.fim || '').localeCompare(x.fim || ''))[0];
+    if (anterior) memoria.push(['Benefício por incapacidade anterior no CNIS', `${anterior.beneficio_especie || 'benefício'}${anterior.beneficio_nb ? ' NB ' + anterior.beneficio_nb : ''}, de ${br(anterior.inicio)} a ${br(anterior.fim)} — o auxílio-acidente começaria em ${anterior.fim ? br(prevMaisDia(anterior.fim, 1)) : '—'}`]);
+  }
+
+  if (ev.tipo === 'pensao' || ev.tipo === 'reclusao'){
+    const deps = (ev.dependentes || []).filter(d => d.vinculo);
+    r('Dependentes informados', 'ao menos 1', String(deps.length), deps.length > 0);
+    if (ev.tipo === 'reclusao'){
+      r('Carência', '24 meses', car + ' meses', car >= 24);
+      const m = prevMediaAte(vs.filter(v => v.tipo !== 'beneficio'), rems, D, T);
+      const desde = prevMes(prevMaisMes(D, -12));
+      const ult12 = m.salarios.filter(x => x.ym >= desde), media12 = ult12.length ? ult12.reduce((s, x) => s + x.sc, 0) / ult12.length : 0;
+      const lim = prevVigente(T.reclusao || [], D)?.valor;
+      r('Baixa renda (média dos 12 salários anteriores à prisão)', lim ? 'até ' + rs(lim) : 'limite do ano não cadastrado', rs(media12), lim ? media12 <= lim : null);
+      memoria.push(['Média dos salários dos 12 meses anteriores à prisão (sem correção)', `${rs(media12)} (${ult12.length} mês(es) com salário)`]);
+    }
+    /* base: aposentadoria que recebia, ou a por incapacidade permanente a que teria direito */
+    let base;
+    if (ev.aposentadoria) { base = Number(ev.aposentadoria); memoria.push(['Aposentadoria que o segurado recebia', rs(base)]); }
+    else {
+      const m = prevMediaAte(vs.filter(v => v.tipo !== 'beneficio'), rems, D, T);
+      const c = prevContar(vs.filter(v => v.tipo !== 'beneficio'), D, sexo);
+      const coef = ev.acidente ? 1 : prevCoef(c.conv / 360, sexo);
+      const bruto = m.sb * coef;
+      base = Math.min(Math.max(bruto, sm), teto);
+      memoria.push(['Base: aposentadoria por incapacidade permanente a que teria direito',
+        `${rs(m.sb)} × ${prevPct(coef)} = ${rs(bruto)}${bruto < sm ? ` — elevada ao mínimo (${rs(sm)})` : ''}`]);
+    }
+    const temInvalido = deps.some(d => d.invalido);
+    const cota = temInvalido ? 1 : Math.min(1, 0.5 + 0.1 * deps.length);
+    valor = base * cota;
+    if (ev.tipo === 'pensao' && valor < sm) memoria.push(['Valor da pensão', `${rs(valor)} — elevado ao mínimo (${rs(sm)})`]);
+    memoria.push(['Cota familiar', temInvalido ? '100% até o teto (há dependente inválido ou com deficiência intelectual, mental ou grave — art. 23, § 2º, EC 103)' : `50% + 10% por dependente (${deps.length}) = ${prevPct(cota)}`]);
+    if (ev.tipo === 'pensao') valor = Math.max(valor, sm);
+    if (ev.tipo === 'reclusao') { valor = sm; memoria.push(['Valor do auxílio-reclusão', 'um salário mínimo: não pode passar dele (art. 27, § 1º, EC 103) nem ficar abaixo, por substituir a renda (art. 201, § 2º, CF)']); }
+    /* duração por dependente */
+    duracao = deps.map(d => {
+      const idade = d.nascimento ? prevIdade(d.nascimento, D).anos : null;
+      if (d.vinculo === 'conjuge'){
+        if (ev.tipo === 'reclusao') return { ...d, duracao: 'enquanto durar a prisão em regime fechado' };
+        const curta = car < 18 || (ev.uniaoDesde && prevIdade(ev.uniaoDesde, D).anos < 2);
+        if (curta && !ev.acidente) return { ...d, duracao: '4 meses (menos de 18 contribuições ou menos de 2 anos de união)' };
+        if (idade == null) return { ...d, duracao: 'informe a data de nascimento' };
+        const faixa = PREV_P.pensaoDuracao.find(([lim]) => idade < lim);
+        return { ...d, duracao: faixa[1] ? `${faixa[1]} anos (tinha ${Math.floor(idade)} anos no óbito)` : `vitalícia (tinha ${Math.floor(idade)} anos no óbito)` };
+      }
+      if (d.vinculo === 'filho') return { ...d, duracao: d.invalido ? 'enquanto durar a invalidez ou deficiência' : idade == null ? 'até os 21 anos' : `até os 21 anos (${br(prevAniversario(d.nascimento, 21))})` };
+      return { ...d, duracao: d.invalido ? 'enquanto durar a invalidez ou deficiência' : 'conferir a regra do dependente' };
+    });
+    if (!qs.mantida && ev.tipo === 'pensao') avisos.push('Sem qualidade de segurado na data do óbito, a pensão ainda é devida se o falecido já tinha cumprido os requisitos de alguma aposentadoria (art. 102, § 2º, Lei 8.213; Súmula 416 do STJ): calcule as aposentadorias com a data-base no dia do óbito.');
+    if (deps.some(d => d.vinculo === 'outro')) avisos.push('Pais e irmãos só são dependentes se não houver cônjuge, companheiro ou filho, e precisam provar a dependência econômica.');
+  }
+
+  if (ev.tipo === 'maternidade'){
+    r('Carência', 'dispensada (STF, ADI 2.110 e 2.111)', car + ' meses', true);
+    const naData = vs.filter(v => v.inicio <= D && (!v.fim || v.fim >= D) && v.tipo !== 'beneficio');
+    const t = naData[0]?.tipo || null;
+    const sal = prevSalarios(vs.filter(v => v.tipo !== 'beneficio'), rems, D, T, {}).lista;
+    if (['empregado', 'avulso'].includes(t)){
+      const ult = sal[sal.length - 1];
+      valor = ult ? ult.bruto : sm;
+      avisos.push('Se a remuneração da empregada é variável, o valor é a média das 6 últimas (Decreto 3.048, art. 94).');
+      memoria.push(['Empregada ou avulsa', 'remuneração integral (última no CNIS: ' + (ult ? rs(ult.bruto) + ' em ' + ult.ym.slice(5) + '/' + ult.ym.slice(0, 4) : '—') + '), paga pela empresa']);
+    } else if (t === 'segurado_especial'){ valor = sm; memoria.push(['Segurada especial', 'um salário mínimo']); }
+    else {
+      const desde = prevMes(prevMaisMes(D, -15));
+      const ult = sal.filter(x => x.ym >= desde).slice(-12);
+      valor = Math.max(ult.reduce((s, x) => s + x.sc, 0) / 12, sm);
+      memoria.push([t === 'domestico' ? 'Doméstica' : 'Contribuinte individual, facultativa ou desempregada',
+        `1/12 da soma dos ${ult.length} últimos salários de contribuição dos 15 meses anteriores (${rs(ult.reduce((s, x) => s + x.sc, 0))})`]);
+      if (t === 'domestico') { const u = sal[sal.length - 1]; valor = u ? u.sc : sm; }
+    }
+    valor = Math.max(valor, sm);
+    duracao = [{ duracao: '120 dias (a partir de até 28 dias antes do parto)' }];
+  }
+
+  if (ev.tipo === 'bpc'){
+    const idade = a.nascimento ? prevIdade(a.nascimento, D).anos : null;
+    const pessoas = Math.max(1, Number(ev.pessoas) || 1);
+    const renda = Math.max(0, (Number(ev.rendaFamiliar) || 0) - (Number(ev.excluir) || 0));
+    const per = renda / pessoas;
+    if (!ev.pcd) r('Idade', '65 anos', idade == null ? '—' : prevDiasTxt(idade * 360), idade != null && idade >= 65);
+    else r('Deficiência de longo prazo (avaliação médica e social)', 'comprovar', 'depende de avaliação', null);
+    r('Renda por pessoa da família', 'até ' + rs(sm / 4) + ' (1/4 do mínimo)', rs(per), per <= sm / 4);
+    if (per > sm / 4 && per <= sm / 2) avisos.push('A renda passa de 1/4 do mínimo, mas não de 1/2: o critério pode ser flexibilizado (art. 20, § 11-A, Lei 8.742, e jurisprudência), com prova da vulnerabilidade.');
+    memoria.push(['Renda considerada', `${rs(renda)} ÷ ${pessoas} pessoa(s) = ${rs(per)}`]);
+    if (Number(ev.excluir)) memoria.push(['Excluído da conta', rs(Number(ev.excluir)) + ' (BPC ou benefício de até 1 mínimo de idoso ou pessoa com deficiência da família, art. 20, § 14)']);
+    valor = sm;
+    avisos.push('O BPC exige inscrição no CadÚnico atualizada e não gera 13º nem pensão.');
+  }
+
+  if (valor != null && ev.tipo !== 'acidente' && ev.tipo !== 'reclusao' && ev.tipo !== 'maternidade' && !(ev.tipo === 'incap_perm' && ev.grandeInvalidez) && teto) valor = Math.min(valor, teto);
+  const ok = req.every(x => x.ok !== false);
+  return { tipo: ev.tipo, nome: E.nome, base: E.base, data: D, req, ok, pendente: req.some(x => x.ok == null), valor, memoria, avisos, duracao, qualidade: qs };
+}
+/* PREV-EVENTO-FIM */
 
 /* ----- leitura do PDF (pdf.js, carregado só quando alguém abre um CNIS) */
 let PDFJS = null;
@@ -10714,7 +11058,7 @@ async function prevCarregar(id){
     prevTodas('prev_remuneracao', 'id,vinculo_id,competencia,valor,contribuicao,pagamento,indicadores,origem,considerar', id),
     prevTodas('prev_pendencia', '*', id),
   ]);
-  if (PREV.a?.id !== id) Object.assign(PREV, { aba: 'dados', previa: null, arquivo: null, editando: null, remAberto: null, msg: '', opt: null });
+  if (PREV.a?.id !== id) Object.assign(PREV, { aba: 'dados', previa: null, arquivo: null, editando: null, remAberto: null, msg: '', opt: null, ev: null, evRes: null });
   PREV.calc = null;   /* os dados podem ter mudado: o cálculo é refeito quando pedido */
   PREV.sims = (await sb.from('prev_simulacao').select('id,criado_em,data_base,melhor,rmi').eq('analise_id', id)
     .order('criado_em', { ascending: false })).data || [];
@@ -10990,7 +11334,7 @@ function prevAbaVinculos(){
         <td>${v.seq ?? '—'}</td>
         <td><b>${esc(v.empregador_nome || '—')}</b><span class="sub">${esc(v.empregador_doc || '')}${v.beneficio_nb ? ' NB ' + esc(v.beneficio_nb) : ''}</span>
           <span class="sub">${v.origem === 'manual' ? '<span class="pill taref">incluído à mão</span>' : v.alterado ? '<span class="pill warn">alterado</span>' : 'CNIS'}
-          ${v.especial ? ` <span class="pill ser">especial ${v.especial} anos</span>` : ''}${v.rural ? ' <span class="pill good">rural</span>' : ''}${v.pcd ? ` <span class="pill presc">PcD ${esc(v.pcd)}</span>` : ''}</span>
+          ${v.especial ? ` <span class="pill ser">especial ${v.especial} anos</span>` : ''}${v.rural ? ' <span class="pill good">rural</span>' : ''}${v.professor ? ' <span class="pill serie">magistério</span>' : ''}${v.pcd ? ` <span class="pill presc">PcD ${esc(v.pcd)}</span>` : ''}</span>
           ${v.prova ? `<span class="q">prova: ${esc(v.prova)}</span>` : ''}${v.obs ? `<span class="q">${esc(v.obs)}</span>` : ''}</td>
         <td>${esc(PREV_TIPO_NOME[v.tipo] || v.tipo)}</td>
         <td class="dt">${br(v.inicio)}</td>
@@ -11038,6 +11382,7 @@ function prevFormVinculo(v){
         <select id="pv-pcd"><option value="">não</option>
           ${['leve', 'moderada', 'grave'].map(e => `<option value="${e}" ${x.pcd === e ? 'selected' : ''}>${e}</option>`).join('')}</select></label>
       <label style="display:flex;gap:6px;align-items:center;font-size:12.5px"><input type="checkbox" id="pv-rural" ${x.rural ? 'checked' : ''}> atividade rural</label>
+      <label style="display:flex;gap:6px;align-items:center;font-size:12.5px"><input type="checkbox" id="pv-professor" ${x.professor ? 'checked' : ''}> magistério (educação infantil, fundamental ou médio)</label>
       <label style="display:flex;gap:6px;align-items:center;font-size:12.5px"><input type="checkbox" id="pv-considerar" ${x.considerar !== false ? 'checked' : ''}> conta na análise</label>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
@@ -11056,7 +11401,7 @@ window.prevSalvarVinculo = async (id) => {
   const val = k => g(k)?.value?.trim() || null;
   const st = g('st');
   const dados = { tipo: val('tipo') || 'outro', empregador_nome: val('empregador_nome'), empregador_doc: val('empregador_doc'),
-    inicio: val('inicio'), fim: val('fim'), especial: val('especial'), pcd: val('pcd'), rural: !!g('rural')?.checked,
+    inicio: val('inicio'), fim: val('fim'), especial: val('especial'), pcd: val('pcd'), rural: !!g('rural')?.checked, professor: !!g('professor')?.checked,
     considerar: !!g('considerar')?.checked, prova: val('prova'), obs: val('obs') };
   if (!dados.inicio) { st.textContent = 'informe a data de início'; return; }
   if (dados.fim && dados.fim < dados.inicio) { st.textContent = 'o fim está antes do início'; return; }
@@ -11167,12 +11512,13 @@ async function prevCarregarTabelas(forcar){
   for (const x of ind) { inpc[x.competencia.slice(0, 7)] = Number(x.inpc); if (x.correcao != null) corr[x.competencia.slice(0, 7)] = Number(x.correcao); }
   PREV.T = { sm: par.filter(x => x.tipo === 'salario_minimo').map(x => ({ ...x, valor: Number(x.valor) })),
              teto: par.filter(x => x.tipo === 'teto').map(x => ({ ...x, valor: Number(x.valor) })),
+             reclusao: par.filter(x => x.tipo === 'limite_reclusao').map(x => ({ ...x, valor: Number(x.valor) })),
              inpc, corr, sobrevida: sob.map(x => ({ ...x, expectativa: Number(x.expectativa) })),
              ultimoInpc: ind.length ? ind[ind.length - 1].competencia : null };
   return PREV.T;
 }
 
-const prevFmtReq = (v, fmt) => v == null ? '—' : fmt === 'meses' ? Math.floor(v) + ' meses'
+const prevFmtReq = (v, fmt) => v == null ? '—' : fmt === 'simnao' ? (v ? 'sim' : 'não') : fmt === 'meses' ? Math.floor(v) + ' meses'
   : fmt === 'pontos' ? prevArred(v, 2).toLocaleString('pt-BR') + ' pontos' : prevDiasTxt(v * 360);
 const prevPct = v => v == null || isNaN(v) ? '—' : (v * 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + '%';
 
@@ -11193,6 +11539,9 @@ function prevAbaBeneficios(){
       <div class="kpi"><div class="n" style="font-size:18px">${prevDiasTxt(c.tcRef * 360)}</div><div class="l">tempo em 13/11/2019 (base dos pedágios)</div></div>
       <div class="kpi"><div class="n">${c.carHoje}</div><div class="l">meses de carência</div></div>
       <div class="kpi"><div class="n" style="font-size:18px">${prevDiasTxt(c.idadeHoje * 360)}</div><div class="l">idade na data-base</div></div>
+      ${c.profHoje ? `<div class="kpi"><div class="n" style="font-size:18px">${prevDiasTxt(c.profHoje * 360)}</div><div class="l">tempo de magistério</div></div>` : ''}
+      ${c.pcdHoje ? `<div class="kpi"><div class="n" style="font-size:18px">${prevDiasTxt(c.pcdHoje.pcdAnos * 360)}</div><div class="l">tempo como pessoa com deficiência (grau preponderante: ${esc(c.pcdHoje.grau)})</div></div>` : ''}
+      ${c.ruralHoje ? `<div class="kpi"><div class="n" style="font-size:18px">${prevDiasTxt(c.ruralHoje * 360)}</div><div class="l">tempo rural</div></div>` : ''}
     </div>
     ${melhor ? `<div class="aviso" style="border-color:var(--good)"><b>Melhor benefício na data-base (${br(c.dataBase)}):</b> ${esc(melhor.nome)} —
         <b>${rs(melhor.calc.rmi)}</b> por mês (${esc(melhor.base)}).</div>`
@@ -11214,9 +11563,10 @@ function prevAbaBeneficios(){
         <span class="sub" id="pb-st" style="display:inline"></span></div>
     </div>
     <p class="nota" style="margin:0 0 18px">Estimativa para análise: confira a memória de cálculo antes de usar em peça ou orientação ao cliente.
-      Ainda não entram nesta etapa: aposentadoria do professor, da pessoa com deficiência (LC 142), rural e híbrida, e a tabela de carência do art. 142.</p>`;
+      As regras do professor, da pessoa com deficiência, rural e híbrida aparecem quando algum vínculo está marcado assim (aba Vínculos).</p>`;
   }
   const sims = PREV.sims || [];
+  const cardEv = prevCardEvento();
   return `
   <div class="card"><h2>Calcular</h2>
     <p class="nota">Usa os vínculos marcados como "conta", o sexo, o nascimento e a data-base da aba Dados e CNIS
@@ -11230,6 +11580,7 @@ function prevAbaBeneficios(){
     </div>
   </div>
   ${corpo}
+  ${cardEv}
   ${sims.length ? `<div class="card"><h2>Simulações guardadas</h2><table><tr><th>Quando</th><th>Data-base</th><th>Melhor regra</th><th>Renda</th></tr>
     ${sims.map(s => `<tr><td class="dt">${br(s.criado_em)}</td><td class="dt">${br(s.data_base)}</td><td>${esc(s.melhor || '—')}</td><td class="dt">${s.rmi ? rs(s.rmi) : '—'}</td></tr>`).join('')}</table></div>` : ''}`;
 }
@@ -11320,6 +11671,85 @@ window.prevGuardarSim = async () => {
   if (error) { st.textContent = error.message; return; }
   st.textContent = 'guardada';
   PREV.sims = (await sb.from('prev_simulacao').select('id,criado_em,data_base,melhor,rmi').eq('analise_id', PREV.a.id).order('criado_em', { ascending: false })).data || [];
+  prevPintar();
+};
+
+
+/* ----- simulador de outros benefícios (incapacidade, acidente, pensão, reclusão, maternidade, BPC) */
+const PREV_EV_DATA = { incap_temp: 'Início da incapacidade (DII)', incap_perm: 'Início da incapacidade (DII)', acidente: 'Data do acidente',
+  pensao: 'Data do óbito', reclusao: 'Data da prisão', maternidade: 'Data do parto, adoção ou guarda', bpc: 'Data do requerimento' };
+function prevCardEvento(){
+  const e = PREV.ev || (PREV.ev = { tipo: 'incap_temp', data: PREV.a.data_base, dependentes: [{}, {}, {}] });
+  const ck = (k, rot) => `<label style="font-size:12.8px;display:flex;gap:6px;align-items:center"><input type="checkbox" id="pe-${k}" ${e[k] ? 'checked' : ''}> ${rot}</label>`;
+  const tx = (k, rot, tipo = 'text', ph = '') => `<label style="display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--i3)">${rot}
+    <input type="${tipo}" id="pe-${k}" value="${esc(e[k] ?? '')}" placeholder="${ph}"></label>`;
+  let extra = '';
+  if (['incap_temp', 'incap_perm'].includes(e.tipo))
+    extra = ck('acidente', 'acidente de qualquer natureza ou do trabalho') + ck('isenta', 'doença que dispensa carência (lista oficial)')
+      + (e.tipo === 'incap_perm' ? ck('grandeInvalidez', 'precisa de assistência permanente (+25%)') : '') + ck('desemprego', 'desemprego involuntário (amplia a graça)');
+  if (e.tipo === 'acidente') extra = ck('desemprego', 'desemprego involuntário (amplia a graça)');
+  if (['pensao', 'reclusao'].includes(e.tipo)){
+    extra = (e.tipo === 'pensao' ? tx('aposentadoria', 'Aposentadoria que recebia (se já aposentado)', 'text', 'R$') + tx('uniaoDesde', 'Casamento/união desde', 'date')
+        + ck('acidente', 'óbito por acidente ou doença do trabalho') : '') + ck('desemprego', 'desemprego involuntário (amplia a graça)')
+      + `<div style="grid-column:1/-1"><span class="sub">Dependentes</span>
+        ${e.dependentes.map((d, i) => `<div class="filtros" style="margin:4px 0">
+          <select id="pd-v${i}"><option value="">—</option>${[['conjuge', 'cônjuge ou companheiro(a)'], ['filho', 'filho(a) ou equiparado'], ['outro', 'pai, mãe ou irmão']]
+            .map(([k, r]) => `<option value="${k}" ${d.vinculo === k ? 'selected' : ''}>${r}</option>`).join('')}</select>
+          <input type="date" id="pd-n${i}" value="${esc(d.nascimento || '')}" title="nascimento">
+          <label style="font-size:12.5px"><input type="checkbox" id="pd-i${i}" ${d.invalido ? 'checked' : ''}> inválido ou com deficiência intelectual, mental ou grave</label></div>`).join('')}
+        <button class="btn" onclick="prevEvLer();PREV.ev.dependentes.push({});prevPintar()">+ dependente</button></div>`;
+  }
+  if (e.tipo === 'bpc')
+    extra = `<label style="display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--i3)">Pela
+      <select id="pe-pcd"><option value="">idade (65 anos)</option><option value="1" ${e.pcd ? 'selected' : ''}>deficiência</option></select></label>`
+      + tx('rendaFamiliar', 'Renda mensal da família (R$)') + tx('pessoas', 'Pessoas na família') + tx('excluir', 'Renda que não entra na conta (R$)', 'text', 'BPC ou benefício de 1 mínimo de idoso/PcD');
+  const res = PREV.evRes;
+  const fmt = q => q.ok === true ? '<span class="pill good">ok</span>' : q.ok === false ? '<span class="pill crit">falta</span>' : '<span class="pill warn">a comprovar</span>';
+  return `<div class="card"><h2>Outros benefícios</h2>
+    <p class="nota">Para benefícios que dependem de um fato (incapacidade, acidente, morte, prisão, parto) e para o BPC. Usa os mesmos vínculos e remunerações da análise.</p>
+    <div style="padding:0 18px 14px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;align-items:end">
+        <label style="display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--i3)">Benefício
+          <select id="pe-tipo" onchange="prevEvLer();PREV.ev.tipo=this.value;PREV.evRes=null;prevPintar()">
+            ${Object.entries(PREV_EVENTOS).map(([k, v]) => `<option value="${k}" ${e.tipo === k ? 'selected' : ''}>${v.nome}</option>`).join('')}</select></label>
+        ${tx('data', PREV_EV_DATA[e.tipo], 'date')}
+        ${extra}
+      </div>
+      <p style="margin:12px 0 0"><button class="btn ok" onclick="prevSimularEvento()">Simular</button> <span class="sub" id="pe-st" style="display:inline"></span></p>
+    </div>
+    ${res ? (res.erros ? res.erros.map(x => `<div class="aviso" style="margin:0 18px 14px">${esc(x)}</div>`).join('') : `
+    <div style="padding:0 18px 16px">
+      <div class="aviso" style="border-color:${res.ok && !res.pendente ? 'var(--good)' : res.ok ? 'var(--warn)' : 'var(--crit)'}">
+        <b>${esc(res.nome)}</b> — ${res.ok ? (res.pendente ? 'requisitos documentais cumpridos; falta comprovar o que está marcado' : 'requisitos cumpridos') : 'falta requisito'}.
+        ${res.valor != null ? ` Valor estimado: <b>${rs(res.valor)}</b> por mês.` : ''} <span class="sub">${esc(res.base)}</span></div>
+      <table class="mtab"><tr><th>Requisito</th><th>Exigido</th><th>Situação</th><th></th></tr>
+        ${res.req.map(q => `<tr><td>${esc(q.nome)}</td><td>${esc(String(q.exigido))}</td><td>${esc(String(q.cumprido))}</td><td>${fmt(q)}</td></tr>`).join('')}</table>
+      <table class="mtab">${res.memoria.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</table>
+      ${res.duracao ? `<b style="font-size:12.5px">Duração</b><ul style="margin:4px 0 8px;font-size:13px">${res.duracao.map(d => `<li>${d.vinculo ? esc({ conjuge: 'Cônjuge/companheiro(a)', filho: 'Filho(a)', outro: 'Pai, mãe ou irmão' }[d.vinculo]) + ': ' : ''}${esc(d.duracao)}</li>`).join('')}</ul>` : ''}
+      ${res.avisos.map(x => `<p class="q" style="margin:2px 0">${esc(x)}</p>`).join('')}
+    </div>`) : ''}
+  </div>`;
+}
+window.prevEvLer = () => {
+  const e = PREV.ev, g = k => document.getElementById('pe-' + k);
+  if (!e) return;
+  for (const k of ['data', 'aposentadoria', 'uniaoDesde', 'rendaFamiliar', 'pessoas', 'excluir']) if (g(k)) e[k] = g(k).value.trim();
+  for (const k of ['acidente', 'isenta', 'grandeInvalidez', 'desemprego']) if (g(k)) e[k] = g(k).checked;
+  if (g('pcd')) e.pcd = !!g('pcd').value;
+  (e.dependentes || []).forEach((d, i) => {
+    const v = document.getElementById('pd-v' + i); if (!v) return;
+    d.vinculo = v.value; d.nascimento = document.getElementById('pd-n' + i).value || null; d.invalido = document.getElementById('pd-i' + i).checked;
+  });
+};
+window.prevSimularEvento = async () => {
+  prevEvLer();
+  const st = document.getElementById('pe-st');
+  st.textContent = 'carregando as tabelas oficiais…';
+  try { await prevCarregarTabelas(); } catch (e) { st.textContent = e.message; return; }
+  const num = s => { const t = String(s || '').replace(/[^\d.,]/g, ''); return t ? (t.includes(',') ? cnisNum(t) : Number(t)) : null; };
+  const e = { ...PREV.ev, aposentadoria: num(PREV.ev.aposentadoria), rendaFamiliar: num(PREV.ev.rendaFamiliar), excluir: num(PREV.ev.excluir) };
+  try { PREV.evRes = prevEvento(PREV.a, PREV.vinc, PREV.rem, PREV.T, e); }
+  catch (x) { PREV.evRes = { erros: ['Erro na simulação: ' + x.message] }; }
   prevPintar();
 };
 
