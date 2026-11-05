@@ -10194,6 +10194,7 @@ function prevGerarPendencias(vincs, rems, legenda, hoje){
    regra, com a memória de cálculo. Não tocam na tela nem no banco.
 
    Tabelas (T): { sm:[{inicio,valor}], teto:[{inicio,valor}], inpc:{'AAAA-MM': variação %},
+                  corr:{'AAAA-MM': índice oficial de correção %} (sem ele, usa o INPC),
                   sobrevida:[{ano_tabua, idade, expectativa, vigencia_inicio, vigencia_fim}] }
    Tempo é contado em dias comerciais (mês de 30, ano de 360). */
 const PREV_REF = '2019-11-13';             // véspera da vigência da EC 103/2019
@@ -10271,17 +10272,19 @@ function prevCarencia(vincs, rems, ate){
   return meses.size;
 }
 
-/* Fator de atualização de cada competência até o benefício: INPC acumulado do mês
-   seguinte ao da competência até o mês anterior ao do início do benefício. */
+/* Fator de atualização de cada competência até o benefício: INPC acumulado do próprio
+   mês da competência até o mês anterior ao do início do benefício (art. 33 do
+   Decreto 3.048/99; é como saem as tabelas mensais da Previdência — p. ex., para
+   DIB 01/2024, a competência 12/2023 tem fator 1,005500 e a de 07/1994, 10,627967). */
 function prevFatores(T, dib){
   const fim = prevMesAnt(prevMes(dib));
   const out = {}; let acc = 1; const faltam = [];
   for (let ym = fim; ym >= '1994-07'; ym = prevMesAnt(ym)){
-    out[ym] = acc;
-    const v = T.inpc[ym];
+    const v = T.corr?.[ym] ?? T.inpc[ym];
     if (v == null) faltam.push(ym); else acc *= 1 + v / 100;
+    out[ym] = acc;
   }
-  return { f: out, faltam: faltam.filter(ym => ym > '1994-07') };
+  return { f: out, faltam };
 }
 
 /* Os salários de contribuição de julho/1994 até o mês anterior ao benefício.
@@ -10456,7 +10459,7 @@ function prevRenda(ctx, k, grau, dib){
   const dibCalc = da ? PREV_REF : dib;                 // direito adquirido: cálculo na data da reforma
   const n = prevNumeros(ctx, dibCalc);
   const sal = prevSalarios(n.vs, ctx.rems, prevMaisDia(dibCalc, 1), T, { scFuturo: ctx.scFuturo });
-  if (sal.faltamIndices.length) avisos.push(`INPC ainda não publicado de ${sal.faltamIndices.length} mês(es) (${prevFaixas(sal.faltamIndices.map(x => x + '-01'))}): considerado zero.`);
+  if (sal.faltamIndices.length) avisos.push(`Índice de correção ainda não publicado de ${sal.faltamIndices.length} mês(es) (${prevFaixas(sal.faltamIndices.map(x => x + '-01'))}): considerado zero.`);
   const noMin = sal.lista.filter(x => x.origem.includes('mínimo')).length;
   if (noMin) avisos.push(`${noMin} mês(es) de emprego sem remuneração no CNIS entraram pelo salário mínimo.`);
   if (sal.lista.some(x => x.origem.includes('projeção'))) avisos.push('Inclui contribuições futuras projetadas (valores em moeda de hoje, sem inflação futura).');
@@ -11157,13 +11160,14 @@ async function prevCarregarTabelas(forcar){
   };
   const [par, ind, sob] = await Promise.all([
     todas('prev_parametro', 'tipo,inicio,valor,ato', 'inicio'),
-    todas('prev_indice', 'competencia,inpc', 'competencia'),
+    todas('prev_indice', 'competencia,inpc,correcao', 'competencia'),
     todas('prev_sobrevida', 'ano_tabua,idade,expectativa,vigencia_inicio,vigencia_fim', 'ano_tabua'),
   ]);
-  const inpc = {}; for (const x of ind) inpc[x.competencia.slice(0, 7)] = Number(x.inpc);
+  const inpc = {}, corr = {};
+  for (const x of ind) { inpc[x.competencia.slice(0, 7)] = Number(x.inpc); if (x.correcao != null) corr[x.competencia.slice(0, 7)] = Number(x.correcao); }
   PREV.T = { sm: par.filter(x => x.tipo === 'salario_minimo').map(x => ({ ...x, valor: Number(x.valor) })),
              teto: par.filter(x => x.tipo === 'teto').map(x => ({ ...x, valor: Number(x.valor) })),
-             inpc, sobrevida: sob.map(x => ({ ...x, expectativa: Number(x.expectativa) })),
+             inpc, corr, sobrevida: sob.map(x => ({ ...x, expectativa: Number(x.expectativa) })),
              ultimoInpc: ind.length ? ind[ind.length - 1].competencia : null };
   return PREV.T;
 }

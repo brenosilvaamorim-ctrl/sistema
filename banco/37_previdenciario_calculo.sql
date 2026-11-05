@@ -3,8 +3,8 @@
 -- O cálculo das aposentadorias roda na tela, mas os números oficiais moram aqui,
 -- para que a atualização (manual ou pelo robô semanal) não exija republicar o sistema:
 --   prev_parametro — salário mínimo e teto do RGPS, com a data em que cada valor começa;
---   prev_indice    — INPC mensal (IBGE), que corrige os salários de contribuição e
---                    reajusta os benefícios;
+--   prev_indice    — índice mensal de correção dos salários de contribuição (tabela oficial
+--                    da Previdência) e INPC mensal (IBGE), que reajusta os benefícios;
 --   prev_sobrevida — expectativa de sobrevida do IBGE (tábua de ambos os sexos), usada
 --                    no fator previdenciário, com o período em que cada tábua vale;
 --   prev_simulacao — o resultado de cada cálculo que se quis guardar, por análise.
@@ -26,7 +26,10 @@ create table if not exists public.prev_parametro (
 
 create table if not exists public.prev_indice (
   competencia date primary key,              -- dia 1º do mês
-  inpc        numeric(8,4) not null,          -- variação mensal, em %
+  inpc        numeric(8,4) not null,          -- variação mensal, em % (reajuste dos benefícios)
+  correcao    numeric(12,6),                  -- índice mensal de correção dos salários de contribuição, em %
+                                              -- (IPC-r, INPC e IGP-DI conforme a época), tirado da tabela oficial do art. 33
+                                              -- do Decreto 3.048; sem ele, o sistema usa o INPC
   fonte       text,
   atualizado_em timestamptz not null default now()
 );
@@ -552,6 +555,131 @@ insert into public.prev_indice (competencia, inpc, fonte) values
   ('2026-08-01', -0.32, 'IBGE/SIDRA 1736'),
   ('2026-09-01', 0.82, 'IBGE/SIDRA 1736')
 on conflict (competencia) do update set inpc = excluded.inpc, fonte = excluded.fonte, atualizado_em = now();
+
+-- ------------------------------------------------------------ índice de correção dos salários de contribuição
+-- Tirado da tabela oficial da Portaria MPS 1.458/2026 (fatores para DIB 10/2026, art. 33 do Decreto 3.048):
+-- índice do mês = fator do mês ÷ fator do mês seguinte, de 07/1994 a 02/2004 (IPC-r, INPC e IGP-DI);
+-- de 03/2004 em diante o índice oficial é o INPC (coluna inpc), salvo 02/2008, em que a tabela oficial usa 0,51%.
+-- Reproduz a tabela de 01/2024 (Portaria MPS 51/2024).
+update public.prev_indice p set correcao = v.c from (values
+  ('1994-07-01'::date, 6.080016),
+  ('1994-08-01'::date, 5.460033),
+  ('1994-09-01'::date, 1.50994),
+  ('1994-10-01'::date, 1.860015),
+  ('1994-11-01'::date, 3.269994),
+  ('1994-12-01'::date, 2.190037),
+  ('1995-01-01'::date, 1.670023),
+  ('1995-02-01'::date, 0.989961),
+  ('1995-03-01'::date, 1.410045),
+  ('1995-04-01'::date, 1.919975),
+  ('1995-05-01'::date, 2.569999),
+  ('1995-06-01'::date, 1.819952),
+  ('1995-07-01'::date, 2.460059),
+  ('1995-08-01'::date, 1.01995),
+  ('1995-09-01'::date, 1.17004),
+  ('1995-10-01'::date, 1.400054),
+  ('1995-11-01'::date, 1.509967),
+  ('1995-12-01'::date, 1.649965),
+  ('1996-01-01'::date, 1.459973),
+  ('1996-02-01'::date, 0.71007),
+  ('1996-03-01'::date, 0.289977),
+  ('1996-04-01'::date, 0.699939),
+  ('1996-05-01'::date, 1.680071),
+  ('1996-06-01'::date, 1.21996),
+  ('1996-07-01'::date, 1.090002),
+  ('1996-08-01'::date, 0.0041),
+  ('1996-09-01'::date, 0.129912),
+  ('1996-10-01'::date, 0.220005),
+  ('1996-11-01'::date, 0.280025),
+  ('1996-12-01'::date, 0.88003),
+  ('1997-01-01'::date, 1.579958),
+  ('1997-02-01'::date, 0.420074),
+  ('1997-03-01'::date, 1.159905),
+  ('1997-04-01'::date, 0.590051),
+  ('1997-05-01'::date, 0.299929),
+  ('1997-06-01'::date, 0.700009),
+  ('1997-07-01'::date, 0.089965),
+  ('1997-08-01'::date, 0.0),
+  ('1997-09-01'::date, 0.590112),
+  ('1997-10-01'::date, 0.339975),
+  ('1997-11-01'::date, 0.82999),
+  ('1997-12-01'::date, 0.69005),
+  ('1998-01-01'::date, 0.879892),
+  ('1998-02-01'::date, 0.020031),
+  ('1998-03-01'::date, 0.229978),
+  ('1998-04-01'::date, 0.0),
+  ('1998-05-01'::date, 0.230053),
+  ('1998-06-01'::date, 0.280024),
+  ('1998-07-01'::date, 0.0),
+  ('1998-08-01'::date, 0.0),
+  ('1998-09-01'::date, 0.0),
+  ('1998-10-01'::date, 0.0),
+  ('1998-11-01'::date, 0.0),
+  ('1998-12-01'::date, 0.979893),
+  ('1999-01-01'::date, 1.150154),
+  ('1999-02-01'::date, 4.439918),
+  ('1999-03-01'::date, 1.980045),
+  ('1999-04-01'::date, 0.029898),
+  ('1999-05-01'::date, 0.0),
+  ('1999-06-01'::date, 1.020128),
+  ('1999-07-01'::date, 1.5899),
+  ('1999-08-01'::date, 1.449965),
+  ('1999-09-01'::date, 1.4701),
+  ('1999-10-01'::date, 1.88995),
+  ('1999-11-01'::date, 2.530046),
+  ('1999-12-01'::date, 1.229889),
+  ('2000-01-01'::date, 1.020095),
+  ('2000-02-01'::date, 0.190021),
+  ('2000-03-01'::date, 0.179978),
+  ('2000-04-01'::date, 0.129996),
+  ('2000-05-01'::date, 0.670037),
+  ('2000-06-01'::date, 0.929907),
+  ('2000-07-01'::date, 2.259979),
+  ('2000-08-01'::date, 1.820112),
+  ('2000-09-01'::date, 0.68995),
+  ('2000-10-01'::date, 0.369978),
+  ('2000-11-01'::date, 0.390107),
+  ('2000-12-01'::date, 0.759969),
+  ('2001-01-01'::date, 0.489873),
+  ('2001-02-01'::date, 0.340099),
+  ('2001-03-01'::date, 0.799999),
+  ('2001-04-01'::date, 1.129914),
+  ('2001-05-01'::date, 0.439986),
+  ('2001-06-01'::date, 1.460041),
+  ('2001-07-01'::date, 1.619976),
+  ('2001-08-01'::date, 0.900153),
+  ('2001-09-01'::date, 0.379877),
+  ('2001-10-01'::date, 1.450086),
+  ('2001-11-01'::date, 0.760069),
+  ('2001-12-01'::date, 0.179766),
+  ('2002-01-01'::date, 0.190011),
+  ('2002-02-01'::date, 0.179997),
+  ('2002-03-01'::date, 0.110082),
+  ('2002-04-01'::date, 0.699957),
+  ('2002-05-01'::date, 1.110008),
+  ('2002-06-01'::date, 1.740173),
+  ('2002-07-01'::date, 2.049803),
+  ('2002-08-01'::date, 2.359904),
+  ('2002-09-01'::date, 2.640181),
+  ('2002-10-01'::date, 4.209853),
+  ('2002-11-01'::date, 5.840466),
+  ('2002-12-01'::date, 2.699793),
+  ('2003-01-01'::date, 2.170103),
+  ('2003-02-01'::date, 1.589832),
+  ('2003-03-01'::date, 1.659873),
+  ('2003-04-01'::date, 0.410181),
+  ('2003-05-01'::date, -0.670153),
+  ('2003-06-01'::date, -0.699923),
+  ('2003-07-01'::date, -0.200189),
+  ('2003-08-01'::date, 0.620187),
+  ('2003-09-01'::date, 1.049909),
+  ('2003-10-01'::date, 0.44016),
+  ('2003-11-01'::date, 0.479903),
+  ('2003-12-01'::date, 0.600005),
+  ('2004-01-01'::date, 0.799967),
+  ('2004-02-01'::date, 0.39009),
+  ('2008-02-01'::date, 0.51)
+) as v(d, c) where p.competencia = v.d;
 
 -- ------------------------------------------------------------ expectativa de sobrevida (IBGE, tábua completa, ambos os sexos)
 insert into public.prev_sobrevida (ano_tabua, idade, expectativa, vigencia_inicio, vigencia_fim, fonte) values
