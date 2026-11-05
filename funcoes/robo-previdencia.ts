@@ -1,5 +1,5 @@
 // ROBÔ DA PREVIDÊNCIA — base de conhecimento do módulo Previdenciário
-// Roda no Supabase Edge Functions, agendado por pg_cron (segunda, 7h de Brasília).
+// Roda no Supabase Edge Functions, agendado por pg_cron (segunda, 7h de Brasília, uma chamada por fonte).
 // Lê quatro fontes oficiais e põe o que achar na fila prev_atualizacao, como SUGESTÃO:
 //   1. Diário Oficial da União (in.gov.br) — instruções normativas do INSS, portarias
 //      DIRBEN, portarias interministeriais (reajuste, mínimo, teto), leis, decretos e MPs;
@@ -142,7 +142,7 @@ async function lerCnj(db: any, desde: string): Promise<Leitura> {
     }
   };
   const res: PromiseSettledResult<void>[] = [];
-  for (let i = 0; i < CNJ_TERMOS.length; i += 3) res.push(...await Promise.allSettled(CNJ_TERMOS.slice(i, i + 3).map(umaBusca)));
+  for (let i = 0; i < CNJ_TERMOS.length; i += 5) res.push(...await Promise.allSettled(CNJ_TERMOS.slice(i, i + 5).map(umaBusca)));
   const falhas = res.filter((r) => r.status === 'rejected').map((r: any) => String(r.reason?.message || r.reason));
   if (falhas.length === CNJ_TERMOS.length) throw new Error(falhas[0]);
 
@@ -218,70 +218,64 @@ async function lerCjf(desde: string): Promise<{ achados: Achado[]; lidos: number
 }
 
 // ------------------------------------------------------------------ rodada
+// Uma fonte por chamada (?fonte=dou|cnj|ibge|cjf): cada leitura cabe folgada no limite de
+// tempo das funções. O agendamento chama as quatro, uma depois da outra, na segunda de
+// manhã; o botão "Rodar agora" da tela faz o mesmo.
+const FONTES: Record<string, (db: any, desde: string) => Promise<Leitura>> = {
+  dou: (_db, d) => lerDou(d), cnj: (db, d) => lerCnj(db, d), ibge: (db) => lerInpc(db), cjf: (_db, d) => lerCjf(d),
+};
+// sem rodada anterior que tenha dado certo: quanto voltar. O CNJ e a TNU só uma semana,
+// porque a foto inicial dos temas já cobre o que havia antes.
+const PRIMEIRA_VEZ: Record<string, number> = { dou: 30, cnj: 8, ibge: 0, cjf: 8 };
+
 Deno.serve(async (req) => {
   const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
   const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Content-Type': 'application/json' };
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
+  const responde = (j: unknown, status = 200) => new Response(JSON.stringify(j), { headers: cors, status });
 
-  // já há uma rodada em andamento (começou há menos de 6 minutos)? não abre outra
-  const { data: andando } = await db.from('prev_robo_execucao').select('id').is('terminado_em', null)
-    .gte('iniciado_em', new Date(Date.now() - 6 * 6e4).toISOString()).limit(1).maybeSingle();
-  if (andando) return new Response(JSON.stringify({ ok: true, execucao: andando.id, rodando: true, ja_estava: true }), { headers: cors });
+  let corpo: any = {}; if (req.method === 'POST') { try { corpo = await req.json(); } catch { /* sem corpo */ } }
+  const fonte = String(new URL(req.url).searchParams.get('fonte') || corpo.fonte || '');
+  if (!FONTES[fonte]) return responde({ ok: false, erro: 'informe a fonte: ' + Object.keys(FONTES).join(', ') }, 400);
 
-  const { data: exec } = await db.from('prev_robo_execucao').insert({}).select('id').single();
-  // Cada fonte busca desde a última rodada em que ELA deu certo (com um dia de folga);
-  // se nunca deu, 30 dias para trás. Assim uma fonte fora do ar não perde a semana.
-  const { data: hist } = await db.from('prev_robo_execucao').select('iniciado_em,resumo').not('terminado_em', 'is', null)
-    .order('iniciado_em', { ascending: false }).limit(30);
-  const ultimaOk = (f: string) => { const h = (hist || []).find((x: any) => x.resumo?.[f] && !x.resumo[f].erro); return h ? new Date(h.iniciado_em) : new Date(Date.now() - 30 * 864e5); };
-  const desdeDe = (f: string) => iso(new Date(ultimaOk(f).getTime() - 864e5));
-  const desde = desdeDe('cnj');
+  // rodadas que ficaram abertas (a função foi interrompida) são encerradas como falha
+  await db.from('prev_robo_execucao').update({ terminado_em: new Date().toISOString(), ok: false })
+    .is('terminado_em', null).lt('iniciado_em', new Date(Date.now() - 10 * 6e4).toISOString());
 
-  const rodada = async () => {
-    const fontes: Record<string, () => Promise<Leitura>> = {
-      dou: () => lerDou(desdeDe('dou')), cnj: () => lerCnj(db, desde), ibge: () => lerInpc(db), cjf: () => lerCjf(desdeDe('cjf')),
-    };
-    const resumo: Record<string, any> = { desde_cnj: desde, desde_dou: desdeDe('dou') };
-    let novos = 0, erros = 0;
-    await Promise.all(Object.entries(fontes).map(async ([nome, ler]) => {
-      try {
-        const { achados, lidos, vistos } = await ler();
-        let n = 0;
-        if (achados.length) {
-          // na biblioteca já? então é atualização de algo que temos
-          const nchaves = [...new Set(achados.map((a) => a.norma_chave).filter(Boolean))] as string[];
-          const naBase = new Set<string>();
-          for (let i = 0; i < nchaves.length; i += 200) {
-            const { data } = await db.from('prev_norma').select('chave').in('chave', nchaves.slice(i, i + 200));
-            (data || []).forEach((x: any) => naBase.add(x.chave));
-          }
-          const linhas = achados.map((a) => ({ ...a, norma_chave: a.norma_chave && naBase.has(a.norma_chave) ? a.norma_chave : null,
-            dados: { ...(a.dados || {}), chave_norma: a.norma_chave || null, ja_na_base: !!(a.norma_chave && naBase.has(a.norma_chave)) } }));
-          for (let i = 0; i < linhas.length; i += 200) {
-            const { data, error } = await db.from('prev_atualizacao').upsert(linhas.slice(i, i + 200), { onConflict: 'chave', ignoreDuplicates: true }).select('id');
-            if (error) throw error;
-            n += (data || []).length;
-          }
-        }
-        for (let i = 0; vistos && i < vistos.length; i += 500) {
-          const { error } = await db.from('prev_cnj_visto').upsert(vistos.slice(i, i + 500), { onConflict: 'chave' });
-          if (error) throw error;
-        }
-        novos += n; resumo[nome] = { lidos, achados: achados.length, novos: n };
-      } catch (e) { erros++; resumo[nome] = { erro: String((e as Error)?.message || e) }; }
-    }));
+  // Busca desde a última rodada em que ESTA fonte deu certo, com um dia de folga.
+  const { data: hist } = await db.from('prev_robo_execucao').select('iniciado_em,resumo').eq('ok', true)
+    .order('iniciado_em', { ascending: false }).limit(60);
+  const h = (hist || []).find((x: any) => x.resumo?.[fonte] && !x.resumo[fonte].erro);
+  const base = h ? new Date(h.iniciado_em).getTime() - 864e5 : Date.now() - PRIMEIRA_VEZ[fonte] * 864e5;
+  const desde = iso(new Date(base));
 
-    const ok = erros < Object.keys(fontes).length;
-    if (exec) await db.from('prev_robo_execucao').update({ terminado_em: new Date().toISOString(), ok, novos, resumo }).eq('id', exec.id);
-    return { ok, novos, resumo };
-  };
-  // A rodada leva um ou dois minutos. Quem chama pela tela recebe o id na hora e acompanha
-  // pelo registro (prev_robo_execucao); o agendamento não espera resposta.
-  const tarefa = rodada().catch(async (e) => {
-    if (exec) await db.from('prev_robo_execucao').update({ terminado_em: new Date().toISOString(), ok: false, resumo: { erro: String(e?.message || e) } }).eq('id', exec.id);
-    return { ok: false, erro: String(e?.message || e) };
-  });
-  // @ts-ignore EdgeRuntime existe no Supabase
-  if (typeof EdgeRuntime !== 'undefined') { EdgeRuntime.waitUntil(tarefa); return new Response(JSON.stringify({ ok: true, execucao: exec?.id, rodando: true }), { headers: cors }); }
-  return new Response(JSON.stringify(await tarefa), { headers: cors });
+  const { data: exec } = await db.from('prev_robo_execucao').insert({ resumo: { fonte, desde } }).select('id').single();
+  const resumo: Record<string, any> = { fonte, desde };
+  let novos = 0, ok = true;
+  try {
+    const { achados, lidos, vistos } = await FONTES[fonte](db, desde);
+    if (achados.length) {
+      // na biblioteca já? então é atualização de algo que temos
+      const nchaves = [...new Set(achados.map((a) => a.norma_chave).filter(Boolean))] as string[];
+      const naBase = new Set<string>();
+      for (let i = 0; i < nchaves.length; i += 200) {
+        const { data } = await db.from('prev_norma').select('chave').in('chave', nchaves.slice(i, i + 200));
+        (data || []).forEach((x: any) => naBase.add(x.chave));
+      }
+      const linhas = achados.map((a) => ({ ...a, norma_chave: a.norma_chave && naBase.has(a.norma_chave) ? a.norma_chave : null,
+        dados: { ...(a.dados || {}), chave_norma: a.norma_chave || null, ja_na_base: !!(a.norma_chave && naBase.has(a.norma_chave)) } }));
+      for (let i = 0; i < linhas.length; i += 200) {
+        const { data, error } = await db.from('prev_atualizacao').upsert(linhas.slice(i, i + 200), { onConflict: 'chave', ignoreDuplicates: true }).select('id');
+        if (error) throw error;
+        novos += (data || []).length;
+      }
+    }
+    for (let i = 0; vistos && i < vistos.length; i += 500) {
+      const { error } = await db.from('prev_cnj_visto').upsert(vistos.slice(i, i + 500), { onConflict: 'chave' });
+      if (error) throw error;
+    }
+    resumo[fonte] = { lidos, achados: achados.length, novos };
+  } catch (e) { ok = false; resumo[fonte] = { erro: String((e as Error)?.message || e) }; }
+  if (exec) await db.from('prev_robo_execucao').update({ terminado_em: new Date().toISOString(), ok, novos, resumo }).eq('id', exec.id);
+  return responde({ ok, novos, resumo }, ok ? 200 : 502);
 });

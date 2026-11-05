@@ -75,12 +75,14 @@ cálculo sem a decisão do titular na tela. Não usa chave nem IA: só fontes p�
 **Instalar:**
 
 1. **Banco** — Supabase → SQL Editor → rodar `banco/39_previdenciario_base.sql` (cria as
-   tabelas, o acervo inicial, a foto inicial do CNJ e o agendamento de segunda às 7h).
+   tabelas, o acervo inicial e a foto inicial do CNJ) e depois `banco/41_previdenciario_robo_fontes.sql`
+   (o agendamento: segunda às 7h, 7h05, 7h10 e 7h15, uma fonte por chamada — `?fonte=ibge|dou|cnj|cjf`;
+   ler as quatro de uma vez estoura o limite de tempo das funções).
 2. **Função** — Deploy a new function → Via Editor, nome `robo-previdencia`, colando
    `funcoes/robo-previdencia.ts`. **Desligue "Verify JWT"** (como no `robo-datajud`): o
    agendamento chama só com a chave pública.
-3. **Testar** — Previdenciário → Base → Tabelas e robô → *Rodar agora*. A rodada leva um a
-   dois minutos e aparece no registro logo abaixo.
+3. **Testar** — Previdenciário → Base → Tabelas e robô → *Rodar agora*. As quatro leituras levam
+   um ou dois minutos e aparecem no registro logo abaixo.
 
 **Se uma fonte falhar** (o site mudou ou ficou fora do ar), o registro mostra qual. As outras
 seguem normalmente, e a que falhou busca desde a última vez em que deu certo na rodada seguinte.

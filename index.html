@@ -11886,19 +11886,14 @@ function prevBaseTabelas(){
   </div>`;
 }
 window.prevBaseRodar = async () => {
-  PREVB.rodando = 'chamando o robô…'; prevBasePintar();
-  try {
-    const r = await chamarFuncao('robo-previdencia', {});
-    const id = r.execucao, t0 = Date.now();
-    while (id && Date.now() - t0 < 7 * 60e3) {
-      await new Promise(ok => setTimeout(ok, 5000));
-      const { data } = await sb.from('prev_robo_execucao').select('terminado_em,ok,novos').eq('id', id).maybeSingle();
-      if (data?.terminado_em) { PREVB.msg = data.ok ? `Rodada concluída: ${data.novos} novidade(s) na fila.` : 'A rodada terminou com falha: veja o registro abaixo.'; break; }
-      PREVB.rodando = `lendo as fontes… ${Math.round((Date.now() - t0) / 1000)} s`;
-      const s = document.getElementById('pb-rob'); if (s) s.textContent = PREVB.rodando;
-    }
-  } catch (e) { PREVB.msg = 'Não foi possível chamar o robô: ' + esc(e.message) + '. A função robo-previdencia está instalada no Supabase?'; }
-  PREVB.rodando = null;
+  /* uma fonte por vez: cada leitura cabe no limite de tempo da função */
+  const fontes = ['ibge', 'dou', 'cnj', 'cjf'], res = [];
+  for (const f of fontes) {
+    PREVB.rodando = `lendo ${PREV_FONTE[f]}… (${fontes.indexOf(f) + 1} de ${fontes.length})`; prevBasePintar();
+    try { const r = await chamarFuncao('robo-previdencia', { fonte: f }); res.push(`${PREV_FONTE[f]}: ${r.novos || 0} nova(s)`); }
+    catch (e) { res.push(`${PREV_FONTE[f]}: falhou (${esc(e.message)})`); }
+  }
+  PREVB.rodando = null; PREVB.msg = 'Rodada concluída. ' + res.join(' · ') + '.';
   await prevBaseCarregar(); prevBasePintar();
 };
 /* PREV-BASE-FIM */
