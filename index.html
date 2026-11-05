@@ -10281,7 +10281,29 @@ function prevContar(vincs, ate, sexo, opt = {}){
     if (g) esp[g] += dias;
     if (b <= PREV_REF) { ref += dias; refConv += dias * f; }
   }
-  return { bruto, conv, esp, ref, refConv, prof, profRef, pcd, rural, ultRural };
+  /* meses depois da reforma com salário abaixo do mínimo, sem complementação, não contam
+     (art. 195, § 14, CF; art. 29, EC 103) */
+  let semMin = 0;
+  if (opt.abaixo?.size){
+    for (const ym of opt.abaixo){
+      const ini = ym + '-01', fim = cnisFimMes(ini);
+      if (ini > ate) continue;
+      if (ps.some(p => !prevEhRural(p.v) && p.inicio <= fim && p.fim >= ini)) semMin += 30;
+    }
+    bruto -= semMin; conv -= semMin;
+  }
+  return { bruto, conv, esp, ref, refConv, prof, profRef, pcd, rural, ultRural, semMin };
+}
+
+/* Meses depois da reforma (desde 12/2019) em que a soma das remunerações ficou abaixo do mínimo. */
+function prevAbaixoMinimo(rems, T){
+  const soma = new Map();
+  for (const r of rems || []) if (r.considerar !== false && r.valor > 0 && r.competencia >= '2019-12-01'){
+    const ym = prevMes(r.competencia); soma.set(ym, (soma.get(ym) || 0) + Number(r.valor));
+  }
+  const out = new Map();
+  for (const [ym, v] of soma){ const sm = prevVigente(T.sm, ym + '-01')?.valor; if (sm && v < sm - 0.004) out.set(ym, { valor: v, sm, falta: sm - v }); }
+  return out;
 }
 
 /* Tempo da pessoa com deficiência convertido para o grau preponderante (art. 7º, LC 142;
@@ -10301,6 +10323,7 @@ function prevPcdConv(pcd, sexo){
    contribuição só conta nas regras rurais e híbrida (opt.rural). */
 function prevCarencia(vincs, rems, ate, opt = {}){
   const meses = new Set();
+  const fora = opt.abaixo || new Set();
   const remPorV = new Map();
   for (const r of rems || []) if (r.considerar !== false && r.valor > 0) {
     if (!remPorV.has(r.vinculo_id)) remPorV.set(r.vinculo_id, []); remPorV.get(r.vinculo_id).push(r);
@@ -10313,6 +10336,7 @@ function prevCarencia(vincs, rems, ate, opt = {}){
       for (let ym = prevMes(p.inicio); ym <= prevMes(p.fim); ym = prevMesSeg(ym)) meses.add(ym);
     }
   }
+  for (const ym of fora) meses.delete(ym);
   return meses.size;
 }
 
@@ -10524,15 +10548,16 @@ function prevNumeros(ctx, D){
   const vs = ctx.projetar && D > ctx.dataBase
     ? [...ctx.vincs, { id: '__proj', tipo: 'projecao', inicio: prevMaisDia(ctx.dataBase, 1), fim: D, considerar: true }]
     : ctx.vincs;
-  const c = prevContar(vs, D, ctx.sexo);
+  const ab = { abaixo: ctx.abaixo };
+  const c = prevContar(vs, D, ctx.sexo, ab);
   const temRural = vs.some(v => v.rural || prevEhRural(v));
-  const cr = temRural ? prevContar(vs, D, ctx.sexo, { rural: true }) : c;
-  const n = { tc: c.conv / 360, bruto: c.bruto / 360, idade: prevIdade(ctx.nasc, D).anos, car: prevCarencia(vs, ctx.rems, D),
+  const cr = temRural ? prevContar(vs, D, ctx.sexo, { ...ab, rural: true }) : c;
+  const n = { tc: c.conv / 360, bruto: c.bruto / 360, idade: prevIdade(ctx.nasc, D).anos, car: prevCarencia(vs, ctx.rems, D, ab), semMin: c.semMin,
            esp: { '15': c.esp['15'] / 360, '20': c.esp['20'] / 360, '25': c.esp['25'] / 360 }, tcRef: ctx.tcRef,
            prof: c.prof / 360, profRef: ctx.profRef, pcdConv: prevPcdConv(c.pcd, ctx.sexo),
            rural: cr.rural / 360, tcHib: cr.conv / 360, vs };
   if (temRural){
-    n.carHib = prevCarencia(vs, ctx.rems, D, { rural: true });
+    n.carHib = prevCarencia(vs, ctx.rems, D, { ...ab, rural: true });
     const so = vs.filter(v => v.rural || prevEhRural(v));
     n.carRural = prevCarencia(so.map(v => ({ ...v, tipo: prevEhRural(v) ? v.tipo : 'empregado' })), [], D, { rural: true });
     const noCampo = X => so.some(v => v.inicio && v.inicio <= X && (!v.fim || v.fim >= X));
@@ -10579,6 +10604,7 @@ function prevRenda(ctx, k, grau, dib){
   const noMin = sal.lista.filter(x => x.origem.includes('mínimo (sem')).length;
   if (noMin) avisos.push(`${noMin} mês(es) de emprego sem remuneração no CNIS entraram pelo salário mínimo.`);
   if (sal.lista.some(x => x.origem.includes('projeção'))) avisos.push('Inclui contribuições futuras projetadas (valores em moeda de hoje, sem inflação futura).');
+  if (ctx.abaixo?.size) avisos.push(`${ctx.abaixo.size} mês(es) depois da reforma com salário abaixo do mínimo não contaram como tempo nem carência (art. 29, EC 103). Veja a complementação na aba Planejamento.`);
   if (k === 'hibrida') avisos.push('Meses rurais entram na média pelo salário mínimo (art. 48, § 4º). O tempo rural remoto anterior a 1991 conta para a carência (STJ, Tema 1007), embora a IN 128 (art. 257, § 1º) ainda exija a condição de rural no requerimento.');
   if (k.startsWith('pcd')){
     const alt = prevMedia(sal.lista.map(x => x.corrigido), PREV_P.pcdMedia === '100' ? '80' : '100', dibCalc);
@@ -10591,13 +10617,16 @@ function prevRenda(ctx, k, grau, dib){
   const tipoMedia = da ? '80' : k.startsWith('pcd') ? PREV_P.pcdMedia : '100';
   const permiteDescarte = !da && !k.startsWith('pcd') && k !== 'hibrida';
 
+  const ordem = sal.lista.map((x, i) => i).sort((a, b) => sal.lista[a].corrigido - sal.lista[b].corrigido);
+  const acum = [0]; for (const i of ordem) acum.push(acum[acum.length - 1] + vals[i]);
   const avaliar = (descartar) => {
-    const ordem = sal.lista.map((x, i) => i).sort((a, b) => sal.lista[a].corrigido - sal.lista[b].corrigido);
-    const fora = new Set(ordem.slice(0, descartar));
-    const usados = vals.filter((v, i) => !fora.has(i));
+    const fora = { has: i => ordem.indexOf(i) < descartar, _d: descartar };
+    const usados = tipoMedia === '100' ? null : vals.filter((v, i) => !fora.has(i));
     const tcAdj = tcCoef - descartar / 12, carAdj = n.car - descartar;
     if (descartar && !prevChecar(k, { ...n, tc: n.tc - descartar / 12, car: carAdj, prof: n.prof - descartar / 12 }, dibCalc, sexo, grau).ok) return null;
-    const m = prevMedia(usados, tipoMedia, dibCalc);
+    const m = tipoMedia === '100'
+      ? { media: (acum[acum.length - 1] - acum[descartar]) / (vals.length - descartar), usados: vals.length - descartar, divisor: vals.length - descartar }
+      : prevMedia(usados, tipoMedia, dibCalc);
     let sb = Math.min(Math.max(m.media, 0), tetoCalc ?? Infinity);
     let coef = 1, fp = null, es = null, txt = '';
     const prof = k === 'prof_da';
@@ -10646,7 +10675,8 @@ function prevRenda(ctx, k, grau, dib){
     rmiDer = Math.max(melhor.rmi * reajuste, sm ?? 0);
     if (teto) rmiDer = Math.min(rmiDer, teto);
   }
-  const salarios = sal.lista.map((x, i) => ({ ...x, descartado: melhor.fora.has(i) }));
+  const foraSet = new Set(ordem.slice(0, melhor.descartados));
+  const salarios = sal.lista.map((x, i) => ({ ...x, descartado: foraSet.has(i) }));
   delete melhor.fora;
   return { ...melhor, rmi: rmiDer, rmiCalc: melhor.rmi, reajuste, sm, teto, avisos: [...new Set(avisos)], salarios, n, dibCalc };
 }
@@ -10661,6 +10691,8 @@ function prevCalcular(a, vincs, rems, T, opt = {}){
   const dataBase = a.data_base || new Date().toISOString().slice(0, 10);
   const ctx = { sexo: a.sexo, nasc: a.nascimento, dataBase, vincs: vincs.filter(v => v.considerar !== false), rems, T,
                 projetar: !!opt.projetar, scFuturo: Number(opt.scFuturo) || null };
+  const abaixo = prevAbaixoMinimo(rems, T);
+  ctx.abaixo = new Set(opt.complementar ? [] : [...abaixo.keys()]);
   const cRef = prevContar(ctx.vincs, PREV_REF, a.sexo);
   ctx.tcRef = cRef.refConv / 360; ctx.profRef = cRef.profRef / 360;
   ctx.filiacao = ctx.vincs.filter(v => v.inicio && v.tipo !== 'beneficio' && !prevEhRural(v)).map(v => v.inicio).sort()[0]
@@ -10689,7 +10721,7 @@ function prevCalcular(a, vincs, rems, T, opt = {}){
       } else {
         const chHoje = prevChecar(r.k, nHoje, dataBase, a.sexo, r.grau);
         out.req = chHoje.req; out.cumpre = chHoje.ok;
-        out.data = chHoje.ok ? dataBase : prevPrimeiraData(ctx, r.k, r.grau);
+        out.data = chHoje.ok ? dataBase : opt.semFuturo ? null : prevPrimeiraData(ctx, r.k, r.grau);
         if (!out.cumpre && out.data){
           out.reqFuturo = prevChecar(r.k, prevNumeros(ctx, out.data), out.data, a.sexo, r.grau).req;
           out.motivo = ctx.projetar ? 'Cumpre no futuro, continuando a contribuir.' : 'Cumpre no futuro (sem novas contribuições, só pela idade).';
@@ -10710,7 +10742,8 @@ function prevCalcular(a, vincs, rems, T, opt = {}){
   return { erros, regras: PREV_REGRAS.flatMap(R => regras.filter(r => r.k === R.k)), melhor: melhor ? melhor.k + (melhor.grau || '') : null,
            proxima: futuras[0] ? futuras[0].k + (futuras[0].grau || '') : null, dataBase, tcHoje: nHoje.tc, brutoHoje: nHoje.bruto,
            idadeHoje: nHoje.idade, carHoje: nHoje.car, tcRef: ctx.tcRef, filiacao, projetar: ctx.projetar, scFuturo: ctx.scFuturo,
-           profHoje: nHoje.prof, pcdHoje: nHoje.pcdConv, ruralHoje: nHoje.rural };
+           profHoje: nHoje.prof, pcdHoje: nHoje.pcdConv, ruralHoje: nHoje.rural,
+           abaixoMinimo: [...abaixo].map(([ym, x]) => ({ ym, ...x })), complementar: !!opt.complementar };
 }
 /* PREV-CALC-FIM */
 
@@ -10927,6 +10960,119 @@ function prevEvento(a, vincs, rems, T, ev){
 }
 /* PREV-EVENTO-FIM */
 
+/* PREV-PLANO-INICIO — planejamento: melhor data de requerimento, cenários de contribuição
+   (custo × retorno), complementação de meses abaixo do mínimo e indenização de período.
+   Funções puras, sobre o mesmo motor. Valores futuros em moeda de hoje. */
+
+/* Regras que aceitam contribuição pelo plano simplificado (11% ou 5%): só as por idade
+   (art. 21, § 2º, Lei 8.212). Para as demais, o período precisaria ser complementado. */
+const rs_ = v => rs(v);   /* formatação em reais (o nome rs fica livre dentro das funções) */
+const PREV_REGRAS_IDADE = new Set(['da_idade', 'art18', 'perm', 'hibrida', 'pcd_idade']);
+const prevIdRegra = r => r.k + (r.grau || '');
+
+/* contribuições futuras: um vínculo de projeção do dia seguinte à data-base até a data */
+const prevProjecao = (de, ate) => ({ id: '__proj', tipo: 'projecao', inicio: prevMaisDia(de, 1), fim: ate, considerar: true });
+
+/* A renda pela melhor regra cumprida em cada mês, da data-base em diante. */
+function prevLinhaDer(a, vincs, rems, T, opt = {}){
+  const meses = opt.meses ?? 36, base = a.data_base, pts = [];
+  for (let i = 0; i <= meses; i++){
+    const D = prevMaisMes(base, i);
+    const vs = opt.contribuir && i > 0 ? [...vincs, prevProjecao(base, D)] : vincs;
+    const c = prevCalcular({ ...a, data_base: D }, vs, rems, T, { scFuturo: opt.sc, semFuturo: true, complementar: opt.complementar });
+    const m = c.regras.find(r => prevIdRegra(r) === c.melhor);
+    pts.push({ data: D, rmi: m ? m.calc.rmi : null, regra: m ? m.nome : null, k: c.melhor, idade: c.idadeHoje, tc: c.tcHoje });
+  }
+  /* pontos de virada: quando muda a regra ou a renda sobe mais de 1% */
+  const viradas = pts.filter((p, i) => i === 0 || p.k !== pts[i - 1].k || (p.rmi && pts[i - 1].rmi && p.rmi > pts[i - 1].rmi * 1.01) || (p.rmi && !pts[i - 1].rmi));
+  return { pts, viradas };
+}
+
+/* Custo estimado de indenizar um período de contribuinte individual não recolhido
+   (art. 45-A, Lei 8.212): 20% da média dos 80% maiores salários de contribuição desde
+   07/1994 (no mínimo o salário mínimo e no máximo o teto atuais), por mês, com juros de
+   0,5% ao mês (limitados a 50%) e multa de 10%. Estimativa: o INSS calcula na emissão da guia. */
+function prevCustoIndenizacao(vincs, rems, T, inicio, fim, hoje){
+  if (!inicio || !fim || fim < inicio) return null;
+  const sal = prevSalarios(vincs.filter(v => v.tipo !== 'beneficio'), rems, prevMaisDia(hoje, 1), T, {});
+  const m = prevMedia(sal.lista.map(x => x.corrigido), '80', hoje);
+  const sm = prevVigente(T.sm, hoje)?.valor, teto = prevVigente(T.teto, hoje)?.valor;
+  const base = Math.min(Math.max(m.media || 0, sm), teto);
+  let total = 0, meses = 0;
+  for (let ym = prevMes(inicio); ym <= prevMes(fim); ym = prevMesSeg(ym)){
+    let atraso = 0; for (let x = ym; x < prevMes(hoje); x = prevMesSeg(x)) atraso++;
+    total += base * 0.2 * (1 + Math.min(0.5, 0.005 * atraso)) * 1.1;
+    meses++;
+  }
+  return { base, meses, total, porMes: meses ? total / meses : 0 };
+}
+
+/* Um cenário. cen: { nome, contribuir, sc, aliquota (0,20 | 0,11 | 0,05), complementar,
+   aliquotaComp, indInicio, indFim } */
+function prevCenario(a, vincs, rems, T, cen){
+  const base = a.data_base;
+  const sm = prevVigente(T.sm, base)?.valor;
+  let vs = [...vincs], rs = [...rems], custoExtra = 0;
+  const memoria = [];
+  if (cen.indInicio && cen.indFim){
+    const ind = prevCustoIndenizacao(vincs, rems, T, cen.indInicio, cen.indFim, base);
+    if (ind){
+      vs.push({ id: '__ind', tipo: 'individual', inicio: cen.indInicio, fim: cnisFimMes(prevMes(cen.indFim) + '-01'), considerar: true });
+      for (let ym = prevMes(cen.indInicio); ym <= prevMes(cen.indFim); ym = prevMesSeg(ym)) rs.push({ vinculo_id: '__ind', competencia: ym + '-01', valor: ind.base });
+      custoExtra += ind.total;
+      memoria.push(`Indenização de ${ind.meses} mês(es) (${br(cen.indInicio)} a ${br(cen.indFim)}): ${rs_(ind.total)}`);
+    }
+  }
+  if (cen.complementar){
+    const ab = prevAbaixoMinimo(rems, T);
+    const aliq = cen.aliquotaComp ?? 0.2;
+    let c = 0; for (const [, x] of ab) c += x.falta * aliq;
+    custoExtra += c;
+    if (ab.size) memoria.push(`Complementação de ${ab.size} mês(es) abaixo do mínimo: ${rs_(c)}`);
+  }
+  const sc = cen.contribuir ? (Number(cen.sc) || sm) : null;
+  const opt = { projetar: !!cen.contribuir, scFuturo: sc, complementar: !!cen.complementar };
+  let res = prevCalcular(a, vs, rs, T, opt);
+  if (res.erros?.length) return { nome: cen.nome, erros: res.erros };
+  if (cen.contribuir && cen.aliquota < 0.2){
+    /* plano simplificado: o período futuro só vale nas regras por idade */
+    const sem = prevCalcular(a, vs, rs, T, { ...opt, projetar: false });
+    res = { ...res, regras: res.regras.map(r => PREV_REGRAS_IDADE.has(r.k) ? r : (sem.regras.find(x => prevIdRegra(x) === prevIdRegra(r)) || r)) };
+    memoria.push('Plano simplificado: as contribuições futuras só contam nas regras por idade.');
+  }
+  const possiveis = res.regras.filter(r => r.aplicavel && r.data && r.calc);
+  if (!possiveis.length) return { nome: cen.nome, semRegra: true, custo: custoExtra, memoria };
+  /* a primeira aposentadoria possível e, entre as que saem até 12 meses depois dela, a de maior renda */
+  const primeira = possiveis.sort((x, y) => x.data.localeCompare(y.data) || y.calc.rmi - x.calc.rmi)[0];
+  const limite = prevMaisMes(primeira.data, 12);
+  const maior = possiveis.filter(r => r.data <= limite).sort((x, y) => y.calc.rmi - x.calc.rmi)[0];
+  const escolhida = maior;
+  const dib = escolhida.cumpre ? base : escolhida.data;
+  let meses = 0;
+  if (cen.contribuir) for (let ym = prevMesSeg(prevMes(base)); ym <= prevMes(dib); ym = prevMesSeg(ym)) meses++;
+  const custo = custoExtra + (cen.contribuir ? meses * sc * cen.aliquota : 0);
+  const idadeDib = prevIdade(a.nascimento, dib).anos;
+  const e = prevExpectativa(T, idadeDib, dib);
+  const anos = e.es || null;
+  const retorno = anos ? escolhida.calc.rmi * 13 * anos : null;
+  if (cen.contribuir) memoria.push(`${meses} mês(es) de contribuição de ${rs_(sc)} × ${prevPct(cen.aliquota)} = ${rs_(meses * sc * cen.aliquota)}`);
+  return { nome: cen.nome, regra: escolhida.nome, base: escolhida.base, data: dib, rmi: escolhida.calc.rmi, primeira: primeira !== escolhida ? { regra: primeira.nome, data: primeira.cumpre ? base : primeira.data, rmi: primeira.calc.rmi } : null,
+           custo, meses, expectativa: anos, retorno, liquido: retorno != null ? retorno - custo : null, payback: escolhida.calc.rmi ? custo / escolhida.calc.rmi : null,
+           idadeDib, memoria, res };
+}
+
+/* Compara os cenários com o primeiro (em geral, "parar de contribuir"). */
+function prevComparar(lista){
+  const b = lista[0];
+  return lista.map((c, i) => {
+    if (!i || c.erros || c.semRegra || b.erros || b.semRegra) return { ...c, delta: null };
+    const dRmi = c.rmi - b.rmi, dCusto = c.custo - b.custo;
+    return { ...c, delta: { rmi: dRmi, custo: dCusto, liquido: c.liquido != null && b.liquido != null ? c.liquido - b.liquido : null,
+      payback: dRmi > 0.5 ? dCusto / dRmi : null, antecipa: b.data && c.data ? c.data < b.data : null } };
+  });
+}
+/* PREV-PLANO-FIM */
+
 /* ----- leitura do PDF (pdf.js, carregado só quando alguém abre um CNIS) */
 let PDFJS = null;
 async function carregarPdfJs(){
@@ -11058,8 +11204,8 @@ async function prevCarregar(id){
     prevTodas('prev_remuneracao', 'id,vinculo_id,competencia,valor,contribuicao,pagamento,indicadores,origem,considerar', id),
     prevTodas('prev_pendencia', '*', id),
   ]);
-  if (PREV.a?.id !== id) Object.assign(PREV, { aba: 'dados', previa: null, arquivo: null, editando: null, remAberto: null, msg: '', opt: null, ev: null, evRes: null });
-  PREV.calc = null;   /* os dados podem ter mudado: o cálculo é refeito quando pedido */
+  if (PREV.a?.id !== id) Object.assign(PREV, { aba: 'dados', previa: null, arquivo: null, editando: null, remAberto: null, msg: '', opt: null, ev: null, evRes: null, cens: null, pl: null, ind: null });
+  PREV.calc = null; PREV.linha = null; PREV.cmp = null;   /* os dados podem ter mudado: o cálculo é refeito quando pedido */
   PREV.sims = (await sb.from('prev_simulacao').select('id,criado_em,data_base,melhor,rmi').eq('analise_id', id)
     .order('criado_em', { ascending: false })).data || [];
   PREV.a = a;
@@ -11077,7 +11223,7 @@ async function telaPrevAnalise(id){
 function prevPintar(){
   const a = PREV.a;
   const abertas = PREV.pend.filter(p => !p.resolvida).length;
-  const abas = [['dados', 'Dados e CNIS'], ['vinculos', `Vínculos (${PREV.vinc.length})`], ['pendencias', `Pendências (${abertas})`], ['beneficios', 'Benefícios e cálculo']];
+  const abas = [['dados', 'Dados e CNIS'], ['vinculos', `Vínculos (${PREV.vinc.length})`], ['pendencias', `Pendências (${abertas})`], ['beneficios', 'Benefícios e cálculo'], ['plano', 'Planejamento']];
   app.innerHTML = menu('prev') + `
   <main><a class="volta" href="#/prev">← Previdenciário</a>
   <h1>${esc(a.cliente?.nome || a.titulo || 'Análise previdenciária')}</h1>
@@ -11088,11 +11234,14 @@ function prevPintar(){
     ${abas.map(([k, r]) => `<button class="btn" style="${PREV.aba === k ? 'border-color:var(--serie);color:var(--serie)' : ''}" onclick="prevAba('${k}')">${r}</button>`).join('')}
   </div>
   ${PREV.msg ? `<div class="aviso" style="border-color:var(--serie)">${PREV.msg}</div>` : ''}
-  <div id="prev-corpo">${PREV.aba === 'vinculos' ? prevAbaVinculos() : PREV.aba === 'pendencias' ? prevAbaPendencias() : PREV.aba === 'beneficios' ? prevAbaBeneficios() : prevAbaDados()}</div>
+  <div id="prev-corpo">${PREV.aba === 'vinculos' ? prevAbaVinculos() : PREV.aba === 'pendencias' ? prevAbaPendencias() : PREV.aba === 'beneficios' ? prevAbaBeneficios() : PREV.aba === 'plano' ? prevAbaPlano() : prevAbaDados()}</div>
   </main>` + rodape();
   aplicarRotulos(app);
 }
-window.prevAba = k => { PREV.aba = k; PREV.msg = ''; prevPintar(); };
+window.prevAba = async k => {
+  PREV.aba = k; PREV.msg = ''; prevPintar();
+  if (k === 'plano' && !PREV.T) { try { await prevCarregarTabelas(); } catch (e) { PREV.msg = 'Não foi possível carregar as tabelas oficiais: ' + esc(e.message); } prevPintar(); }
+};
 
 /* ----- aba Dados e CNIS */
 function prevAbaDados(){
@@ -11142,7 +11291,7 @@ window.prevSalvarDados = async () => {
   st.textContent = 'salvando…';
   const { error } = await sb.from('prev_analise').update(upd).eq('id', PREV.a.id);
   if (error) { st.textContent = error.message; return; }
-  Object.assign(PREV.a, upd); PREV.calc = null; st.textContent = 'salvo';
+  Object.assign(PREV.a, upd); PREV.calc = null; PREV.linha = null; PREV.cmp = null; st.textContent = 'salvo';
 };
 
 window.prevVerCnis = async () => {
@@ -11423,7 +11572,7 @@ window.prevConta = async (id, sim) => {
   const v = PREV.vinc.find(x => x.id === id);
   const { error } = await sb.from('prev_vinculo').update({ considerar: sim, alterado: v.origem === 'cnis' ? true : v.alterado }).eq('id', id);
   if (error) return alert(error.message);
-  v.considerar = sim; if (v.origem === 'cnis') v.alterado = true; PREV.calc = null;
+  v.considerar = sim; if (v.origem === 'cnis') v.alterado = true; PREV.calc = null; PREV.linha = null; PREV.cmp = null;
   try { await prevSincPendencias(); } catch (e) {}
   prevPintar();
 };
@@ -11751,6 +11900,214 @@ window.prevSimularEvento = async () => {
   try { PREV.evRes = prevEvento(PREV.a, PREV.vinc, PREV.rem, PREV.T, e); }
   catch (x) { PREV.evRes = { erros: ['Erro na simulação: ' + x.message] }; }
   prevPintar();
+};
+
+
+/* ----- aba Planejamento */
+const PREV_ALIQ = [[0.2, '20% (plano normal)'], [0.11, '11% (simplificado: só idade)'], [0.05, '5% (MEI ou facultativo baixa renda: só idade)']];
+function prevCenariosPadrao(){
+  const sm = prevVigente(PREV.T?.sm || [], PREV.a.data_base)?.valor || '';
+  return [
+    { nome: 'Parar de contribuir', contribuir: false },
+    { nome: 'Contribuir no mínimo (20%)', contribuir: true, sc: sm, aliquota: 0.2 },
+    { nome: 'Contribuir pelo teto (20%)', contribuir: true, sc: prevVigente(PREV.T?.teto || [], PREV.a.data_base)?.valor || '', aliquota: 0.2 },
+    { nome: 'Plano simplificado (11%)', contribuir: true, sc: sm, aliquota: 0.11 },
+  ];
+}
+
+/* escala do eixo de valores: folga de 12% e, se a renda quase não varia, ao menos 20% do valor */
+function prevEscalaY(vals){
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  const span = Math.max(hi - lo, hi * 0.2, 1), meio = (hi + lo) / 2;
+  if (hi - lo < span) { lo = meio - span / 2; hi = meio + span / 2; }
+  const pad = (hi - lo) * 0.12;
+  return [Math.max(0, lo - pad), hi + pad];
+}
+/* gráfico de linha: renda pela melhor regra em cada mês (uma série, sem legenda) */
+function prevGraficoDer(L){
+  const pts = L.pts, W = 720, H = 230, ml = 64, mr = 16, mt = 14, mb = 30;
+  const vals = pts.map(p => p.rmi).filter(v => v != null);
+  if (!vals.length) return `<div class="vazio">Nenhuma regra é cumprida nos ${pts.length - 1} meses. Aumente o período${PREV.pl?.contribuir ? '' : ' ou marque "continuar contribuindo"'}.</div>`;
+  const [lo, hi] = prevEscalaY(vals);
+  const x = i => ml + (W - ml - mr) * i / Math.max(1, pts.length - 1);
+  const y = v => mt + (H - mt - mb) * (1 - (v - lo) / (hi - lo));
+  let d = '', on = false;
+  pts.forEach((p, i) => { if (p.rmi == null) { on = false; return; } d += (on ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(p.rmi).toFixed(1) + ' '; on = true; });
+  const ticks = [0, 1, 2, 3].map(k => lo + (hi - lo) * k / 3);
+  const fmtK = v => 'R$ ' + Math.round(v).toLocaleString('pt-BR');
+  const marcasX = pts.map((p, i) => i).filter(i => i % 6 === 0);
+  const vir = L.viradas.map(v => pts.findIndex(p => p.data === v.data)).filter(i => i >= 0 && pts[i].rmi != null);
+  return `<div style="position:relative;padding:0 18px 6px" id="pl-graf">
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block" role="img" aria-label="Renda mensal estimada pela melhor regra em cada data de requerimento">
+      ${ticks.map(t => `<line x1="${ml}" x2="${W - mr}" y1="${y(t)}" y2="${y(t)}" stroke="var(--ln)" stroke-width="1"/>
+        <text x="${ml - 8}" y="${y(t) + 4}" text-anchor="end" font-size="11" fill="var(--i3)">${fmtK(t)}</text>`).join('')}
+      ${marcasX.map(i => `<text x="${x(i)}" y="${H - 8}" text-anchor="middle" font-size="11" fill="var(--i3)">${pts[i].data.slice(5, 7)}/${pts[i].data.slice(2, 4)}</text>`).join('')}
+      <path d="${d}" fill="none" stroke="var(--serie)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+      ${vir.map(i => `<circle cx="${x(i)}" cy="${y(pts[i].rmi)}" r="4.5" fill="var(--serie)" stroke="var(--s1)" stroke-width="2"/>`).join('')}
+      <line id="pl-cross" x1="0" x2="0" y1="${mt}" y2="${H - mb}" stroke="var(--i3)" stroke-width="1" stroke-dasharray="3 3" style="display:none"/>
+      <circle id="pl-dot" r="5" fill="var(--serie)" stroke="var(--s1)" stroke-width="2" style="display:none"/>
+      <rect x="${ml}" y="${mt}" width="${W - ml - mr}" height="${H - mt - mb}" fill="transparent"
+        onmousemove="prevGrafHover(event)" onmouseleave="prevGrafSair()" ontouchstart="prevGrafHover(event)"/>
+    </svg>
+    <div id="pl-tip" style="position:absolute;display:none;pointer-events:none;background:var(--s1);border:1px solid var(--ln);border-radius:8px;
+      padding:7px 10px;font-size:12px;box-shadow:0 6px 18px rgba(0,0,0,.12);max-width:260px"></div>
+  </div>`;
+}
+window.prevGrafHover = ev => {
+  const L = PREV.linha; if (!L) return;
+  const svg = ev.currentTarget.ownerSVGElement, r = svg.getBoundingClientRect();
+  const cx = ((ev.touches ? ev.touches[0].clientX : ev.clientX) - r.left) * 720 / r.width;
+  const n = L.pts.length, i = Math.max(0, Math.min(n - 1, Math.round((cx - 64) / (720 - 80) * (n - 1))));
+  const p = L.pts[i], vals = L.pts.map(q => q.rmi).filter(v => v != null);
+  const [lo, hi] = prevEscalaY(vals);
+  const X = 64 + (720 - 80) * i / Math.max(1, n - 1);
+  const cross = document.getElementById('pl-cross'), dot = document.getElementById('pl-dot'), tip = document.getElementById('pl-tip');
+  cross.setAttribute('x1', X); cross.setAttribute('x2', X); cross.style.display = '';
+  if (p.rmi != null) { dot.setAttribute('cx', X); dot.setAttribute('cy', 14 + (230 - 44) * (1 - (p.rmi - lo) / (hi - lo))); dot.style.display = ''; } else dot.style.display = 'none';
+  tip.innerHTML = `<b>${br(p.data)}</b><br>${p.rmi != null ? '<b>' + rs(p.rmi) + '</b><br><span style="color:var(--i2)">' + esc(p.regra) + '</span>' : '<span style="color:var(--i2)">nenhuma regra cumprida</span>'}`;
+  tip.style.display = '';
+  const px = X * r.width / 720 + 18;
+  tip.style.left = Math.min(px + 12, r.width - 200) + 'px'; tip.style.top = '8px';
+};
+window.prevGrafSair = () => { for (const id of ['pl-cross', 'pl-dot', 'pl-tip']) { const e = document.getElementById(id); if (e) e.style.display = 'none'; } };
+
+function prevAbaPlano(){
+  const a = PREV.a, T = PREV.T;
+  if (!T) return `<div class="card"><h2>Planejamento</h2><p class="nota">Carregando as tabelas oficiais…</p></div>`;
+  if (!a.sexo || !a.nascimento) return `<div class="aviso">Informe o sexo e a data de nascimento na aba Dados e CNIS.</div>`;
+  const o = PREV.pl || (PREV.pl = { meses: 36, contribuir: false, sc: '', complementar: false });
+  const cens = PREV.cens || (PREV.cens = prevCenariosPadrao());
+  const L = PREV.linha;
+  const ab = prevAbaixoMinimo(PREV.rem, T);
+  const custoAb = [...ab.values()].reduce((s, x) => s + x.falta * 0.2, 0);
+  const R = PREV.cmp;
+  const fmtD = v => v == null ? '—' : (v >= 0 ? '+' : '−') + rs(Math.abs(v));
+  const ind = PREV.ind || {};
+  return `
+  <div class="card"><h2>Melhor data para requerer</h2>
+    <p class="nota">A renda pela melhor regra cumprida em cada mês, a partir da data-base (${br(a.data_base)}). Os pontos marcam quando a regra
+      muda ou a renda sobe. Valores em moeda de hoje.</p>
+    <div class="filtros">
+      <label style="font-size:13px">próximos <input type="text" id="pl-meses" value="${o.meses}" style="width:50px"> meses</label>
+      <label style="font-size:13px"><input type="checkbox" id="pl-contr" ${o.contribuir ? 'checked' : ''}> continuar contribuindo com</label>
+      <input type="text" id="pl-sc" value="${esc(o.sc)}" placeholder="mínimo" style="width:100px">
+      <label style="font-size:13px"><input type="checkbox" id="pl-comp" ${o.complementar ? 'checked' : ''}> com os meses abaixo do mínimo complementados</label>
+      <button class="btn ok" onclick="prevMontarLinha()">Montar</button> <span class="sub" id="pl-st" style="display:inline"></span>
+    </div>
+    ${L ? prevGraficoDer(L) + `<table class="mtab" style="margin:6px 18px 16px;max-width:calc(100% - 36px)"><tr><th>A partir de</th><th>Melhor regra</th><th>Renda estimada</th><th>Idade</th><th>Tempo</th></tr>
+      ${L.viradas.map(v => `<tr><td class="dt">${br(v.data)}</td><td>${esc(v.regra || 'nenhuma regra cumprida')}</td><td class="dt">${v.rmi != null ? rs(v.rmi) : '—'}</td>
+        <td>${prevDiasTxt(v.idade * 360)}</td><td>${prevDiasTxt(v.tc * 360)}</td></tr>`).join('')}</table>` : ''}
+  </div>
+
+  <div class="card"><h2>Cenários de contribuição</h2>
+    <p class="nota">Compara a primeira aposentadoria de cada cenário (ou a de maior renda até 12 meses depois dela): data, renda, custo até aposentar e
+      retorno estimado pela expectativa de sobrevida do IBGE (13 rendas por ano, sem correção nem juros). O primeiro cenário é a base da comparação.</p>
+    <div style="overflow-x:auto;padding:0 18px"><table class="mtab" style="max-width:none">
+      <tr><th>Cenário</th><th>Contribui?</th><th>Salário de contribuição</th><th>Alíquota</th><th>Complementar abaixo do mínimo</th><th>Indenizar de</th><th>até</th><th></th></tr>
+      ${cens.map((c, i) => `<tr>
+        <td><input type="text" id="pc-n${i}" value="${esc(c.nome)}" style="width:190px"></td>
+        <td><input type="checkbox" id="pc-c${i}" ${c.contribuir ? 'checked' : ''}></td>
+        <td><input type="text" id="pc-s${i}" value="${esc(c.sc ?? '')}" style="width:95px"></td>
+        <td><select id="pc-a${i}">${PREV_ALIQ.map(([v, r]) => `<option value="${v}" ${Number(c.aliquota ?? 0.2) === v ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
+        <td><input type="checkbox" id="pc-m${i}" ${c.complementar ? 'checked' : ''} ${ab.size ? '' : 'disabled'}></td>
+        <td><input type="date" id="pc-i${i}" value="${esc(c.indInicio || '')}"></td>
+        <td><input type="date" id="pc-f${i}" value="${esc(c.indFim || '')}"></td>
+        <td>${i ? `<button class="btn" onclick="prevCenLer();PREV.cens.splice(${i},1);PREV.cmp=null;prevPintar()">tirar</button>` : '<span class="sub">base</span>'}</td></tr>`).join('')}
+    </table></div>
+    <div class="filtros" style="margin-top:10px"><button class="btn" onclick="prevCenLer();PREV.cens.push({nome:'Novo cenário',contribuir:true,aliquota:0.2});prevPintar()">+ cenário</button>
+      <button class="btn ok" onclick="prevCompararTela()">Comparar</button>
+      ${R ? '<button class="btn" onclick="prevPlanilhaPlano()">Baixar planilha (Excel)</button>' : ''}
+      <span class="sub" id="pc-st" style="display:inline"></span></div>
+    ${R ? `<div style="overflow-x:auto;padding:0 18px 16px"><table style="min-width:860px">
+      <tr><th>Cenário</th><th>Aposenta em</th><th>Regra</th><th>Renda</th><th>Custo até aposentar</th><th>Recupera o custo em</th><th>Retorno estimado</th><th>Diferença para a base</th></tr>
+      ${R.map((c, i) => c.erros ? `<tr><td>${esc(c.nome)}</td><td colspan="7">${esc(c.erros.join(' '))}</td></tr>`
+        : c.semRegra ? `<tr><td>${esc(c.nome)}</td><td colspan="7" class="sub">nenhuma aposentadoria nos próximos 30 anos</td></tr>`
+        : `<tr><td><b>${esc(c.nome)}</b>${c.memoria.map(m => `<span class="sub">${esc(m)}</span>`).join('')}</td>
+          <td class="dt">${br(c.data)}<span class="sub">aos ${prevDiasTxt(c.idadeDib * 360).replace(/ e \d+ dias?$/, '')}</span></td>
+          <td>${esc(c.regra)}${c.primeira ? `<span class="sub">antes: ${esc(c.primeira.regra)} em ${br(c.primeira.data)} (${rs(c.primeira.rmi)})</span>` : ''}</td>
+          <td class="dt"><b>${rs(c.rmi)}</b></td>
+          <td class="dt">${rs(c.custo)}</td>
+          <td>${c.payback ? Math.ceil(c.payback) + ' meses de benefício' : '—'}</td>
+          <td class="dt">${c.retorno != null ? rs(c.retorno) : '—'}<span class="sub">${c.expectativa ? c.expectativa.toLocaleString('pt-BR') + ' anos de sobrevida' : 'sem tábua'}</span></td>
+          <td>${!i ? '<span class="sub">base</span>' : c.delta ? `renda ${fmtD(c.delta.rmi)}<span class="sub">custo ${fmtD(c.delta.custo)}${c.delta.payback ? ' · paga-se em ' + Math.ceil(c.delta.payback) + ' meses' : ''}${c.delta.antecipa ? ' · antecipa a aposentadoria' : ''}</span>
+            ${c.delta.liquido != null ? `<span class="pill ${c.delta.liquido >= 0 ? 'good' : 'crit'}" style="margin-top:3px">${c.delta.liquido >= 0 ? 'compensa' : 'não compensa'} ${fmtD(c.delta.liquido)}</span>` : ''}` : '—'}</td></tr>`).join('')}
+    </table></div>` : ''}
+  </div>
+
+  <div class="card"><h2>Meses abaixo do mínimo (depois da reforma)</h2>
+    <p class="nota">Desde a EC 103/2019, o mês com salário abaixo do mínimo não conta como tempo nem carência, a não ser que seja complementado,
+      que use o excedente de outro mês ou que se agrupem contribuições (art. 195, § 14, CF; art. 29, EC 103). O custo abaixo usa 20% sobre a diferença;
+      confira a alíquota da complementação na categoria do segurado.</p>
+    ${ab.size ? `<div style="max-height:260px;overflow:auto;margin:0 18px 16px;border:1px solid var(--ln);border-radius:8px"><table class="mtab" style="margin:0;max-width:none">
+      <tr><th>Competência</th><th>Remuneração</th><th>Mínimo</th><th>Falta</th><th>Custo estimado (20%)</th></tr>
+      ${[...ab].sort().map(([ym, x]) => `<tr><td class="dt">${ym.slice(5)}/${ym.slice(0, 4)}</td><td class="dt">${rs(x.valor)}</td><td class="dt">${rs(x.sm)}</td><td class="dt">${rs(x.falta)}</td><td class="dt">${rs(x.falta * 0.2)}</td></tr>`).join('')}
+      <tr><td colspan="4"><b>${ab.size} mês(es)</b></td><td class="dt"><b>${rs(custoAb)}</b></td></tr></table></div>`
+      : '<div class="vazio">Nenhum mês abaixo do mínimo depois da reforma no CNIS gravado.</div>'}
+  </div>
+
+  <div class="card"><h2>Indenizar um período</h2>
+    <p class="nota">Para atividade de contribuinte individual comprovada e não recolhida (art. 45-A, Lei 8.212): 20% da média dos 80% maiores salários
+      de contribuição, com juros de 0,5% ao mês (limitados a 50%) e multa de 10%. Estimativa: o valor oficial sai na emissão da guia. Indenização
+      não conta para carência se for anterior à primeira contribuição em dia (art. 27, II, Lei 8.213).</p>
+    <div class="filtros"><label style="font-size:13px">de <input type="date" id="pi-i" value="${esc(ind.inicio || '')}"></label>
+      <label style="font-size:13px">até <input type="date" id="pi-f" value="${esc(ind.fim || '')}"></label>
+      <button class="btn" onclick="prevEstimarInd()">Estimar</button>
+      ${ind.r ? `<span style="font-size:13px">${ind.r.meses} mês(es) × ${rs(ind.r.porMes)} = <b>${rs(ind.r.total)}</b> (base ${rs(ind.r.base)})</span>
+        <button class="btn" onclick="prevCenLer();PREV.cens.push({nome:'Indenizar ${br(ind.inicio)} a ${br(ind.fim)}',contribuir:false,indInicio:'${ind.inicio}',indFim:'${ind.fim}'});PREV.cmp=null;prevPintar()">usar num cenário</button>` : ''}
+    </div>
+  </div>`;
+}
+
+window.prevCenLer = () => {
+  (PREV.cens || []).forEach((c, i) => {
+    const g = k => document.getElementById(`pc-${k}${i}`); if (!g('n')) return;
+    const num = s => { const t = String(s || '').replace(/[^\d.,]/g, ''); return t ? (t.includes(',') ? cnisNum(t) : Number(t)) : null; };
+    Object.assign(c, { nome: g('n').value.trim() || 'Cenário', contribuir: g('c').checked, sc: num(g('s').value), aliquota: Number(g('a').value),
+      complementar: !!g('m')?.checked, indInicio: g('i').value || null, indFim: g('f').value || null });
+  });
+};
+window.prevMontarLinha = async () => {
+  const st = document.getElementById('pl-st');
+  const num = s => { const t = String(s || '').replace(/[^\d.,]/g, ''); return t ? (t.includes(',') ? cnisNum(t) : Number(t)) : null; };
+  PREV.pl = { meses: Math.min(120, Math.max(1, Number(document.getElementById('pl-meses').value) || 36)), contribuir: document.getElementById('pl-contr').checked,
+              sc: document.getElementById('pl-sc').value.trim(), complementar: document.getElementById('pl-comp').checked };
+  st.textContent = 'calculando mês a mês…';
+  await new Promise(r => setTimeout(r, 20));
+  try { PREV.linha = prevLinhaDer(PREV.a, PREV.vinc, PREV.rem, PREV.T, { meses: PREV.pl.meses, contribuir: PREV.pl.contribuir, sc: num(PREV.pl.sc), complementar: PREV.pl.complementar }); }
+  catch (e) { st.textContent = 'erro: ' + e.message; return; }
+  prevPintar();
+};
+window.prevCompararTela = async () => {
+  prevCenLer();
+  const st = document.getElementById('pc-st');
+  st.textContent = 'comparando…';
+  await new Promise(r => setTimeout(r, 20));
+  try { PREV.cmp = prevComparar(PREV.cens.map(c => prevCenario(PREV.a, PREV.vinc, PREV.rem, PREV.T, c))); }
+  catch (e) { st.textContent = 'erro: ' + e.message; return; }
+  prevPintar();
+};
+window.prevEstimarInd = () => {
+  PREV.ind = { inicio: document.getElementById('pi-i').value, fim: document.getElementById('pi-f').value };
+  PREV.ind.r = prevCustoIndenizacao(PREV.vinc, PREV.rem, PREV.T, PREV.ind.inicio, PREV.ind.fim, PREV.a.data_base);
+  prevPintar();
+};
+window.prevPlanilhaPlano = () => {
+  const R = PREV.cmp, a = PREV.a; if (!R || !window.XLSX) return;
+  const wb = XLSX.utils.book_new(), nome = a.cliente?.nome || a.titulo || 'segurado';
+  const lin = [['Planejamento previdenciário', nome], ['Data-base', br(a.data_base)], [],
+    ['Cenário', 'Contribui', 'Salário de contribuição', 'Alíquota', 'Aposenta em', 'Regra', 'Renda', 'Custo até aposentar', 'Meses para recuperar', 'Anos de sobrevida', 'Retorno estimado', 'Diferença de renda', 'Diferença de custo', 'Diferença líquida', 'Observações']];
+  R.forEach((c, i) => { const cen = PREV.cens[i];
+    lin.push([c.nome, cen.contribuir ? 'sim' : 'não', cen.contribuir ? cen.sc : '', cen.contribuir ? cen.aliquota : '', c.data ? br(c.data) : '', c.regra || (c.semRegra ? 'nenhuma' : ''),
+      c.rmi != null ? prevArred(c.rmi) : '', c.custo != null ? prevArred(c.custo) : '', c.payback ? Math.ceil(c.payback) : '', c.expectativa || '',
+      c.retorno != null ? prevArred(c.retorno) : '', c.delta ? prevArred(c.delta.rmi) : '', c.delta ? prevArred(c.delta.custo) : '',
+      c.delta?.liquido != null ? prevArred(c.delta.liquido) : '', (c.memoria || []).join(' | ')]); });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(lin), 'Cenários');
+  if (PREV.linha){
+    const l = [['Data de requerimento', 'Melhor regra', 'Renda estimada']];
+    for (const p of PREV.linha.pts) l.push([br(p.data), p.regra || '—', p.rmi != null ? prevArred(p.rmi) : '']);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(l), 'Melhor data');
+  }
+  XLSX.writeFile(wb, `planejamento-previdenciario-${nome.replace(/[^\wÀ-ú ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase()}-${a.data_base}.xlsx`);
 };
 
 /* --------------------------------------------------------------- tutoriais */
