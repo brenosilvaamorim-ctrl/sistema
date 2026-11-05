@@ -10189,6 +10189,397 @@ function prevGerarPendencias(vincs, rems, legenda, hoje){
 }
 /* PREV-CNIS-FIM */
 
+/* PREV-CALC-INICIO — motor de regras das aposentadorias (RGPS). Funções puras:
+   recebem os dados da análise e as tabelas oficiais e devolvem o resultado de cada
+   regra, com a memória de cálculo. Não tocam na tela nem no banco.
+
+   Tabelas (T): { sm:[{inicio,valor}], teto:[{inicio,valor}], inpc:{'AAAA-MM': variação %},
+                  sobrevida:[{ano_tabua, idade, expectativa, vigencia_inicio, vigencia_fim}] }
+   Tempo é contado em dias comerciais (mês de 30, ano de 360). */
+const PREV_REF = '2019-11-13';             // véspera da vigência da EC 103/2019
+const PREV_REF_SEG = '2019-11-14';
+const PREV_CONV = { '25': { F: 1.2, M: 1.4 }, '20': { F: 1.5, M: 1.75 }, '15': { F: 2.0, M: 2.33 } };
+const prevDias = t => t.a * 360 + t.m * 30 + t.d;
+const prevDiasTxt = n => { n = Math.max(0, Math.floor(n + 1e-9)); return prevTempoTxt({ a: Math.floor(n / 360), m: Math.floor(n % 360 / 30), d: n % 30 }); };
+const prevMes = iso => iso.slice(0, 7);
+const prevMesSeg = ym => { let [y, m] = ym.split('-').map(Number); m++; if (m > 12) { m = 1; y++; } return `${y}-${String(m).padStart(2, '0')}`; };
+const prevMesAnt = ym => { let [y, m] = ym.split('-').map(Number); m--; if (m < 1) { m = 12; y--; } return `${y}-${String(m).padStart(2, '0')}`; };
+const prevMaisMes = (iso, n) => { const [y, m, d] = iso.split('-').map(Number); const t = new Date(Date.UTC(y, m - 1 + n, 1));
+  const ult = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 0)).getUTCDate();
+  return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(Math.min(d, ult)).padStart(2, '0')}`; };
+const prevVigente = (lista, iso) => { let v = null; for (const x of lista || []) if (x.inicio <= iso) v = x; return v; };
+const prevArred = (v, c = 2) => Math.round(v * 10 ** c) / 10 ** c;
+
+/* idade em anos (com fração), contando só o que já se completou */
+function prevIdade(nasc, data){
+  const [y1, m1, d1] = nasc.split('-').map(Number), [y2, m2, d2] = data.split('-').map(Number);
+  let a = y2 - y1, m = m2 - m1, d = d2 - d1;
+  if (d < 0) { m -= 1; d += new Date(Date.UTC(y2, m2 - 1, 0)).getUTCDate(); }
+  if (m < 0) { a -= 1; m += 12; }
+  return { a, m, d, anos: a + m / 12 + d / 365 };
+}
+
+/* períodos que contam até a data, já recortados nela */
+function prevPeriodos(vincs, ate){
+  return (vincs || []).filter(v => v.considerar !== false && v.inicio && v.inicio <= ate).map(v => {
+    let fim = v.fim || (v.ultima_remun ? cnisFimMes(v.ultima_remun) : ate);
+    if (fim > ate) fim = ate;
+    return { inicio: v.inicio, fim, v };
+  }).filter(p => p.fim >= p.inicio);
+}
+
+/* Conta o tempo até a data: bruto (sem conversão), convertido (especial convertido em
+   comum só até 13/11/2019, art. 25, § 2º, EC 103) e o especial efetivo por grau.
+   Concomitância conta uma vez só; se houver especial no trecho, vale o especial. */
+function prevContar(vincs, ate, sexo){
+  const ps = prevPeriodos(vincs, ate);
+  const cortes = new Set([PREV_REF_SEG]);
+  for (const p of ps) { cortes.add(p.inicio); cortes.add(prevMaisDia(p.fim, 1)); }
+  const bs = [...cortes].sort();
+  let bruto = 0, conv = 0, ref = 0, refConv = 0; const esp = { '15': 0, '20': 0, '25': 0 };
+  for (let i = 0; i < bs.length - 1; i++){
+    const a = bs[i], b = prevMaisDia(bs[i + 1], -1);
+    if (b < a) continue;
+    const cob = ps.filter(p => p.inicio <= a && p.fim >= b);
+    if (!cob.length) continue;
+    const dias = prevDias(prevDiff(a, b));
+    const g = cob.map(p => p.v.especial).filter(Boolean).sort()[0];   // o grau mais favorável
+    const f = g && b <= PREV_REF ? PREV_CONV[g][sexo] : 1;
+    bruto += dias; conv += dias * f;
+    if (g) esp[g] += dias;
+    if (b <= PREV_REF) { ref += dias; refConv += dias * f; }
+  }
+  return { bruto, conv, esp, ref, refConv };
+}
+
+/* Carência: meses com contribuição. Empregado conta o mês do vínculo; quem recolhe
+   (individual, facultativo) conta o mês recolhido. Benefício não conta. */
+function prevCarencia(vincs, rems, ate){
+  const meses = new Set();
+  const remPorV = new Map();
+  for (const r of rems || []) if (r.considerar !== false && r.valor > 0) {
+    if (!remPorV.has(r.vinculo_id)) remPorV.set(r.vinculo_id, []); remPorV.get(r.vinculo_id).push(r);
+  }
+  for (const p of prevPeriodos((vincs || []).filter(v => v.tipo !== 'beneficio'), ate)){
+    const rs = remPorV.get(p.v.id) || [];
+    if (['individual', 'facultativo'].includes(p.v.tipo) && rs.length){
+      for (const r of rs) if (r.competencia <= ate && r.competencia >= prevMes(p.inicio) + '-01') meses.add(prevMes(r.competencia));
+    } else {
+      for (let ym = prevMes(p.inicio); ym <= prevMes(p.fim); ym = prevMesSeg(ym)) meses.add(ym);
+    }
+  }
+  return meses.size;
+}
+
+/* Fator de atualização de cada competência até o benefício: INPC acumulado do mês
+   seguinte ao da competência até o mês anterior ao do início do benefício. */
+function prevFatores(T, dib){
+  const fim = prevMesAnt(prevMes(dib));
+  const out = {}; let acc = 1; const faltam = [];
+  for (let ym = fim; ym >= '1994-07'; ym = prevMesAnt(ym)){
+    out[ym] = acc;
+    const v = T.inpc[ym];
+    if (v == null) faltam.push(ym); else acc *= 1 + v / 100;
+  }
+  return { f: out, faltam: faltam.filter(ym => ym > '1994-07') };
+}
+
+/* Os salários de contribuição de julho/1994 até o mês anterior ao benefício.
+   Mês de emprego sem remuneração no CNIS entra pelo mínimo (art. 36, Lei 8.213),
+   e fica marcado. Soma de atividades concomitantes, limitada ao teto. */
+function prevSalarios(vincs, rems, dib, T, opt = {}){
+  const ultimo = prevMesAnt(prevMes(dib));
+  const porMes = new Map();
+  const add = (ym, valor, origem) => {
+    if (ym < '1994-07' || ym > ultimo || !(valor > 0)) return;
+    const x = porMes.get(ym) || { ym, bruto: 0, origens: [] };
+    x.bruto += valor; x.origens.push(origem); porMes.set(ym, x);
+  };
+  const remPorV = new Map();
+  for (const r of rems || []) if (r.considerar !== false) {
+    if (!remPorV.has(r.vinculo_id)) remPorV.set(r.vinculo_id, []); remPorV.get(r.vinculo_id).push(r);
+  }
+  for (const p of prevPeriodos((vincs || []).filter(v => v.tipo !== 'beneficio'), prevMaisDia(dib, -1))){
+    const rs = (remPorV.get(p.v.id) || []).filter(r => r.valor > 0);
+    const tem = new Set();
+    for (const r of rs){ const ym = prevMes(r.competencia); if (ym >= prevMes(p.inicio) && ym <= prevMes(p.fim)) { add(ym, Number(r.valor), 'cnis'); tem.add(ym); } }
+    if (p.v.tipo === 'projecao'){
+      for (let ym = prevMes(p.inicio); ym <= prevMes(p.fim); ym = prevMesSeg(ym)) add(ym, opt.scFuturo || prevVigente(T.sm, ym + '-01')?.valor, 'projeção');
+    } else if (!['individual', 'facultativo'].includes(p.v.tipo) || !rs.length){
+      for (let ym = prevMes(p.inicio); ym <= prevMes(p.fim); ym = prevMesSeg(ym))
+        if (!tem.has(ym)) add(ym, prevVigente(T.sm, ym + '-01')?.valor, 'mínimo (sem remuneração no CNIS)');
+    }
+  }
+  const { f, faltam } = prevFatores(T, dib);
+  const lista = [...porMes.values()].sort((a, b) => a.ym.localeCompare(b.ym)).map(x => {
+    const teto = prevVigente(T.teto, x.ym + '-01')?.valor ?? Infinity;
+    const sc = Math.min(x.bruto, teto);
+    const fator = f[x.ym] ?? 1;
+    return { ym: x.ym, bruto: prevArred(x.bruto), teto: teto === Infinity ? null : teto, sc: prevArred(sc), fator, corrigido: sc * fator,
+             origem: [...new Set(x.origens)].join(' + ') };
+  });
+  return { lista, faltamIndices: faltam };
+}
+
+/* Média. '100': todos os salários (art. 26 da EC 103). '80': os 80% maiores, com o
+   divisor mínimo de 60% do período decorrido desde 07/1994 (art. 3º, § 2º, Lei 9.876/99). */
+function prevMedia(valores, tipo, dib){
+  const n = valores.length;
+  if (!n) return { media: 0, usados: 0, divisor: 0 };
+  if (tipo === '100') return { media: valores.reduce((s, v) => s + v, 0) / n, usados: n, divisor: n };
+  const ord = [...valores].sort((a, b) => b - a);
+  const k = Math.max(1, Math.floor(n * 0.8));
+  const soma = ord.slice(0, k).reduce((s, v) => s + v, 0);
+  let decorrido = 0; for (let ym = '1994-07'; ym < prevMes(dib); ym = prevMesSeg(ym)) decorrido++;
+  const divisor = Math.max(k, Math.min(Math.ceil(decorrido * 0.6), n));
+  return { media: soma / divisor, usados: k, divisor };
+}
+
+/* Fator previdenciário (art. 29, §§ 7º a 9º, Lei 8.213): a mulher soma 5 anos ao tempo. */
+function prevExpectativa(T, idadeAnos, dib){
+  const tabs = (T.sobrevida || []);
+  let tab = tabs.filter(x => x.vigencia_inicio <= dib && (!x.vigencia_fim || x.vigencia_fim >= dib));
+  let aviso = null;
+  if (!tab.length && tabs.length){
+    const ultimo = Math.max(...tabs.map(x => x.ano_tabua));
+    tab = tabs.filter(x => x.ano_tabua === ultimo);
+    aviso = `Não há tábua do IBGE cadastrada para ${br(dib)}: usada a tábua ${ultimo}.`;
+  }
+  const idade = Math.floor(idadeAnos);
+  const e = tab.find(x => x.idade === idade);
+  return e ? { es: Number(e.expectativa), ano: e.ano_tabua, aviso } : { es: null, ano: null, aviso: `Falta a expectativa de sobrevida do IBGE para ${idade} anos.` };
+}
+function prevFatorPrev(tcAnos, idadeAnos, es, sexo){
+  const a = 0.31, tc = tcAnos + (sexo === 'F' ? 5 : 0);
+  return prevArred((tc * a / es) * (1 + (idadeAnos + tc * a) / 100), 4);
+}
+
+/* ------------------------------------------------------------ as regras */
+const PREV_REGRAS = [
+  { k: 'da_tc', nome: 'Tempo de contribuição (direito adquirido)', base: 'Lei 8.213/91, arts. 52 e 29-C; EC 103/2019, art. 3º', da: true },
+  { k: 'da_idade', nome: 'Idade (direito adquirido)', base: 'Lei 8.213/91, art. 48; EC 103/2019, art. 3º', da: true },
+  { k: 'da_especial', nome: 'Especial (direito adquirido)', base: 'Lei 8.213/91, art. 57; EC 103/2019, art. 3º', da: true },
+  { k: 'art15', nome: 'Transição por pontos', base: 'EC 103/2019, art. 15' },
+  { k: 'art16', nome: 'Transição por idade mínima progressiva', base: 'EC 103/2019, art. 16' },
+  { k: 'art17', nome: 'Transição com pedágio de 50%', base: 'EC 103/2019, art. 17' },
+  { k: 'art18', nome: 'Transição da aposentadoria por idade', base: 'EC 103/2019, art. 18' },
+  { k: 'art20', nome: 'Transição com pedágio de 100%', base: 'EC 103/2019, art. 20' },
+  { k: 'art21', nome: 'Especial — transição por pontos', base: 'EC 103/2019, art. 21' },
+  { k: 'perm', nome: 'Regra permanente (filiados depois da reforma)', base: 'EC 103/2019, art. 19' },
+];
+const prevAnoFrac = iso => Number(iso.slice(0, 4));
+
+/* Confere os requisitos de uma regra com números já contados.
+   n: { tc (anos, convertido), idade (anos), car (meses), esp {15,20,25 em anos}, tcRef (anos em 13/11/2019) } */
+function prevChecar(k, n, D, sexo, grau){
+  const F = sexo === 'F', ano = prevAnoFrac(D);
+  const tcMin = F ? 30 : 35;
+  const req = [];
+  const r = (nome, exigido, cumprido, ok, fmt = 'anos') => req.push({ nome, exigido, cumprido, ok, fmt });
+  if (k === 'da_tc'){ r('Tempo de contribuição', tcMin, n.tc, n.tc >= tcMin); r('Carência', 180, n.car, n.car >= 180, 'meses'); }
+  if (k === 'da_idade'){ r('Idade', F ? 60 : 65, n.idade, n.idade >= (F ? 60 : 65)); r('Carência', 180, n.car, n.car >= 180, 'meses'); }
+  if (k === 'da_especial'){ const g = Number(grau); r(`Tempo especial (${g} anos)`, g, n.esp[grau], n.esp[grau] >= g); r('Carência', 180, n.car, n.car >= 180, 'meses'); }
+  if (k === 'art15'){
+    const pts = Math.min(F ? 100 : 105, (F ? 86 : 96) + Math.max(0, ano - 2019));
+    r('Tempo de contribuição', tcMin, n.tc, n.tc >= tcMin); r(`Pontos (${ano})`, pts, n.idade + n.tc, n.idade + n.tc >= pts, 'pontos');
+    r('Carência', 180, n.car, n.car >= 180, 'meses');
+  }
+  if (k === 'art16'){
+    const id = Math.min(F ? 62 : 65, (F ? 56 : 61) + 0.5 * Math.max(0, ano - 2019));
+    r('Tempo de contribuição', tcMin, n.tc, n.tc >= tcMin); r(`Idade mínima (${ano})`, id, n.idade, n.idade >= id);
+    r('Carência', 180, n.car, n.car >= 180, 'meses');
+  }
+  if (k === 'art17'){
+    const lim = F ? 28 : 33;
+    const exig = tcMin + 0.5 * Math.max(0, tcMin - n.tcRef);
+    r('Tempo em 13/11/2019 (mais de ' + lim + ' anos)', lim, n.tcRef, n.tcRef > lim);
+    r('Tempo de contribuição com pedágio de 50%', exig, n.tc, n.tc >= exig); r('Carência', 180, n.car, n.car >= 180, 'meses');
+  }
+  if (k === 'art18'){
+    const id = F ? Math.min(62, 60 + 0.5 * Math.max(0, ano - 2019)) : 65;
+    r(`Idade (${ano})`, id, n.idade, n.idade >= id); r('Tempo de contribuição', 15, n.tc, n.tc >= 15); r('Carência', 180, n.car, n.car >= 180, 'meses');
+  }
+  if (k === 'art20'){
+    const exig = tcMin + Math.max(0, tcMin - n.tcRef);
+    r('Idade', F ? 57 : 60, n.idade, n.idade >= (F ? 57 : 60));
+    r('Tempo de contribuição com pedágio de 100%', exig, n.tc, n.tc >= exig); r('Carência', 180, n.car, n.car >= 180, 'meses');
+  }
+  if (k === 'art21'){
+    const g = Number(grau), pts = { 15: 66, 20: 76, 25: 86 }[g];
+    r(`Tempo especial (${g} anos)`, g, n.esp[grau], n.esp[grau] >= g); r('Pontos (idade + tempo)', pts, n.idade + n.tc, n.idade + n.tc >= pts, 'pontos');
+    r('Carência', 180, n.car, n.car >= 180, 'meses');
+  }
+  if (k === 'perm'){
+    r('Idade', F ? 62 : 65, n.idade, n.idade >= (F ? 62 : 65)); r('Tempo de contribuição', F ? 15 : 20, n.tc, n.tc >= (F ? 15 : 20));
+    r('Carência', 180, n.car, n.car >= 180, 'meses');
+  }
+  return { ok: req.length > 0 && req.every(x => x.ok), req };
+}
+
+/* Coeficiente das regras da EC 103: 60% + 2% por ano completo acima de 20 (homem) ou
+   15 (mulher; e especial de 15 anos para todos). */
+function prevCoef(tcAnos, sexo, grau){
+  const base = (sexo === 'F' || grau === '15') ? 15 : 20;
+  return 0.6 + 0.02 * Math.max(0, Math.floor(tcAnos + 1e-9) - base);
+}
+
+/* Números de uma data: tempo, idade, carência. */
+function prevNumeros(ctx, D){
+  const vs = ctx.projetar && D > ctx.dataBase
+    ? [...ctx.vincs, { id: '__proj', tipo: 'projecao', inicio: prevMaisDia(ctx.dataBase, 1), fim: D, considerar: true }]
+    : ctx.vincs;
+  const c = prevContar(vs, D, ctx.sexo);
+  return { tc: c.conv / 360, bruto: c.bruto / 360, idade: prevIdade(ctx.nasc, D).anos, car: prevCarencia(vs, ctx.rems, D),
+           esp: { '15': c.esp['15'] / 360, '20': c.esp['20'] / 360, '25': c.esp['25'] / 360 }, tcRef: ctx.tcRef, vs };
+}
+
+/* Primeira data em que a regra é cumprida (até 30 anos à frente). */
+function prevPrimeiraData(ctx, k, grau){
+  if (prevChecar(k, prevNumeros(ctx, ctx.dataBase), ctx.dataBase, ctx.sexo, grau).ok) return ctx.dataBase;
+  let ant = ctx.dataBase;
+  for (let i = 1; i <= 360; i++){
+    const D = prevMaisMes(ctx.dataBase, i);
+    if (prevChecar(k, prevNumeros(ctx, D), D, ctx.sexo, grau).ok){
+      for (let d = prevMaisDia(ant, 1); d <= D; d = prevMaisDia(d, 1))
+        if (prevChecar(k, prevNumeros(ctx, d), d, ctx.sexo, grau).ok) return d;
+      return D;
+    }
+    ant = D;
+  }
+  return null;
+}
+
+/* Calcula a renda de uma regra numa data de início (dib). */
+function prevRenda(ctx, k, grau, dib){
+  const T = ctx.T, sexo = ctx.sexo, avisos = [];
+  const da = k.startsWith('da_');
+  const dibCalc = da ? PREV_REF : dib;                 // direito adquirido: cálculo na data da reforma
+  const n = prevNumeros(ctx, dibCalc);
+  const sal = prevSalarios(n.vs, ctx.rems, prevMaisDia(dibCalc, 1), T, { scFuturo: ctx.scFuturo });
+  if (sal.faltamIndices.length) avisos.push(`INPC ainda não publicado de ${sal.faltamIndices.length} mês(es) (${prevFaixas(sal.faltamIndices.map(x => x + '-01'))}): considerado zero.`);
+  const noMin = sal.lista.filter(x => x.origem.includes('mínimo')).length;
+  if (noMin) avisos.push(`${noMin} mês(es) de emprego sem remuneração no CNIS entraram pelo salário mínimo.`);
+  if (sal.lista.some(x => x.origem.includes('projeção'))) avisos.push('Inclui contribuições futuras projetadas (valores em moeda de hoje, sem inflação futura).');
+  const sm = prevVigente(T.sm, dib)?.valor, teto = prevVigente(T.teto, dib)?.valor;
+  const smCalc = prevVigente(T.sm, dibCalc)?.valor, tetoCalc = prevVigente(T.teto, dibCalc)?.valor;
+  const vals = sal.lista.map(x => x.corrigido);
+  let melhor = null;
+
+  const avaliar = (descartar) => {
+    const ordem = sal.lista.map((x, i) => i).sort((a, b) => sal.lista[a].corrigido - sal.lista[b].corrigido);
+    const fora = new Set(ordem.slice(0, descartar));
+    const usados = vals.filter((v, i) => !fora.has(i));
+    const tcAdj = n.tc - descartar / 12, carAdj = n.car - descartar;
+    if (descartar && !prevChecar(k, { ...n, tc: tcAdj, car: carAdj }, dibCalc, sexo, grau).ok) return null;
+    const m = prevMedia(usados, ['da_tc', 'da_idade', 'da_especial'].includes(k) ? '80' : '100', dibCalc);
+    let sb = Math.min(Math.max(m.media, 0), tetoCalc ?? Infinity);
+    let coef = 1, fp = null, es = null, txt = '';
+    if (k === 'da_tc' || k === 'art17' || k === 'da_idade'){
+      const e = prevExpectativa(T, n.idade, dibCalc);
+      if (e.aviso) avisos.push(e.aviso);
+      es = e.es;
+      if (es) fp = prevFatorPrev(tcAdj, n.idade, es, sexo);
+    }
+    if (k === 'da_tc'){
+      const pts = n.idade + n.tc, alvo = sexo === 'F' ? 86 : 96;
+      if (pts >= alvo) { coef = fp ? Math.max(1, fp) : 1; txt = `pontos ${prevArred(pts, 1)} ≥ ${alvo}: sem fator (ou com ele, se maior que 1)`; }
+      else { coef = fp ?? NaN; txt = 'com fator previdenciário'; }
+    } else if (k === 'da_idade'){
+      coef = Math.min(1, 0.7 + 0.01 * Math.floor(carAdj / 12));
+      if (fp && fp > 1) { coef *= fp; txt = '70% + 1% a cada 12 contribuições, com fator (maior que 1)'; }
+      else txt = '70% + 1% a cada 12 contribuições';
+    } else if (k === 'da_especial'){ coef = 1; txt = '100% do salário de benefício'; }
+    else if (k === 'art17'){ coef = fp ?? NaN; txt = '100% da média, com fator previdenciário'; }
+    else if (k === 'art20'){ coef = 1; txt = '100% da média'; }
+    else { coef = prevCoef(tcAdj, sexo, grau); txt = `60% + 2% por ano acima de ${(sexo === 'F' || grau === '15') ? 15 : 20} anos`; }
+    let rmi = sb * coef;
+    rmi = Math.max(rmi, smCalc ?? 0); if (tetoCalc) rmi = Math.min(rmi, tetoCalc);
+    return { descartados: descartar, media: m.media, usados: m.usados, divisor: m.divisor, sb, coef, fp, es, txt, rmi, tcUsado: tcAdj, fora };
+  };
+
+  if (!vals.length) return { rmi: smCalc ?? null, avisos: [...avisos, 'Nenhum salário de contribuição desde 07/1994: renda pelo mínimo.'], salarios: sal.lista, n };
+  melhor = avaliar(0);
+  /* descarte (art. 26, § 6º, EC 103): só nas regras da reforma */
+  if (!da){
+    for (let d = 1; d < vals.length; d++){
+      const x = avaliar(d);
+      if (!x) break;
+      if (x.rmi > melhor.rmi + 0.004) melhor = x;
+    }
+  }
+  /* direito adquirido: renda de 13/11/2019 reajustada até a DER pelos reajustes anuais (INPC) */
+  let rmiDer = melhor.rmi, reajuste = 1;
+  if (da && dib > PREV_REF){
+    for (let ano = 2020; ano <= Number(dib.slice(0, 4)); ano++){
+      if (`${ano}-01-01` > dib) break;
+      let f = 1;
+      for (let ym = ano === 2020 ? '2019-11' : `${ano - 1}-01`; ym <= `${ano - 1}-12`; ym = prevMesSeg(ym)) f *= 1 + (T.inpc[ym] ?? 0) / 100;
+      reajuste *= f;
+    }
+    rmiDer = Math.max(melhor.rmi * reajuste, sm ?? 0);
+    if (teto) rmiDer = Math.min(rmiDer, teto);
+  }
+  const salarios = sal.lista.map((x, i) => ({ ...x, descartado: melhor.fora.has(i) }));
+  delete melhor.fora;
+  return { ...melhor, rmi: rmiDer, rmiCalc: melhor.rmi, reajuste, sm, teto, avisos: [...new Set(avisos)], salarios, n, dibCalc };
+}
+
+/* Avalia todas as regras. a: análise; opt: { projetar, scFuturo } */
+function prevCalcular(a, vincs, rems, T, opt = {}){
+  const erros = [];
+  if (!a.sexo) erros.push('Informe o sexo do segurado (aba Dados e CNIS).');
+  if (!a.nascimento) erros.push('Informe a data de nascimento (aba Dados e CNIS).');
+  if (!T.sm?.length || !T.teto?.length) erros.push('Faltam as tabelas oficiais de salário mínimo e teto.');
+  if (erros.length) return { erros, regras: [] };
+  const dataBase = a.data_base || new Date().toISOString().slice(0, 10);
+  const ctx = { sexo: a.sexo, nasc: a.nascimento, dataBase, vincs: vincs.filter(v => v.considerar !== false), rems, T,
+                projetar: !!opt.projetar, scFuturo: Number(opt.scFuturo) || null };
+  ctx.tcRef = prevContar(ctx.vincs, PREV_REF, a.sexo).refConv / 360;
+  const filiacao = ctx.vincs.filter(v => v.inicio && v.tipo !== 'beneficio').map(v => v.inicio).sort()[0] || null;
+  const antes = filiacao && filiacao <= PREV_REF;
+  const nHoje = prevNumeros(ctx, dataBase);
+  const graus = ['15', '20', '25'].filter(g => nHoje.esp[g] > 0);
+  const regras = [];
+  for (const R of PREV_REGRAS){
+    const lista = ['da_especial', 'art21'].includes(R.k) ? graus.map(g => ({ ...R, grau: g, nome: R.nome + ` — ${g} anos` })) : [R];
+    for (const r of lista){
+      const out = { k: r.k, grau: r.grau || null, nome: r.nome, base: r.base, aplicavel: true, motivo: null };
+      if (r.k === 'perm' && antes) { out.aplicavel = false; out.motivo = 'Filiado antes da reforma: valem as regras de transição.'; }
+      if (r.k !== 'perm' && !r.da && !antes) { out.aplicavel = false; out.motivo = 'Filiado depois da reforma: vale a regra permanente.'; }
+      if (r.da && !antes) { out.aplicavel = false; out.motivo = 'Sem contribuição antes de 13/11/2019.'; }
+      if (!out.aplicavel) { regras.push(out); continue; }
+      if (r.da){
+        const nRef = prevNumeros({ ...ctx, projetar: false }, PREV_REF);
+        const ch = prevChecar(r.k, nRef, PREV_REF, a.sexo, r.grau);
+        out.req = ch.req; out.cumpre = ch.ok; out.data = ch.ok ? PREV_REF : null;
+        if (!ch.ok) out.motivo = 'Requisitos não cumpridos até 13/11/2019.';
+      } else {
+        const chHoje = prevChecar(r.k, nHoje, dataBase, a.sexo, r.grau);
+        out.req = chHoje.req; out.cumpre = chHoje.ok;
+        out.data = chHoje.ok ? dataBase : prevPrimeiraData(ctx, r.k, r.grau);
+        if (!out.cumpre && out.data){
+          out.reqFuturo = prevChecar(r.k, prevNumeros(ctx, out.data), out.data, a.sexo, r.grau).req;
+          out.motivo = ctx.projetar ? 'Cumpre no futuro, continuando a contribuir.' : 'Cumpre no futuro (sem novas contribuições, só pela idade).';
+        }
+        if (!out.cumpre && !out.data) out.motivo = ctx.projetar ? 'Não cumpre nos próximos 30 anos.' : 'Não cumpre sem novas contribuições. Marque "projetar contribuindo" para simular.';
+      }
+      if (out.data){
+        const dib = out.cumpre ? dataBase : out.data;
+        out.dib = dib;
+        out.calc = prevRenda(ctx, r.k, r.grau, dib);
+      }
+      regras.push(out);
+    }
+  }
+  const hoje = regras.filter(r => r.cumpre && r.calc);
+  const melhor = hoje.sort((x, y) => y.calc.rmi - x.calc.rmi)[0] || null;
+  const futuras = regras.filter(r => !r.cumpre && r.data && r.calc).sort((x, y) => x.data.localeCompare(y.data));
+  return { erros, regras: PREV_REGRAS.flatMap(R => regras.filter(r => r.k === R.k)), melhor: melhor ? melhor.k + (melhor.grau || '') : null,
+           proxima: futuras[0] ? futuras[0].k + (futuras[0].grau || '') : null, dataBase, tcHoje: nHoje.tc, brutoHoje: nHoje.bruto,
+           idadeHoje: nHoje.idade, carHoje: nHoje.car, tcRef: ctx.tcRef, filiacao, projetar: ctx.projetar, scFuturo: ctx.scFuturo };
+}
+/* PREV-CALC-FIM */
+
 /* ----- leitura do PDF (pdf.js, carregado só quando alguém abre um CNIS) */
 let PDFJS = null;
 async function carregarPdfJs(){
@@ -10265,7 +10656,7 @@ async function telaPrev(){
   app.innerHTML = menu('prev') + `
   <main><h1>Previdenciário</h1>
   <p class="meta">Análise de benefícios do INSS (regime geral), sempre ligada a um caso. Comece pelo CNIS: o sistema lê o
-    extrato, monta os vínculos e aponta o que precisa ser comprovado. O cálculo dos benefícios vem na próxima etapa.</p>
+    extrato, monta os vínculos e aponta o que precisa ser comprovado. Depois, a aba Benefícios compara todas as regras de aposentadoria e gera a planilha.</p>
   <div class="kpis">
     <div class="kpi"><div class="n">${lista.filter(x => x.situacao === 'aberta').length}</div><div class="l">análises abertas</div></div>
     <div class="kpi"><div class="n">${lista.filter(x => x.cnis_lido_em).length}</div><div class="l">com CNIS lido</div></div>
@@ -10320,7 +10711,10 @@ async function prevCarregar(id){
     prevTodas('prev_remuneracao', 'id,vinculo_id,competencia,valor,contribuicao,pagamento,indicadores,origem,considerar', id),
     prevTodas('prev_pendencia', '*', id),
   ]);
-  if (PREV.a?.id !== id) Object.assign(PREV, { aba: 'dados', previa: null, arquivo: null, editando: null, remAberto: null, msg: '' });
+  if (PREV.a?.id !== id) Object.assign(PREV, { aba: 'dados', previa: null, arquivo: null, editando: null, remAberto: null, msg: '', opt: null });
+  PREV.calc = null;   /* os dados podem ter mudado: o cálculo é refeito quando pedido */
+  PREV.sims = (await sb.from('prev_simulacao').select('id,criado_em,data_base,melhor,rmi').eq('analise_id', id)
+    .order('criado_em', { ascending: false })).data || [];
   PREV.a = a;
   PREV.vinc = vinc.sort((x, y) => (x.inicio || '9999').localeCompare(y.inicio || '9999') || (x.seq || 0) - (y.seq || 0));
   PREV.rem = rem.sort((x, y) => x.competencia.localeCompare(y.competencia));
@@ -10336,7 +10730,7 @@ async function telaPrevAnalise(id){
 function prevPintar(){
   const a = PREV.a;
   const abertas = PREV.pend.filter(p => !p.resolvida).length;
-  const abas = [['dados', 'Dados e CNIS'], ['vinculos', `Vínculos (${PREV.vinc.length})`], ['pendencias', `Pendências (${abertas})`]];
+  const abas = [['dados', 'Dados e CNIS'], ['vinculos', `Vínculos (${PREV.vinc.length})`], ['pendencias', `Pendências (${abertas})`], ['beneficios', 'Benefícios e cálculo']];
   app.innerHTML = menu('prev') + `
   <main><a class="volta" href="#/prev">← Previdenciário</a>
   <h1>${esc(a.cliente?.nome || a.titulo || 'Análise previdenciária')}</h1>
@@ -10345,10 +10739,9 @@ function prevPintar(){
     ${a.cnis_lido_em ? ' · CNIS lido em ' + br(a.cnis_lido_em) : ''}</p>
   <div class="filtros" style="margin:0 0 16px">
     ${abas.map(([k, r]) => `<button class="btn" style="${PREV.aba === k ? 'border-color:var(--serie);color:var(--serie)' : ''}" onclick="prevAba('${k}')">${r}</button>`).join('')}
-    <button class="btn" disabled title="Etapa 2 do módulo" style="opacity:.5">Benefícios e cálculo — em breve</button>
   </div>
   ${PREV.msg ? `<div class="aviso" style="border-color:var(--serie)">${PREV.msg}</div>` : ''}
-  <div id="prev-corpo">${PREV.aba === 'vinculos' ? prevAbaVinculos() : PREV.aba === 'pendencias' ? prevAbaPendencias() : prevAbaDados()}</div>
+  <div id="prev-corpo">${PREV.aba === 'vinculos' ? prevAbaVinculos() : PREV.aba === 'pendencias' ? prevAbaPendencias() : PREV.aba === 'beneficios' ? prevAbaBeneficios() : prevAbaDados()}</div>
   </main>` + rodape();
   aplicarRotulos(app);
 }
@@ -10402,7 +10795,7 @@ window.prevSalvarDados = async () => {
   st.textContent = 'salvando…';
   const { error } = await sb.from('prev_analise').update(upd).eq('id', PREV.a.id);
   if (error) { st.textContent = error.message; return; }
-  Object.assign(PREV.a, upd); st.textContent = 'salvo';
+  Object.assign(PREV.a, upd); PREV.calc = null; st.textContent = 'salvo';
 };
 
 window.prevVerCnis = async () => {
@@ -10682,7 +11075,7 @@ window.prevConta = async (id, sim) => {
   const v = PREV.vinc.find(x => x.id === id);
   const { error } = await sb.from('prev_vinculo').update({ considerar: sim, alterado: v.origem === 'cnis' ? true : v.alterado }).eq('id', id);
   if (error) return alert(error.message);
-  v.considerar = sim; if (v.origem === 'cnis') v.alterado = true;
+  v.considerar = sim; if (v.origem === 'cnis') v.alterado = true; PREV.calc = null;
   try { await prevSincPendencias(); } catch (e) {}
   prevPintar();
 };
@@ -10746,6 +11139,183 @@ window.prevApagarPend = async (id) => {
   const { error } = await sb.from('prev_pendencia').delete().eq('id', id);
   if (error) return alert(error.message);
   PREV.pend = PREV.pend.filter(p => p.id !== id);
+  prevPintar();
+};
+
+
+/* ----- aba Benefícios: o motor acima aplicado à análise */
+async function prevCarregarTabelas(forcar){
+  if (PREV.T && !forcar) return PREV.T;
+  const todas = async (tab, cols, ord) => {
+    const out = [];
+    for (let i = 0; ; i += 1000){
+      const { data, error } = await sb.from(tab).select(cols).order(ord).range(i, i + 999);
+      if (error) throw error;
+      out.push(...(data || [])); if (!data || data.length < 1000) break;
+    }
+    return out;
+  };
+  const [par, ind, sob] = await Promise.all([
+    todas('prev_parametro', 'tipo,inicio,valor,ato', 'inicio'),
+    todas('prev_indice', 'competencia,inpc', 'competencia'),
+    todas('prev_sobrevida', 'ano_tabua,idade,expectativa,vigencia_inicio,vigencia_fim', 'ano_tabua'),
+  ]);
+  const inpc = {}; for (const x of ind) inpc[x.competencia.slice(0, 7)] = Number(x.inpc);
+  PREV.T = { sm: par.filter(x => x.tipo === 'salario_minimo').map(x => ({ ...x, valor: Number(x.valor) })),
+             teto: par.filter(x => x.tipo === 'teto').map(x => ({ ...x, valor: Number(x.valor) })),
+             inpc, sobrevida: sob.map(x => ({ ...x, expectativa: Number(x.expectativa) })),
+             ultimoInpc: ind.length ? ind[ind.length - 1].competencia : null };
+  return PREV.T;
+}
+
+const prevFmtReq = (v, fmt) => v == null ? '—' : fmt === 'meses' ? Math.floor(v) + ' meses'
+  : fmt === 'pontos' ? prevArred(v, 2).toLocaleString('pt-BR') + ' pontos' : prevDiasTxt(v * 360);
+const prevPct = v => v == null || isNaN(v) ? '—' : (v * 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + '%';
+
+function prevAbaBeneficios(){
+  const a = PREV.a, c = PREV.calc;
+  const o = PREV.opt || (PREV.opt = { projetar: false, scFuturo: '' });
+  const situacao = r => !r.aplicavel ? '<span class="pill cin">não se aplica</span>'
+    : r.cumpre ? '<span class="pill good">cumpre na data-base</span>'
+    : r.data ? `<span class="pill warn">cumpre em ${br(r.data)}</span>` : '<span class="pill cin">não cumpre</span>';
+  const id = r => r.k + (r.grau || '');
+  let corpo = '';
+  if (c?.erros?.length) corpo = c.erros.map(e => `<div class="aviso">${esc(e)}</div>`).join('');
+  else if (c){
+    const melhor = c.regras.find(r => id(r) === c.melhor), prox = c.regras.find(r => id(r) === c.proxima);
+    corpo = `
+    <div class="kpis">
+      <div class="kpi"><div class="n" style="font-size:18px">${prevDiasTxt(c.tcHoje * 360)}</div><div class="l">tempo de contribuição na data-base (com especial convertido até 13/11/2019)</div></div>
+      <div class="kpi"><div class="n" style="font-size:18px">${prevDiasTxt(c.tcRef * 360)}</div><div class="l">tempo em 13/11/2019 (base dos pedágios)</div></div>
+      <div class="kpi"><div class="n">${c.carHoje}</div><div class="l">meses de carência</div></div>
+      <div class="kpi"><div class="n" style="font-size:18px">${prevDiasTxt(c.idadeHoje * 360)}</div><div class="l">idade na data-base</div></div>
+    </div>
+    ${melhor ? `<div class="aviso" style="border-color:var(--good)"><b>Melhor benefício na data-base (${br(c.dataBase)}):</b> ${esc(melhor.nome)} —
+        <b>${rs(melhor.calc.rmi)}</b> por mês (${esc(melhor.base)}).</div>`
+      : `<div class="aviso">Nenhuma regra é cumprida na data-base (${br(c.dataBase)}).${prox ? ` A primeira a ser cumprida é <b>${esc(prox.nome)}</b>, em <b>${br(prox.data)}</b>, com renda estimada de <b>${rs(prox.calc.rmi)}</b>.` : ''}</div>`}
+    <div class="card"><h2>Comparativo das regras</h2>
+      <p class="nota">Renda mensal inicial (RMI) estimada em cada regra. Clique numa linha para ver os requisitos e a memória de cálculo.
+        Nas regras da reforma, o sistema já descarta as contribuições que baixam a média quando isso aumenta a renda (art. 26, § 6º, EC 103/2019).</p>
+      <table><tr><th>Regra</th><th>Situação</th><th>Coeficiente</th><th>Renda estimada</th></tr>
+      ${c.regras.map(r => `<tr style="cursor:pointer;${!r.aplicavel ? 'opacity:.5' : ''}${id(r) === c.melhor ? ';background:color-mix(in srgb,var(--good) 8%,transparent)' : ''}" onclick="prevAbrirRegra('${id(r)}')">
+        <td><b>${id(r) === c.melhor ? '★ ' : ''}${esc(r.nome)}</b><span class="sub">${esc(r.base)}</span></td>
+        <td>${situacao(r)}${r.motivo && !r.cumpre ? `<span class="sub">${esc(r.motivo)}</span>` : ''}</td>
+        <td>${r.calc ? prevPct(r.calc.coef) : '—'}</td>
+        <td class="dt"><b>${r.calc ? rs(r.calc.rmi) : '—'}</b>${r.calc && !r.cumpre ? '<span class="sub">na data em que cumprir</span>' : ''}</td></tr>
+        ${PREV.regraAberta === id(r) ? `<tr><td colspan="4">${prevDetalheRegra(r)}</td></tr>` : ''}`).join('')}
+      </table>
+      <div class="filtros" style="margin-top:12px">
+        <button class="btn ok" onclick="prevPlanilha()">Baixar planilha (Excel)</button>
+        <button class="btn" onclick="prevGuardarSim()">Guardar esta simulação</button>
+        <span class="sub" id="pb-st" style="display:inline"></span></div>
+    </div>
+    <p class="nota" style="margin:0 0 18px">Estimativa para análise: confira a memória de cálculo antes de usar em peça ou orientação ao cliente.
+      Ainda não entram nesta etapa: aposentadoria do professor, da pessoa com deficiência (LC 142), rural e híbrida, e a tabela de carência do art. 142.</p>`;
+  }
+  const sims = PREV.sims || [];
+  return `
+  <div class="card"><h2>Calcular</h2>
+    <p class="nota">Usa os vínculos marcados como "conta", o sexo, o nascimento e a data-base da aba Dados e CNIS
+      (hoje: ${br(a.data_base)}). Para saber quando cada regra seria cumprida se o cliente continuar contribuindo, marque a projeção.</p>
+    <div class="filtros">
+      <label style="font-size:13px"><input type="checkbox" id="pb-proj" ${o.projetar ? 'checked' : ''}> projetar contribuindo depois da data-base</label>
+      <label style="font-size:13px">salário de contribuição futuro (R$)
+        <input type="text" id="pb-sc" value="${esc(o.scFuturo || '')}" placeholder="mínimo" style="width:110px"></label>
+      <button class="btn ok" onclick="prevCalcularTela()">Calcular</button>
+      <span class="sub" id="pc2-st" style="display:inline">${PREV.T?.ultimoInpc ? 'INPC até ' + prevComp(PREV.T.ultimoInpc) : ''}</span>
+    </div>
+  </div>
+  ${corpo}
+  ${sims.length ? `<div class="card"><h2>Simulações guardadas</h2><table><tr><th>Quando</th><th>Data-base</th><th>Melhor regra</th><th>Renda</th></tr>
+    ${sims.map(s => `<tr><td class="dt">${br(s.criado_em)}</td><td class="dt">${br(s.data_base)}</td><td>${esc(s.melhor || '—')}</td><td class="dt">${s.rmi ? rs(s.rmi) : '—'}</td></tr>`).join('')}</table></div>` : ''}`;
+}
+
+function prevDetalheRegra(r){
+  if (!r.aplicavel) return `<p class="nota" style="margin:6px 0">${esc(r.motivo)}</p>`;
+  const reqs = r.cumpre || !r.reqFuturo ? r.req : r.reqFuturo;
+  const k = r.calc;
+  return `<div style="padding:6px 4px 10px">
+    <b style="font-size:12.5px">Requisitos ${r.cumpre ? 'na data-base' : r.data ? 'em ' + br(r.data) : 'na data-base'}</b>
+    <table class="mtab"><tr><th>Requisito</th><th>Exigido</th><th>Cumprido</th><th></th></tr>
+    ${(reqs || []).map(q => `<tr><td>${esc(q.nome)}</td><td>${prevFmtReq(q.exigido, q.fmt)}</td><td>${prevFmtReq(q.cumprido, q.fmt)}</td>
+      <td>${q.ok ? '<span class="pill good">ok</span>' : '<span class="pill crit">falta</span>'}</td></tr>`).join('')}</table>
+    ${k ? `<b style="font-size:12.5px">Memória de cálculo${k.dibCalc !== r.dib ? ' (calculado em 13/11/2019 e reajustado até ' + br(r.dib) + ')' : ' (início em ' + br(r.dib) + ')'}</b>
+    <table class="mtab">
+      <tr><td>Salários de contribuição desde 07/1994</td><td>${k.salarios?.length ?? 0}${k.descartados ? ` — ${k.descartados} descartados por aumentarem a renda` : ''}</td></tr>
+      ${k.media != null ? `<tr><td>Média ${k.usados !== k.divisor ? `(${k.usados} maiores ÷ divisor ${k.divisor})` : `de ${k.usados} salários`}</td><td>${rs(k.media)}</td></tr>
+      <tr><td>Salário de benefício (limitado ao teto)</td><td>${rs(k.sb)}</td></tr>` : ''}
+      ${k.fp ? `<tr><td>Fator previdenciário (expectativa de sobrevida ${String(k.es).replace('.', ',')} anos)</td><td>${String(k.fp).replace('.', ',')}</td></tr>` : ''}
+      ${k.txt ? `<tr><td>Coeficiente</td><td>${prevPct(k.coef)} — ${esc(k.txt)}</td></tr>` : ''}
+      ${k.dibCalc !== r.dib ? `<tr><td>Renda em 13/11/2019</td><td>${rs(k.rmiCalc)}</td></tr><tr><td>Reajustes até a DER (INPC)</td><td>${prevPct(k.reajuste - 1)}</td></tr>` : ''}
+      <tr><td><b>Renda mensal inicial</b></td><td><b>${rs(k.rmi)}</b></td></tr>
+    </table>
+    ${(k.avisos || []).map(x => `<p class="q" style="margin:2px 0">${esc(x)}</p>`).join('')}` : ''}
+  </div>`;
+}
+
+window.prevAbrirRegra = id => { PREV.regraAberta = PREV.regraAberta === id ? null : id; prevPintar(); };
+
+window.prevCalcularTela = async () => {
+  const st = document.getElementById('pc2-st');
+  PREV.opt = { projetar: !!document.getElementById('pb-proj')?.checked,
+               scFuturo: (document.getElementById('pb-sc')?.value || '').trim() };
+  st.textContent = 'carregando as tabelas oficiais…';
+  try { await prevCarregarTabelas(); }
+  catch (e) { st.textContent = prevFaltaBanco(e) || /prev_parametro|prev_indice|prev_sobrevida/.test(e.message)
+    ? 'faltam as tabelas oficiais no banco (banco/37_previdenciario_calculo.sql)' : e.message; return; }
+  st.textContent = 'calculando…';
+  await new Promise(r => setTimeout(r, 20));
+  try {
+    const t = PREV.opt.scFuturo.replace(/[^\d.,]/g, '');
+    const sc = t ? (t.includes(',') ? cnisNum(t) : Number(t)) || null : null;
+    PREV.calc = prevCalcular(PREV.a, PREV.vinc, PREV.rem, PREV.T, { projetar: PREV.opt.projetar, scFuturo: sc });
+    PREV.regraAberta = PREV.calc.melhor || PREV.calc.proxima;
+  } catch (e) { PREV.calc = { erros: ['Erro no cálculo: ' + e.message], regras: [] }; }
+  prevPintar();
+};
+
+window.prevPlanilha = () => {
+  const c = PREV.calc, a = PREV.a;
+  if (!c || !window.XLSX) return;
+  const wb = XLSX.utils.book_new();
+  const nome = a.cliente?.nome || a.titulo || 'segurado';
+  const resumo = [
+    ['Análise previdenciária', nome], ['Data-base', br(c.dataBase)], ['Sexo', a.sexo === 'F' ? 'Feminino' : 'Masculino'],
+    ['Nascimento', br(a.nascimento)], ['Tempo de contribuição na data-base', prevDiasTxt(c.tcHoje * 360)],
+    ['Tempo em 13/11/2019', prevDiasTxt(c.tcRef * 360)], ['Carência (meses)', c.carHoje],
+    ['Projeção de contribuições', c.projetar ? 'sim' + (c.scFuturo ? ' — SC ' + c.scFuturo : ' — salário mínimo') : 'não'], [],
+    ['Regra', 'Base legal', 'Situação', 'Data em que cumpre', 'Média', 'Salário de benefício', 'Fator previdenciário', 'Coeficiente', 'Renda mensal inicial'],
+    ...c.regras.map(r => [r.nome, r.base, !r.aplicavel ? 'não se aplica' : r.cumpre ? 'cumpre na data-base' : r.data ? 'cumpre no futuro' : 'não cumpre',
+      r.data ? br(r.data) : '', r.calc?.media != null ? prevArred(r.calc.media) : '', r.calc?.sb != null ? prevArred(r.calc.sb) : '',
+      r.calc?.fp ?? '', r.calc ? prevArred(r.calc.coef, 4) : '', r.calc ? prevArred(r.calc.rmi) : '']),
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumo), 'Resumo');
+  const req = [['Regra', 'Requisito', 'Exigido', 'Cumprido', 'Situação']];
+  for (const r of c.regras) for (const q of (r.cumpre || !r.reqFuturo ? r.req : r.reqFuturo) || [])
+    req.push([r.nome, q.nome, prevFmtReq(q.exigido, q.fmt), prevFmtReq(q.cumprido, q.fmt), q.ok ? 'ok' : 'falta']);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(req), 'Requisitos');
+  const alvo = c.regras.find(r => r.k + (r.grau || '') === (c.melhor || c.proxima)) || c.regras.find(r => r.calc);
+  if (alvo?.calc?.salarios){
+    const s = [['Salários de contribuição — ' + alvo.nome], ['Competência', 'Remuneração somada', 'Teto', 'Salário de contribuição', 'Fator de atualização (INPC)', 'Corrigido', 'Origem', 'Descartado']];
+    for (const x of alvo.calc.salarios) s.push([x.ym.slice(5) + '/' + x.ym.slice(0, 4), x.bruto, x.teto, x.sc, prevArred(x.fator, 6), prevArred(x.corrigido), x.origem, x.descartado ? 'sim' : '']);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(s), 'Salários');
+  }
+  const v = [['Seq.', 'Origem', 'Tipo', 'Início', 'Fim', 'Especial', 'Conta', 'Prova']];
+  for (const x of PREV.vinc) v.push([x.seq ?? '', x.empregador_nome || '', PREV_TIPO_NOME[x.tipo] || x.tipo, br(x.inicio), x.fim ? br(x.fim) : '', x.especial ? x.especial + ' anos' : '', x.considerar ? 'sim' : 'não', x.prova || '']);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(v), 'Vínculos');
+  XLSX.writeFile(wb, `calculo-previdenciario-${nome.replace(/[^\wÀ-ú ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase()}-${c.dataBase}.xlsx`);
+};
+
+window.prevGuardarSim = async () => {
+  const c = PREV.calc, st = document.getElementById('pb-st');
+  if (!c) return;
+  const melhor = c.regras.find(r => r.k + (r.grau || '') === c.melhor);
+  const leve = { ...c, regras: c.regras.map(r => ({ ...r, calc: r.calc ? { ...r.calc, salarios: undefined, n: undefined } : null })) };
+  const { error } = await sb.from('prev_simulacao').insert({ escritorio_id: await escId(), analise_id: PREV.a.id, data_base: c.dataBase,
+    opcoes: PREV.opt || {}, resultado: leve, melhor: melhor?.nome || null, rmi: melhor ? prevArred(melhor.calc.rmi) : null });
+  if (error) { st.textContent = error.message; return; }
+  st.textContent = 'guardada';
+  PREV.sims = (await sb.from('prev_simulacao').select('id,criado_em,data_base,melhor,rmi').eq('analise_id', PREV.a.id).order('criado_em', { ascending: false })).data || [];
   prevPintar();
 };
 
