@@ -2458,7 +2458,9 @@ window.fecharLead = async (id) => {
   /* E a consulta marcada também: ela deixa de ser um compromisso solto na agenda
      e passa a aparecer na linha do tempo do caso. */
   await sb.from('evento').update({ caso_id: caso.id, cliente_id: cli.id }).eq('lead_id', id);
-  location.hash = '#/casos';
+  /* Abre o caso recém-criado, e não a lista: o passo seguinte de quem acabou de
+     fechar é anexar o contrato, e o cartão dele está nesta tela. */
+  location.hash = '#/caso/' + caso.id;
 };
 const VIAB = [
   ['prazo',  'Dentro do prazo (prescrição e decadência)', 3],
@@ -3990,6 +3992,7 @@ async function telaCaso(id){
   CASO = cs.data; CASOPROC = pr.data || [];
   CASOPZ = pz.data || []; CASOEV = ev.data || [];
   CASODOCS = cd.data || []; CASOMODELOS = cm.data || []; CASOASSIN = asg.data || [];
+  CASOHON = (hn.data || [])[0] || null;
   CASOTIPOS = tpc.data || []; CASOFATOS = ftx.data || [];
   CASOFICHA = ((await sb.from('ficha').select('id,situacao,modelo:modelo_id(nome)').eq('caso_id', id).limit(1)).data||[])[0] || null;
   await carregarTags().catch(()=>{});
@@ -4368,6 +4371,13 @@ async function telaCaso(id){
       <button class="btn" type="submit">Registrar envio</button>
     </form></div>
 
+  <div class="card"><h2>Contrato e honorários</h2>
+    <p class="nota">Anexe o contrato assinado. O sistema lê as cláusulas de honorário e mostra o que entendeu,
+      rubrica por rubrica, com a cláusula de onde tirou cada uma. Depois da sua conferência, entrada, parcelas
+      e despesas vão para o <a class="lnk" href="#/financeiro">Financeiro</a> já amarradas a este caso.
+      O êxito não vira lançamento agora: fica registrado e espera o caso ser ganho, quando o proveito é conhecido.</p>
+    <div id="honcard"></div></div>
+
   <div class="card"><h2>Documentos do cliente</h2>
     <p class="nota">Aplique a lista da área e vá marcando o que já chegou. O botão do WhatsApp cobra só o que falta.</p>
     <div style="padding:0 18px 12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -4406,6 +4416,7 @@ async function telaCaso(id){
   carregarSoltos().then(() => filtrarSoltos(c.id)).catch(()=>{});
   carregarClientes().catch(()=>{});
   pintarAssinaturas();
+  pintarHonorario();
   pintarDocsCaso();
   pintarLinha();
 }
@@ -5426,6 +5437,14 @@ Não existe OCR separado: as páginas são vistas como imagem, então **PDF de t
 
 **Registrar atividade.** Prazo, audiência, perícia, reunião, tarefa ou contato, tudo amarrado ao caso.
 
+**Contrato e honorários.** Anexe o contrato assinado e o sistema lê as cláusulas de honorário, devolvendo uma **rubrica por obrigação** — entrada, parcelas, êxito, despesas —, cada uma com a cláusula de onde foi tirada. O desenho muda por área e o leitor não tem campo fixo: o que estiver escrito vira rubrica.
+
+- **Nada é lançado sozinho.** Você confere valor, número de parcelas e primeiro vencimento, desmarca o que não quiser, e só então manda para o Financeiro. O lançamento nasce ligado ao caso e ao cliente.
+- **Parcelamento vira uma linha por mês**, a partir do primeiro vencimento, como no lançamento manual.
+- **Êxito não entra no "a receber".** Percentual sobre proveito econômico não tem valor até o caso ser ganho; fica registrado no cartão, à vista, e você lança pelo Financeiro quando souber o valor. O mesmo vale para rubrica condicional ("em caso de ajuizamento").
+- **Confira sempre a ressalva da leitura.** Contrato escaneado torto ou com a cláusula cortada sai incompleto — o aviso aparece em destaque.
+- **Trocar** remove o contrato e a leitura; o que já foi lançado continua no Financeiro.
+
 **Documentos do cliente.** A lista do que foi pedido, com data de recebimento, e o botão que monta a cobrança pronta no WhatsApp.
 
 **Assinatura de documentos.** Gera a procuração e o contrato, registra o envio e a assinatura, e monta a cobrança de quem não assinou. O envio é manual, pelo seu WhatsApp ou e-mail.
@@ -5454,7 +5473,7 @@ Cadastro, ficha completa e histórico. **CPF e endereço são obrigatórios para
 
 ## 10. Captação
 
-O funil de quem chega: novo contato, em análise, proposta, fechado, perdido. Quando fecha, o cliente e o caso são criados sozinhos.
+O funil de quem chega: novo contato, em análise, proposta, fechado, perdido. Quando fecha, o cliente e o caso são criados sozinhos e o sistema **abre o caso novo**, onde o passo seguinte é anexar o contrato.
 
 **Viabilidade** — em cada cartão, o botão abre a triagem: dentro do prazo (3), prova documental (3), testemunha (1), a outra parte tem como pagar (2), relato coerente (1). Sai uma nota de 0 a 10 no cartão. Serve para decidir o que aceitar e para saber, depois, o que dava certo e o que não dava.
 
@@ -5504,7 +5523,7 @@ Número pequeno é indício, não estatística. A taxa de êxito só passa a val
 
 ## 13. Financeiro
 
-Contas a receber e a pagar, por caso, cliente e categoria. Honorário por êxito amarrado ao caso. Projeção do mês e do ano. A baixa é manual: marque quando entrar ou sair de verdade.
+Contas a receber e a pagar, por caso, cliente e categoria. O honorário contratual entra sozinho pelo contrato anexado na tela do caso; o de êxito espera o caso ser ganho e é lançado aqui, com o valor apurado. Projeção do mês e do ano. A baixa é manual: marque quando entrar ou sair de verdade.
 
 **Editar.** Todo lançamento tem *Editar*: descrição, cliente, categoria, valor, datas e parceria. Num honorário parcelado, a mudança de descrição, cliente, categoria e parceria pode valer para todas as parcelas de uma vez; valor e data mudam só na parcela editada. Num lançamento já baixado, *Desfazer baixa* devolve para Em aberto.
 
@@ -7973,6 +7992,16 @@ window.imprimirDanfse = async id => {
 /* -------------------------------------------------------------- mensageria */
 let MSG = [], MSGF = 'novidade', MSGFOCO = null, ESCRITORIO = null;
 async function escId(){ if (!ESC_ID) { const { data } = await sb.from('escritorio').select('id').limit(1).single(); ESC_ID = data?.id ?? null; } return ESC_ID; }
+/* Honorário é dinheiro: o banco só deixa titular e administrativo lerem (política
+   hon_restrito). A tela pergunta antes de oferecer o que o banco vai recusar. */
+let VEJO_FIN = null;
+async function vejoFinanceiro(){
+  if (VEJO_FIN === null) {
+    const { data } = await sb.from('usuario').select('perfil').eq('id', USER.id).maybeSingle();
+    VEJO_FIN = ['titular','administrativo'].includes(data?.perfil);
+  }
+  return VEJO_FIN;
+}
 async function escritorioId(){
   if (!ESCRITORIO) { const { data } = await sb.from('escritorio').select('id').limit(1).single(); ESCRITORIO = data.id; }
   return ESCRITORIO;
@@ -9223,6 +9252,184 @@ function pintarAssinaturas(){
     </tr>`).join('')}</tbody></table>`;
   aplicarRotulos(alvo);
 }
+
+/* ------------------------------------------------- contrato de honorários
+   O contrato assinado entra aqui e vira dinheiro previsto. A leitura é feita pela
+   função ler-documento no modo 'contrato' e NADA é lançado sozinho: o que a IA
+   entendeu aparece rubrica por rubrica, com a cláusula de origem, para conferência.
+   Êxito e rubrica condicional ficam registrados sem lançamento — o valor ainda não
+   existe —, e só entram no financeiro quando o caso é ganho e o proveito é conhecido. */
+let CASOHON = null;
+const ESPECIE_ROT = { entrada:'Entrada', parcela:'Parcela', exito:'Êxito', despesa:'Despesa', outro:'Outro' };
+
+function honTotalPrevisto(){
+  return (CASOHON?.rubricas || []).filter(r => r.lancar)
+    .reduce((t, r) => t + Number(r.valor || 0) * Math.max(Number(r.parcelas) || 1, 1), 0);
+}
+function honLinha(r, i){
+  const lancado = !!CASOHON.lancado_em;
+  const quanto = r.valor != null
+    ? (Number(r.parcelas) > 1 ? `${r.parcelas} x ${rs(r.valor)}` : rs(r.valor))
+    : (r.percentual != null ? `${String(r.percentual).replace('.', ',')}%${r.base ? ' sobre ' + esc(r.base) : ''}` : '—');
+  /* Êxito e condicional não têm caixa de marcar: não há valor a lançar hoje. */
+  const podeLancar = r.especie !== 'exito' && !r.condicao && r.valor != null;
+  return `<tr${r.lancar ? '' : ' style="opacity:.62"'}>
+    <td><b>${esc(r.nome)}</b><span class="sub">${esc(ESPECIE_ROT[r.especie] || r.especie)}${r.trecho ? ' · ' + esc(r.trecho) : ''}</span>
+      ${r.condicao ? `<span class="sub" style="color:var(--i2)">devida ${esc(r.condicao)}</span>` : ''}</td>
+    <td class="proc">${quanto}</td>
+    <td>${podeLancar && !lancado
+      ? `<input type="number" min="1" max="120" value="${Number(r.parcelas) || 1}" style="width:62px;font-size:12px"
+           onchange="honCampo(${i},'parcelas',this.value)">`
+      : (Number(r.parcelas) > 1 ? r.parcelas : '—')}</td>
+    <td>${podeLancar && !lancado
+      ? `<input type="date" value="${r.primeiro_vencimento || ''}" style="font-size:12px;width:140px"
+           onchange="honCampo(${i},'primeiro_vencimento',this.value)">`
+      : (r.primeiro_vencimento ? br(r.primeiro_vencimento) : '—')}</td>
+    <td style="text-align:center">${lancado
+      ? (r.lancar ? '<span class="pill good">lançada</span>' : '<span class="sub" style="display:inline">—</span>')
+      : (podeLancar
+        ? `<input type="checkbox" ${r.lancar ? 'checked' : ''} onchange="honCampo(${i},'lancar',this.checked)">`
+        : '<span class="sub" style="display:inline" title="sem valor certo: não há o que lançar hoje">aguarda</span>')}</td>
+  </tr>`;
+}
+async function pintarHonorario(){
+  const alvo = document.getElementById('honcard'); if (!alvo) return;
+  if (!await vejoFinanceiro()) return alvo.innerHTML =
+    '<div class="vazio">Só o titular e o administrativo veem o contrato e os valores de honorário.</div>';
+  if (!CASOHON) {
+    alvo.innerHTML = `<div style="padding:0 18px 18px">
+      <label class="btn ok" style="cursor:pointer">Anexar contrato assinado
+        <input type="file" accept="application/pdf,image/*" style="display:none" onchange="lerContrato(this)"></label>
+      <span class="sub" id="hon-st" style="margin-left:10px"></span>
+      <p class="nota" style="margin:10px 0 0;padding:0">PDF ou foto, até 6 MB. Contrato escaneado torto ou com
+        a cláusula de honorário cortada sai com leitura incompleta — confira sempre antes de lançar.</p></div>`;
+    return;
+  }
+  const h = CASOHON, rub = h.rubricas || [], lancado = !!h.lancado_em;
+  const marcadas = rub.filter(r => r.lancar).length;
+  const exito = rub.filter(r => r.especie === 'exito');
+  alvo.innerHTML = `
+    <div style="padding:0 18px 10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      ${h.arquivo_path
+        ? `<button class="btn" onclick="verContrato()">Ver o contrato</button>` : ''}
+      <span class="sub" style="margin:0">${esc(h.arquivo_nome || 'contrato')}${h.assinado_em ? ' · assinado em ' + br(h.assinado_em) : ''}</span>
+      <button class="btn" onclick="tirarContrato()" title="remove o contrato e a leitura; lançamentos já feitos continuam no Financeiro">Trocar</button>
+      <span class="sub" id="hon-st" style="margin:0"></span>
+    </div>
+    ${h.leitura_obs ? `<div class="aviso" style="margin:0 18px 10px"><b>A leitura deixou dúvida:</b> ${esc(h.leitura_obs)}</div>` : ''}
+    ${!rub.length ? '<div class="vazio">A leitura não encontrou cláusula de honorário neste arquivo.</div>' : `
+    <table><thead><tr><th>Rubrica</th><th>Quanto</th><th style="width:80px">Parcelas</th>
+      <th style="width:160px">1º vencimento</th><th style="width:90px">Lançar</th></tr></thead>
+      <tbody>${rub.map(honLinha).join('')}</tbody></table>
+    <div style="padding:10px 18px 18px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      ${lancado
+        ? `<span class="pill good">lançado no Financeiro em ${br(String(h.lancado_em).slice(0,10))}</span>
+           <a class="lnk" href="#/financeiro">ver no Financeiro</a>`
+        : `<button class="btn ok" onclick="lancarHonorario()" ${marcadas ? '' : 'disabled'}>
+             Lançar ${marcadas} rubrica(s) no Financeiro — ${rs(honTotalPrevisto())}</button>
+           <span class="sub" style="margin:0">confira os valores antes; depois de lançado, a correção é no Financeiro</span>`}
+    </div>`}
+    ${exito.length ? `<div style="padding:0 18px 18px"><p class="nota" style="margin:0;padding:0">
+      <b>Êxito registrado:</b> ${exito.map(r => esc(r.nome) + ' — ' +
+        (r.percentual != null ? String(r.percentual).replace('.', ',') + '%' + (r.base ? ' sobre ' + esc(r.base) : '') : rs(r.valor))).join(' · ')}.
+      Não entra no previsto porque o proveito econômico ainda não existe. Quando o caso for ganho,
+      lance pelo Financeiro com o valor apurado.</p></div>` : ''}`;
+}
+window.honCampo = (i, campo, v) => {
+  const r = CASOHON?.rubricas?.[i]; if (!r) return;
+  if (campo === 'parcelas') r.parcelas = Math.min(Math.max(Math.round(Number(v) || 1), 1), 120);
+  else if (campo === 'lancar') r.lancar = !!v;
+  else r[campo] = v || null;
+  honSalvar(); pintarHonorario();
+};
+async function honSalvar(){
+  if (!CASOHON) return;
+  const st = document.getElementById('hon-st');
+  const { error } = await sb.from('honorario')
+    .update({ rubricas: CASOHON.rubricas, atualizado_em: new Date().toISOString() }).eq('id', CASOHON.id);
+  if (st) { st.style.color = error ? 'var(--crit)' : 'var(--i3)'; st.textContent = error ? 'erro ao guardar: ' + error.message : 'guardado'; }
+}
+window.lerContrato = async (input) => {
+  const f = input.files?.[0]; if (!f) return;
+  const st = document.getElementById('hon-st');
+  const diz = (t, cor) => { if (st) { st.style.color = cor || 'var(--i3)'; st.textContent = t; } };
+  if (f.size > 6 * 1024 * 1024) return diz('arquivo acima de 6 MB — mande só as páginas das cláusulas de honorário.', 'var(--crit)');
+  diz('lendo o contrato…');
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const r = await fetch(SB_URL + '/functions/v1/ler-documento', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', apikey: SB_KEY, Authorization: 'Bearer ' + session.access_token },
+      body: JSON.stringify({ arquivo: await nfB64(f), mime: f.type || 'application/pdf', nome: f.name,
+                             caso_id: CASO.id, modo: 'contrato' }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.erro) return diz('erro: ' + (j.erro || ('o leitor respondeu ' + r.status)), 'var(--crit)');
+
+    diz('guardando o arquivo…');
+    const esc1 = await escId();
+    const caminho = `${esc1}/${CASO.id}/${Date.now()}-${f.name.replace(/[^A-Za-z0-9._-]/g,'-').slice(-70)}`;
+    const up = await sb.storage.from('contratos').upload(caminho, f, { upsert: false });
+
+    const linha = { escritorio_id: esc1, caso_id: CASO.id,
+      arquivo_path: up.error ? null : caminho, arquivo_nome: f.name,
+      assinado_em: j.assinado_em || null, rubricas: j.rubricas || [],
+      leitura_obs: j.observacao || null, lido_em: new Date().toISOString(),
+      atualizado_em: new Date().toISOString() };
+    /* Um contrato por caso: reler substitui a leitura anterior, não empilha. */
+    const { data, error } = await sb.from('honorario')
+      .upsert(linha, { onConflict: 'caso_id' }).select('*').single();
+    if (error) return diz('erro ao guardar: ' + error.message, 'var(--crit)');
+    CASOHON = data;
+    diz(up.error ? 'leitura pronta, mas o arquivo não subiu: ' + up.error.message : '', up.error ? 'var(--crit)' : '');
+    pintarHonorario();
+  } catch (e) { diz('erro: ' + (e.message || e), 'var(--crit)'); }
+};
+window.verContrato = async () => {
+  if (!CASOHON?.arquivo_path) return;
+  const { data, error } = await sb.storage.from('contratos').createSignedUrl(CASOHON.arquivo_path, 300);
+  if (error) return alert('Não deu para abrir: ' + error.message);
+  window.open(data.signedUrl, '_blank');
+};
+window.tirarContrato = async () => {
+  if (!CASOHON) return;
+  if (!confirm('Tirar este contrato e a leitura dele?\n\nOs lançamentos já enviados ao Financeiro continuam lá.')) return;
+  if (CASOHON.arquivo_path) await sb.storage.from('contratos').remove([CASOHON.arquivo_path]).catch(()=>{});
+  const { error } = await sb.from('honorario').delete().eq('id', CASOHON.id);
+  if (error) return alert('Não foi possível: ' + error.message);
+  CASOHON = null; pintarHonorario();
+};
+window.lancarHonorario = async () => {
+  if (!CASOHON || CASOHON.lancado_em) return;
+  const rub = (CASOHON.rubricas || []).filter(r => r.lancar && r.valor != null);
+  if (!rub.length) return;
+  const st = document.getElementById('hon-st');
+  if (!confirm(`Lançar ${rub.length} rubrica(s) no Financeiro, somando ${rs(honTotalPrevisto())}?\n\n`
+    + 'Entram como "a receber", ligadas a este caso. A baixa continua manual, quando o dinheiro entrar.')) return;
+  if (st) { st.style.color = 'var(--i3)'; st.textContent = 'lançando…'; }
+  const esc1 = await escId();
+  const linhas = [];
+  for (const r of rub) {
+    const n = Math.max(Number(r.parcelas) || 1, 1);
+    const grupo = n > 1 ? crypto.randomUUID() : null;
+    const primeiro = r.primeiro_vencimento || hoje();
+    for (let i = 0; i < n; i++) linhas.push({
+      escritorio_id: esc1, tipo: 'entrada',
+      descricao: r.nome + ' — ' + (CASO.titulo || 'caso'),
+      caso_id: CASO.id, cliente_id: CASO.cliente_id || null, honorario_id: CASOHON.id,
+      valor: Number(r.valor), vencimento: finMaisMeses(primeiro, i), situacao: 'previsto',
+      parcela: n > 1 ? i + 1 : null, total_parcelas: n > 1 ? n : null, grupo_parcelas: grupo,
+      observacoes: r.trecho ? 'contrato, ' + r.trecho : null,
+    });
+  }
+  const { error } = await sb.from('lancamento').insert(linhas);
+  if (error) { if (st) { st.style.color = 'var(--crit)'; st.textContent = 'erro: ' + error.message; } return; }
+  const agora = new Date().toISOString();
+  await sb.from('honorario').update({ lancado_em: agora, atualizado_em: agora }).eq('id', CASOHON.id);
+  CASOHON.lancado_em = agora;
+  if (st) { st.style.color = 'var(--good)'; st.textContent = linhas.length + ' lançamento(s) criados'; }
+  pintarHonorario();
+};
 
 /* --------------------------------------------- tempo de trâmite e paralisação */
 const DIA_MS = 864e5;
