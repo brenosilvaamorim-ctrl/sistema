@@ -1,0 +1,23 @@
+# Material de trabalho que ficou nesta pasta quando a sessão mudou de diretório.
+# Nada disto é do sistema: são rascunhos, extratores e peças usados para alimentar
+# o banco de teses. Fica aqui para consulta e NÃO deve subir para o GitHub —
+# pecas/ e teses/ trazem nome de cliente, número de processo e qualificação, e o
+# repositório é público, servido pelo GitHub Pages.
+#
+# O caminho começa com / de propósito: pega só a raiz, para não calar, por
+# exemplo, um banco/teses.sql que venha a existir de verdade.
+
+/pecas/
+/teses/
+/ferramentas/
+/bot-whatsapp/
+/sistema-atual/
+/desfechos-dos-leads.sql
+/area-de-transferencia-guardada.txt
+/roteiro-triagem-pad.md
+/roteiro-triagem-servidor.md
+
+# Lixo do macOS e de editor
+.DS_Store
+*.swp
+*~
