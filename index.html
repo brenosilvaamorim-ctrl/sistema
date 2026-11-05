@@ -11073,6 +11073,165 @@ function prevComparar(lista){
 }
 /* PREV-PLANO-FIM */
 
+/* PREV-DOCS-INICIO — checklist de documentos por benefício, com a orientação ao cliente
+   de onde e como conseguir cada um. Função pura: recebe a análise e os benefícios
+   escolhidos e devolve os itens. O texto "como" é escrito para o cliente ler. */
+
+const PREV_BENEF_DOCS = [
+  ['aposentadoria', 'Aposentadoria (tempo, idade, transição)'], ['especial', 'Aposentadoria especial'],
+  ['professor', 'Professor'], ['pcd', 'Pessoa com deficiência'], ['rural', 'Rural ou híbrida'],
+  ['incapacidade', 'Incapacidade (auxílio ou aposentadoria)'], ['acidente', 'Auxílio-acidente'],
+  ['pensao', 'Pensão por morte'], ['reclusao', 'Auxílio-reclusão'], ['maternidade', 'Salário-maternidade'], ['bpc', 'BPC/LOAS'],
+];
+
+/* catálogo: t (título), onde (resumo curto, vai para a lista do caso), como (passo a passo ao cliente) */
+const PREV_DOC = {
+  identidade: { t: 'Documento de identidade com foto e CPF', onde: 'RG, CNH ou carteira profissional',
+    como: 'Pode ser RG, CNH ou carteira de conselho profissional. Mande foto da frente e do verso, sem plástico e sem reflexo.' },
+  residencia: { t: 'Comprovante de residência recente', onde: 'conta de luz, água ou telefone dos últimos 3 meses',
+    como: 'Conta de luz, água, internet ou telefone dos últimos 3 meses. Se estiver no nome de outra pessoa, diga quem é.' },
+  cnis: { t: 'Extrato do CNIS completo (com remunerações)', onde: 'aplicativo ou site Meu INSS',
+    como: 'No aplicativo Meu INSS (ou em meu.inss.gov.br), entre com a conta gov.br e abra "Extrato de Contribuição (CNIS)". Baixe o PDF e, se o aplicativo perguntar, escolha o extrato completo, com as remunerações. Mande o PDF, não a foto da tela.' },
+  ctps: { t: 'Carteira de trabalho (todas as páginas com anotação)', onde: 'carteira física e CTPS Digital',
+    como: 'Fotografe todas as páginas da carteira física que tenham alguma anotação (identificação, contratos, alterações de salário, férias e anotações gerais), de todas as carteiras que você teve. Mande também o PDF da Carteira de Trabalho Digital: no aplicativo, toque em "Enviar" e escolha "PDF".' },
+  gps: { t: 'Carnês e guias de contribuição pagas (GPS ou DAS)', onde: 'guardados em casa ou no aplicativo do banco',
+    como: 'Se você pagou o INSS por conta própria (carnê, GPS ou DAS do MEI), mande as guias pagas que tiver. Se pagou pelo banco, os comprovantes ficam no aplicativo, em "comprovantes" ou "pagamentos".' },
+  beneficios: { t: 'Extrato de benefícios e cartas do INSS', onde: 'Meu INSS: "Extrato de Benefício" e "Consultar pedidos"',
+    como: 'No Meu INSS, abra "Extrato de Benefício" e baixe o de cada benefício que já recebeu. Em "Consultar pedidos", baixe as cartas de decisão (concessão ou indeferimento) e as exigências que o INSS fez.' },
+  processo: { t: 'Cópia do processo administrativo no INSS', onde: 'Meu INSS: "Consultar pedidos" → "Baixar processo"',
+    como: 'No Meu INSS, em "Consultar pedidos", escolha o pedido negado ou cessado e toque em "Detalhar" e depois em "Baixar processo". Se não aparecer, me avise que eu peço.' },
+  fgts: { t: 'Extrato do FGTS', onde: 'aplicativo FGTS', como: 'No aplicativo FGTS, entre com a conta gov.br, abra cada conta e baixe o extrato completo. Ele ajuda a provar empregos e salários que faltam no INSS.' },
+  ppp: { t: 'PPP — Perfil Profissiográfico Previdenciário', onde: 'setor de RH da empresa',
+    como: 'Peça ao RH da empresa o PPP do período em que trabalhou lá. A empresa é obrigada a entregar. O PPP precisa ter o carimbo e a assinatura do responsável e o nome do engenheiro ou médico do trabalho. Se a empresa fechou, me avise: dá para conseguir pelo sindicato ou por perícia.' },
+  ltcat: { t: 'LTCAT — laudo técnico das condições do ambiente de trabalho', onde: 'setor de RH ou de segurança do trabalho da empresa',
+    como: 'Junto com o PPP, peça à empresa o LTCAT (laudo técnico) do setor em que trabalhou. Se não entregarem, não tem problema: me avise e eu peço formalmente.' },
+  magisterio: { t: 'Declaração do tempo de magistério', onde: 'secretaria da escola ou da rede de ensino',
+    como: 'Peça à secretaria da escola (ou à secretaria de educação) uma declaração com o período em que você deu aula, a função (professor em sala, coordenação ou direção) e o nível (educação infantil, fundamental ou médio). Mande também o diploma ou a habilitação.' },
+  laudos_pcd: { t: 'Laudos e relatórios médicos da deficiência', onde: 'médicos que acompanham, hospital ou posto de saúde',
+    como: 'Junte laudos e relatórios com o CID, a descrição da deficiência e, se possível, desde quando ela existe. Documentos antigos (escola, tratamentos, próteses, benefícios anteriores) ajudam a provar a data de início.' },
+  barreiras: { t: 'Documentos do dia a dia que mostrem as limitações', onde: 'escola, trabalho, assistência social',
+    como: 'Tudo o que mostre as dificuldades no dia a dia: relatórios escolares, de terapias, de assistente social, adaptações no trabalho. Isso conta na avaliação feita pelo INSS (médica e social).' },
+  autodeclaracao: { t: 'Autodeclaração do segurado especial (rural)', onde: 'formulário do INSS, preenchido com o escritório',
+    como: 'É um formulário do INSS sobre a sua atividade no campo: onde, desde quando, com quem e o que planta ou cria. Vamos preencher juntos; separe os dados da terra (nome do proprietário, tamanho, município).' },
+  docs_rurais: { t: 'Documentos que provem o trabalho no campo', onde: 'em casa, no sindicato rural, no INCRA, na Emater',
+    como: 'Junte o que tiver, de vários anos, em seu nome ou da família: ITR ou CCIR da terra, contrato de arrendamento ou parceria, notas de venda da produção, ficha do sindicato rural, DAP ou CAF, certidão de casamento ou de nascimento dos filhos com a profissão de lavrador, ficha da escola ou do posto de saúde da zona rural. Quanto mais anos cobertos, melhor.' },
+  laudos: { t: 'Laudos, atestados e exames médicos', onde: 'médicos, hospital, posto de saúde',
+    como: 'Mande todos os laudos, atestados, exames e receitas, dos mais antigos aos mais recentes. O ideal é que digam o CID (código da doença), desde quando você está incapaz e por quanto tempo precisa ficar afastado. Peça ao médico um relatório atualizado com essas informações.' },
+  prontuario: { t: 'Prontuário ou ficha de atendimento', onde: 'hospital, clínica ou posto de saúde',
+    como: 'Peça na recepção do hospital ou do posto de saúde a cópia do seu prontuário (ficha de atendimentos). É um direito seu e ajuda a provar desde quando a doença existe.' },
+  afastamento_emp: { t: 'Comprovante de afastamento do trabalho', onde: 'RH da empresa',
+    como: 'Peça ao RH uma declaração com a data do último dia trabalhado e o motivo do afastamento.' },
+  cat: { t: 'CAT — Comunicação de Acidente de Trabalho', onde: 'RH da empresa ou Meu INSS',
+    como: 'Peça à empresa a cópia da CAT do acidente. Se a empresa não emitiu, ela mesma, o sindicato, o médico ou você podem registrar pela internet, no site do INSS (CAT). Me avise que eu oriento.' },
+  bo: { t: 'Boletim de ocorrência ou registro do acidente', onde: 'delegacia (on-line) ou PRF',
+    como: 'Se o acidente foi de trânsito ou no trajeto para o trabalho, mande o boletim de ocorrência e qualquer registro do atendimento (SAMU, hospital).' },
+  sequela: { t: 'Laudo atual da sequela', onde: 'médico que acompanha',
+    como: 'Peça ao médico um relatório atual dizendo qual sequela ficou e o que você não consegue mais fazer (ou faz com mais esforço) no seu trabalho.' },
+  obito: { t: 'Certidão de óbito', onde: 'cartório onde o óbito foi registrado', como: 'Mande a foto da certidão de óbito. Se não tiver, pode pedir a segunda via no cartório ou pelo site registrocivil.org.br.' },
+  casamento: { t: 'Certidão de casamento ou prova da união estável', onde: 'cartório; documentos do casal',
+    como: 'Se eram casados, a certidão de casamento atualizada. Se viviam em união estável, junte pelo menos dois documentos dos últimos 2 anos antes do óbito que mostrem a vida em comum: mesmo endereço, conta conjunta, filhos em comum, plano de saúde ou seguro com o outro como dependente, declaração de imposto de renda.' },
+  docs_falecido: { t: 'Documentos do falecido (identidade, CPF, carteira de trabalho)', onde: 'família', como: 'Mande a identidade, o CPF e as carteiras de trabalho do falecido, e a carta do INSS se ele já recebia aposentadoria.' },
+  certidoes_dep: { t: 'Certidão de nascimento ou identidade de cada dependente', onde: 'cartório', como: 'Mande a certidão de nascimento ou a identidade de cada dependente (filhos menores de 21 anos e quem tiver deficiência).' },
+  carceraria: { t: 'Certidão de recolhimento à prisão (atestado carcerário)', onde: 'unidade prisional ou vara de execução',
+    como: 'Peça na unidade prisional ou no cartório da vara de execução penal uma certidão dizendo desde quando a pessoa está presa e em qual regime. Ela precisa ser atualizada a cada 3 meses.' },
+  nascimento: { t: 'Certidão de nascimento da criança (ou termo de guarda ou adoção)', onde: 'cartório; vara da infância',
+    como: 'Mande a certidão de nascimento. Se for adoção ou guarda, o termo de guarda ou a sentença de adoção.' },
+  atestado_parto: { t: 'Atestado médico (se o afastamento começou antes do parto)', onde: 'médico do pré-natal',
+    como: 'Se você parou de trabalhar antes do parto, peça ao médico do pré-natal um atestado com a data de início do afastamento.' },
+  cadunico: { t: 'Comprovante do CadÚnico atualizado', onde: 'CRAS da sua cidade',
+    como: 'O cadastro no CadÚnico precisa estar atualizado nos últimos 2 anos, com todas as pessoas da casa. Vá ao CRAS da sua cidade com os documentos de todos e peça o comprovante (folha resumo).' },
+  docs_familia: { t: 'Identidade e CPF de todos que moram na casa', onde: 'família', como: 'Mande a identidade e o CPF de cada pessoa que mora com você.' },
+  renda_familia: { t: 'Comprovantes de renda de quem mora na casa', onde: 'contracheques, extratos de benefício, declarações',
+    como: 'Mande o comprovante de renda de cada pessoa que trabalha ou recebe benefício na casa (contracheque, extrato do INSS, declaração de trabalho informal). Se alguém não tem renda, me avise.' },
+  despesas: { t: 'Comprovantes de gastos com saúde (remédios, fraldas, tratamento)', onde: 'notas e receitas',
+    como: 'Junte notas de farmácia, receitas e comprovantes de gastos com tratamento, fraldas e alimentação especial. Eles ajudam a mostrar a necessidade da família.' },
+};
+
+const PREV_DOC_SETS = {
+  base: ['identidade', 'residencia', 'cnis', 'ctps', 'beneficios'],
+  aposentadoria: ['gps', 'fgts'],
+  especial: ['ppp', 'ltcat'],
+  professor: ['magisterio'],
+  pcd: ['laudos_pcd', 'barreiras'],
+  rural: ['autodeclaracao', 'docs_rurais'],
+  incapacidade: ['laudos', 'prontuario', 'afastamento_emp', 'processo'],
+  acidente: ['cat', 'bo', 'sequela', 'laudos', 'processo'],
+  pensao: ['obito', 'casamento', 'docs_falecido', 'certidoes_dep'],
+  reclusao: ['carceraria', 'certidoes_dep', 'casamento'],
+  maternidade: ['nascimento', 'atestado_parto'],
+  bpc: ['cadunico', 'docs_familia', 'renda_familia', 'laudos_pcd', 'despesas'],
+};
+
+/* benefícios sugeridos pela própria análise */
+function prevDocsSugeridos(a, vincs){
+  const s = new Set(['aposentadoria']);
+  if (vincs.some(v => v.especial)) s.add('especial');
+  if (vincs.some(v => v.professor)) s.add('professor');
+  if (vincs.some(v => v.pcd)) s.add('pcd');
+  if (vincs.some(v => v.rural || v.tipo === 'segurado_especial')) s.add('rural');
+  const txt = ((a.caso?.titulo || '') + ' ' + (a.caso?.area || '') + ' ' + (a.titulo || '')).toLowerCase();
+  const pista = { incapacidade: /incapacidade|aux[ií]lio-?doen|invalidez|afastad/, acidente: /acidente|sequela|b ?36|b ?94/, pensao: /pens[ãa]o|[óo]bito/,
+    reclusao: /reclus|pres[oa]/, maternidade: /maternidade|gestante|parto/, bpc: /bpc|loas|assistencial/ };
+  for (const [k, re] of Object.entries(pista)) if (re.test(txt)) s.add(k);
+  return [...s];
+}
+
+/* Monta o checklist: básicos, os de cada benefício escolhido e os que saem do CNIS e dos vínculos. */
+function prevChecklist(a, vincs, pend, beneficios){
+  const itens = [], vistos = new Set();
+  const add = (grupo, key, extra = {}) => {
+    const d = PREV_DOC[key]; if (!d) return;
+    const t = extra.t || d.t; const id = (key + '|' + t).toLowerCase();
+    if (vistos.has(id)) return; vistos.add(id);
+    itens.push({ grupo, key, t, onde: extra.onde || d.onde, como: extra.como || d.como, motivo: extra.motivo || null });
+  };
+  for (const k of PREV_DOC_SETS.base) add('Documentos básicos', k);
+  for (const b of beneficios) for (const k of PREV_DOC_SETS[b] || []) add(PREV_BENEF_DOCS.find(x => x[0] === b)?.[1] || b, k);
+  const nomeV = v => v.empregador_nome || PREV_TIPO_NOME[v.tipo] || 'vínculo';
+  const per = v => `${br(v.inicio)} a ${v.fim ? br(v.fim) : 'hoje'}`;
+  const G = 'Do CNIS e dos vínculos';
+  for (const v of vincs.filter(x => x.considerar !== false || x.tipo === 'rpps')){
+    if (v.especial && beneficios.includes('especial')){
+      add(G, 'ppp', { t: `PPP da empresa ${nomeV(v)} (${per(v)})`, motivo: `período marcado como especial (${v.especial} anos)` });
+      add(G, 'ltcat', { t: `LTCAT da empresa ${nomeV(v)}`, motivo: 'reforça o PPP' });
+    }
+    if (v.professor && beneficios.includes('professor')) add(G, 'magisterio', { t: `Declaração do magistério — ${nomeV(v)} (${per(v)})` });
+    if ((v.rural || v.tipo === 'segurado_especial') && beneficios.includes('rural'))
+      add(G, 'docs_rurais', { t: `Documentos do trabalho rural de ${per(v)}`, motivo: 'um ou mais documentos de cada parte do período' });
+    if (v.tipo === 'rpps') add(G, 'ctps', { t: `Certidão de Tempo de Contribuição (CTC) — ${nomeV(v)}`, onde: 'setor de pessoal (RH) do órgão público',
+      como: 'Peça ao setor de pessoal do órgão em que trabalhou como servidor a Certidão de Tempo de Contribuição (CTC), para levar esse tempo ao INSS.', motivo: 'tempo em regime próprio' });
+  }
+  for (const p of (pend || []).filter(x => !x.resolvida)){
+    const v = vincs.find(x => x.id === p.vinculo_id);
+    const nome = v ? nomeV(v) : '';
+    const meses = p.competencias ? ` — ${p.competencias}` : '';
+    if (['PEXT', 'PADM-EMPR'].includes(p.codigo) && v) add(G, 'ctps', { t: `Provas do emprego em ${nome} (${per(v)})`, onde: 'carteira de trabalho, contrato, ficha de registro, rescisão',
+      como: `Para o INSS reconhecer o emprego em ${nome}, mande a página da carteira com esse contrato e o que mais tiver da época: contrato, ficha de registro, contracheques, termo de rescisão, crachá, extrato do FGTS.`, motivo: p.codigo });
+    if (['PREM-EXT', 'IREM-INDPEND', 'SEM-REMUN'].includes(p.codigo) && v) add(G, 'fgts', { t: `Contracheques ou ficha financeira de ${nome}${meses}`, onde: 'RH da empresa; extrato do FGTS',
+      como: `Faltam salários de ${nome} no INSS${p.competencias ? ' (' + p.competencias + ')' : ''}. Mande os contracheques que tiver desses meses ou peça ao RH a ficha financeira. O extrato do FGTS também ajuda.`, motivo: p.codigo });
+    if (p.codigo === 'SEM-SAIDA' && v) add(G, 'ctps', { t: `Termo de rescisão ou baixa na carteira — ${nome}`, onde: 'carteira de trabalho; RH da empresa',
+      como: `O INSS não tem a data em que você saiu de ${nome}. Mande a página da carteira com a data de saída ou o termo de rescisão (TRCT).`, motivo: 'vínculo sem data de saída' });
+    if (/^(IREC|PREC|PSC)/.test(p.codigo)) add(G, 'gps', { t: `Guias pagas${meses}`, motivo: p.codigo,
+      como: `Mande os comprovantes de pagamento do INSS${p.competencias ? ' de ' + p.competencias : ''}. Se algum mês foi pago abaixo do mínimo, vamos ver se vale complementar.` });
+    if (p.codigo === 'IEAN' && v && !beneficios.includes('especial')) add(G, 'ppp', { t: `PPP da empresa ${nome} (${per(v)})`, motivo: 'a empresa informou exposição a agente nocivo' });
+    if (p.codigo === 'LACUNA') add(G, 'ctps', { t: `O que fez ${p.descricao.replace(/^Intervalo sem contribuição /, '').replace(/ \(.*$/, '')}`, onde: 'conversa com o escritório',
+      como: `No período ${p.descricao.replace(/^Intervalo sem contribuição /, '').replace(/\.$/, '')} não há contribuição. Me conte o que fez nesse tempo: trabalhou sem carteira, na roça, no exército, estudou em escola técnica? Qualquer documento dessa época ajuda.`, motivo: 'intervalo sem contribuição' });
+  }
+  /* o item específico (PPP da empresa X, rural de tal período) substitui o genérico */
+  const especificos = new Set(itens.filter(i => i.grupo === G).map(i => i.key));
+  return itens.filter(i => i.grupo === G || i.grupo === 'Documentos básicos' || !['ppp', 'ltcat', 'docs_rurais', 'magisterio'].includes(i.key) || !especificos.has(i.key));
+}
+
+/* Mensagem ao cliente (WhatsApp), com o como de cada item. */
+function prevMsgDocs(nomeCliente, itens){
+  const nome = nomeCliente ? primeiroNome(nomeCliente) : '';
+  const ola = nome ? `Olá, ${nome}! ` : 'Olá! ';
+  const corpo = itens.map((it, i) => `*${i + 1}. ${it.t}*\n${it.como}`).join('\n\n');
+  return `${ola}Para eu analisar o seu benefício no INSS, preciso destes documentos:\n\n${corpo}\n\n`
+    + 'Pode mandar por aqui mesmo, uma foto ou PDF por documento, dando para ler tudo. Se não tiver algum, me avise que a gente vê outro jeito.';
+}
+/* PREV-DOCS-FIM */
+
 /* ----- leitura do PDF (pdf.js, carregado só quando alguém abre um CNIS) */
 let PDFJS = null;
 async function carregarPdfJs(){
@@ -11204,7 +11363,7 @@ async function prevCarregar(id){
     prevTodas('prev_remuneracao', 'id,vinculo_id,competencia,valor,contribuicao,pagamento,indicadores,origem,considerar', id),
     prevTodas('prev_pendencia', '*', id),
   ]);
-  if (PREV.a?.id !== id) Object.assign(PREV, { aba: 'dados', previa: null, arquivo: null, editando: null, remAberto: null, msg: '', opt: null, ev: null, evRes: null, cens: null, pl: null, ind: null });
+  if (PREV.a?.id !== id) Object.assign(PREV, { aba: 'dados', previa: null, arquivo: null, editando: null, remAberto: null, msg: '', opt: null, ev: null, evRes: null, cens: null, pl: null, ind: null, docBen: null, docFora: null, cdocs: null });
   PREV.calc = null; PREV.linha = null; PREV.cmp = null;   /* os dados podem ter mudado: o cálculo é refeito quando pedido */
   PREV.sims = (await sb.from('prev_simulacao').select('id,criado_em,data_base,melhor,rmi').eq('analise_id', id)
     .order('criado_em', { ascending: false })).data || [];
@@ -11223,7 +11382,7 @@ async function telaPrevAnalise(id){
 function prevPintar(){
   const a = PREV.a;
   const abertas = PREV.pend.filter(p => !p.resolvida).length;
-  const abas = [['dados', 'Dados e CNIS'], ['vinculos', `Vínculos (${PREV.vinc.length})`], ['pendencias', `Pendências (${abertas})`], ['beneficios', 'Benefícios e cálculo'], ['plano', 'Planejamento']];
+  const abas = [['dados', 'Dados e CNIS'], ['vinculos', `Vínculos (${PREV.vinc.length})`], ['pendencias', `Pendências (${abertas})`], ['docs', 'Documentos'], ['beneficios', 'Benefícios e cálculo'], ['plano', 'Planejamento']];
   app.innerHTML = menu('prev') + `
   <main><a class="volta" href="#/prev">← Previdenciário</a>
   <h1>${esc(a.cliente?.nome || a.titulo || 'Análise previdenciária')}</h1>
@@ -11234,12 +11393,13 @@ function prevPintar(){
     ${abas.map(([k, r]) => `<button class="btn" style="${PREV.aba === k ? 'border-color:var(--serie);color:var(--serie)' : ''}" onclick="prevAba('${k}')">${r}</button>`).join('')}
   </div>
   ${PREV.msg ? `<div class="aviso" style="border-color:var(--serie)">${PREV.msg}</div>` : ''}
-  <div id="prev-corpo">${PREV.aba === 'vinculos' ? prevAbaVinculos() : PREV.aba === 'pendencias' ? prevAbaPendencias() : PREV.aba === 'beneficios' ? prevAbaBeneficios() : PREV.aba === 'plano' ? prevAbaPlano() : prevAbaDados()}</div>
+  <div id="prev-corpo">${PREV.aba === 'vinculos' ? prevAbaVinculos() : PREV.aba === 'pendencias' ? prevAbaPendencias() : PREV.aba === 'beneficios' ? prevAbaBeneficios() : PREV.aba === 'plano' ? prevAbaPlano() : PREV.aba === 'docs' ? prevAbaDocs() : prevAbaDados()}</div>
   </main>` + rodape();
   aplicarRotulos(app);
 }
 window.prevAba = async k => {
   PREV.aba = k; PREV.msg = ''; prevPintar();
+  if (k === 'docs') { try { await prevDocCarregarCaso(); } catch (e) {} prevPintar(); }
   if (k === 'plano' && !PREV.T) { try { await prevCarregarTabelas(); } catch (e) { PREV.msg = 'Não foi possível carregar as tabelas oficiais: ' + esc(e.message); } prevPintar(); }
 };
 
@@ -12108,6 +12268,105 @@ window.prevPlanilhaPlano = () => {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(l), 'Melhor data');
   }
   XLSX.writeFile(wb, `planejamento-previdenciario-${nome.replace(/[^\wÀ-ú ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase()}-${a.data_base}.xlsx`);
+};
+
+
+/* ----- aba Documentos: checklist do benefício, com envio ao cliente e inclusão no caso */
+const prevDocChave = t => String(t || '').trim().toLowerCase();
+function prevAbaDocs(){
+  const a = PREV.a;
+  if (!PREV.docBen) PREV.docBen = prevDocsSugeridos(a, PREV.vinc);
+  if (!PREV.docFora) PREV.docFora = new Set();
+  const itens = prevChecklist(a, PREV.vinc, PREV.pend, PREV.docBen);
+  PREV.docItens = itens;
+  const noCaso = new Map((PREV.cdocs || []).map(d => [prevDocChave(d.descricao), d]));
+  const grupos = [...new Set(itens.map(i => i.grupo))];
+  const marcados = itens.filter(i => !PREV.docFora.has(prevDocChave(i.t)));
+  const fone = a.cliente?.whatsapp || a.cliente?.telefone;
+  const faltam = (PREV.cdocs || []).filter(d => !d.recebido_em).length;
+  return `
+  <div class="card"><h2>Para qual benefício</h2>
+    <p class="nota">O checklist junta os documentos básicos, os de cada benefício marcado e os que saem do CNIS e dos vínculos
+      (PPP de cada período especial, provas de vínculos com pendência, guias de meses em aberto, o que fez nos intervalos).</p>
+    <div class="filtros">${PREV_BENEF_DOCS.map(([k, r]) => `<label style="font-size:13px;display:flex;gap:5px;align-items:center">
+      <input type="checkbox" ${PREV.docBen.includes(k) ? 'checked' : ''} onchange="prevDocBen('${k}', this.checked)"> ${r}</label>`).join('')}</div>
+  </div>
+  <div class="card"><h2>Checklist (${marcados.length} de ${itens.length} marcados)</h2>
+    <p class="nota">Desmarque o que não se aplica. "Incluir no caso" leva os marcados para a lista de documentos do caso, onde se marca o que chegou;
+      a mensagem e o guia vão com o passo a passo de cada um.${PREV.cdocs ? ` No caso: ${PREV.cdocs.length} documento(s), ${faltam} ainda por chegar.` : ''}</p>
+    ${grupos.map(g => `<h2 style="font-size:13px;color:var(--i2);margin-top:6px">${esc(g)}</h2>
+      <table><tr><th style="width:44px"></th><th>Documento</th><th>Onde conseguir</th><th style="width:140px">No caso</th></tr>
+      ${itens.filter(i => i.grupo === g).map(i => { const ch = prevDocChave(i.t), c = noCaso.get(ch);
+        return `<tr style="${PREV.docFora.has(ch) ? 'opacity:.5' : ''}">
+          <td><input type="checkbox" ${PREV.docFora.has(ch) ? '' : 'checked'} onchange="prevDocMarca(${esc(JSON.stringify(ch))}, this.checked)"></td>
+          <td><b>${esc(i.t)}</b>${i.motivo ? `<span class="sub">${esc(i.motivo)}</span>` : ''}<span class="q">${esc(i.como)}</span></td>
+          <td style="font-size:12.8px;color:var(--i2)">${esc(i.onde || '')}</td>
+          <td>${c ? (c.recebido_em ? `<span class="pill good">recebido ${br(c.recebido_em)}</span>` : '<span class="pill warn">pedido</span>') : '<span class="sub">ainda não</span>'}</td></tr>`; }).join('')}
+      </table>`).join('')}
+    <div class="filtros" style="margin-top:12px">
+      <button class="btn ok" onclick="prevDocIncluir()">Incluir no caso</button>
+      <button class="btn ok" onclick="prevDocZap()">Mandar ao cliente no WhatsApp</button>
+      <button class="btn" onclick="prevDocCopiar()">Copiar a mensagem</button>
+      <button class="btn" onclick="prevDocGuia()">Guia para imprimir</button>
+      <a class="btn" href="#/caso/${a.caso_id}">Abrir o caso</a>
+      <span class="sub" id="pd-st" style="display:inline">${fone ? '' : 'cliente sem telefone: o WhatsApp abre para você escolher o contato'}</span>
+    </div>
+  </div>`;
+}
+async function prevDocCarregarCaso(){
+  const { data } = await sb.from('caso_documento').select('id,descricao,obs,recebido_em').eq('caso_id', PREV.a.caso_id).order('ordem');
+  PREV.cdocs = data || [];
+}
+const prevDocMarcados = () => (PREV.docItens || []).filter(i => !PREV.docFora.has(prevDocChave(i.t)));
+/* para o cliente vai só o que ainda não chegou */
+const prevDocParaCliente = () => { const rec = new Set((PREV.cdocs || []).filter(d => d.recebido_em).map(d => prevDocChave(d.descricao)));
+  return prevDocMarcados().filter(i => !rec.has(prevDocChave(i.t))); };
+window.prevDocBen = (k, sim) => { PREV.docBen = sim ? [...new Set([...PREV.docBen, k])] : PREV.docBen.filter(x => x !== k); prevPintar(); };
+window.prevDocMarca = (ch, sim) => { if (sim) PREV.docFora.delete(ch); else PREV.docFora.add(ch); prevPintar(); };
+window.prevDocIncluir = async () => {
+  const st = document.getElementById('pd-st');
+  await prevDocCarregarCaso();
+  const tem = new Set(PREV.cdocs.map(d => prevDocChave(d.descricao)));
+  const eid = await escId();
+  const novos = prevDocMarcados().filter(i => !tem.has(prevDocChave(i.t)))
+    .map((i, n) => ({ escritorio_id: eid, caso_id: PREV.a.caso_id, descricao: i.t, obs: i.onde || null, ordem: PREV.cdocs.length + n }));
+  if (!novos.length) { st.textContent = 'todos os marcados já estão no caso'; return; }
+  st.textContent = 'incluindo…';
+  const { error } = await sb.from('caso_documento').insert(novos);
+  if (error) { st.textContent = 'erro: ' + error.message; return; }
+  await prevDocCarregarCaso();
+  PREV.msg = `${novos.length} documento(s) incluído(s) na lista do caso.`;
+  prevPintar();
+};
+window.prevDocZap = () => {
+  const itens = prevDocParaCliente();
+  if (!itens.length) { document.getElementById('pd-st').textContent = 'nada a pedir: tudo o que está marcado já chegou'; return; }
+  const txt = prevMsgDocs(PREV.a.cliente?.nome, itens), fone = PREV.a.cliente?.whatsapp || PREV.a.cliente?.telefone;
+  window.open(fone ? linkWa(fone, txt) : 'https://wa.me/?text=' + encodeURIComponent(txt), '_blank');
+};
+window.prevDocCopiar = async () => {
+  const st = document.getElementById('pd-st');
+  try { await navigator.clipboard.writeText(prevMsgDocs(PREV.a.cliente?.nome, prevDocParaCliente())); st.textContent = 'copiado'; }
+  catch (e) { st.textContent = 'não deu para copiar'; }
+};
+window.prevDocGuia = () => {
+  const itens = prevDocParaCliente(), a = PREV.a;
+  const w = window.open('', '_blank'); if (!w) return;
+  w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Documentos — ${esc(a.cliente?.nome || '')}</title>
+    <style>body{font:14px/1.5 Georgia,'Times New Roman',serif;color:#111;max-width:720px;margin:32px auto;padding:0 20px}
+    h1{font-size:20px;margin:0 0 2px}.m{color:#555;font-size:12.5px;margin-bottom:22px}
+    ol{padding-left:0;list-style:none;counter-reset:i}li{counter-increment:i;margin:0 0 16px;padding-left:34px;position:relative;break-inside:avoid}
+    li::before{content:'';position:absolute;left:0;top:3px;width:16px;height:16px;border:1.5px solid #333;border-radius:3px}
+    b{font-size:14.5px}.o{color:#555;font-size:12.5px;font-family:Arial,sans-serif}p{margin:3px 0 0;font-family:Arial,sans-serif;font-size:13px}
+    .r{margin-top:26px;font-family:Arial,sans-serif;font-size:12.5px;color:#444;border-top:1px solid #ccc;padding-top:10px}
+    @media print{button{display:none}body{margin:0 auto}}</style></head><body>
+    <button onclick="print()" style="float:right;font:13px Arial;padding:6px 12px">Imprimir ou salvar em PDF</button>
+    <h1>Documentos para o seu benefício no INSS</h1>
+    <div class="m">${esc(ESC_NOME)}${a.cliente?.nome ? ' · para ' + esc(a.cliente.nome) : ''} · ${br(new Date().toISOString())}</div>
+    <ol>${itens.map(i => `<li><b>${esc(i.t)}</b>${i.onde ? `<div class="o">Onde: ${esc(i.onde)}</div>` : ''}<p>${esc(i.como)}</p></li>`).join('')}</ol>
+    <div class="r">Pode mandar foto ou PDF pelo WhatsApp do escritório, um arquivo por documento, dando para ler tudo.
+      Se não conseguir algum, avise: muitas vezes há outro jeito de provar.</div></body></html>`);
+  w.document.close();
 };
 
 /* --------------------------------------------------------------- tutoriais */
