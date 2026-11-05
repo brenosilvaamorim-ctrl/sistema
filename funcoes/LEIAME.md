@@ -62,3 +62,25 @@ só para a chamada ao governo; a assinatura continua aqui.
 
 Quando uma função for alterada no Supabase, o arquivo correspondente aqui deve ser
 substituído na mesma hora — senão a cópia envelhece sem ninguém perceber.
+
+## Robô da previdência (função `robo-previdencia`)
+
+Alimenta a base de conhecimento do módulo Previdenciário (Previdenciário → Base). Toda
+segunda às 7h lê o Diário Oficial (instruções normativas do INSS, portarias DIRBEN,
+interministeriais e conjuntas, leis, decretos e MPs), o banco de precedentes do CNJ
+(temas e súmulas do STF, STJ, TNU, TRF1 e TRF5), o INPC do IBGE e as notícias da TNU no
+CJF. Tudo vira sugestão na fila `prev_atualizacao`; nada muda a base nem as tabelas de
+cálculo sem a decisão do titular na tela. Não usa chave nem IA: só fontes públicas.
+
+**Instalar:**
+
+1. **Banco** — Supabase → SQL Editor → rodar `banco/39_previdenciario_base.sql` (cria as
+   tabelas, o acervo inicial, a foto inicial do CNJ e o agendamento de segunda às 7h).
+2. **Função** — Deploy a new function → Via Editor, nome `robo-previdencia`, colando
+   `funcoes/robo-previdencia.ts`. **Desligue "Verify JWT"** (como no `robo-datajud`): o
+   agendamento chama só com a chave pública.
+3. **Testar** — Previdenciário → Base → Tabelas e robô → *Rodar agora*. A rodada leva um a
+   dois minutos e aparece no registro logo abaixo.
+
+**Se uma fonte falhar** (o site mudou ou ficou fora do ar), o registro mostra qual. As outras
+seguem normalmente, e a que falhou busca desde a última vez em que deu certo na rodada seguinte.

@@ -11608,16 +11608,315 @@ async function prevTodas(tabela, colunas, analiseId){
   return out;
 }
 
+/* PREV-BASE-INICIO — base de conhecimento (legislação, jurisprudência, publicações) e a fila
+   do robô semanal (função robo-previdencia). O robô só sugere: incluir na base, lançar um
+   índice ou um valor na tabela oficial é decisão do titular, aqui. */
+const PREV_ASSUNTOS = ['aposentadoria', 'especial', 'rural', 'pcd', 'professor', 'incapacidade', 'acidente', 'pensao', 'reclusao', 'bpc',
+  'salario-maternidade', 'calculo', 'revisao', 'processo', 'qualidade-segurado', 'carencia', 'prova', 'tabelas'];
+const PREV_FONTE = { dou: 'Diário Oficial', cnj: 'Precedentes (CNJ)', cjf: 'CJF / TNU', ibge: 'IBGE', manual: 'manual' };
+const PREV_PARAM_NOME = { salario_minimo: 'Salário mínimo', teto: 'Teto do RGPS', limite_reclusao: 'Limite do auxílio-reclusão' };
+let PREVB = { aba: 'fila', busca: '', assunto: '', decididos: false, editando: null, msg: '', afetadas: null, rodando: null };
+const prevSemAcento = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+async function prevBaseCarregar(){
+  const hoje = new Date().toISOString().slice(0, 10);
+  const fila = PREVB.decididos
+    ? sb.from('prev_atualizacao').select('*').order('criado_em', { ascending: false }).limit(300)
+    : sb.from('prev_atualizacao').select('*').eq('status', 'pendente').order('afeta_tabela', { ascending: false }).order('data', { ascending: false, nullsFirst: false }).limit(500);
+  const [nor, fi, ex, eu, par, ind, sob] = await Promise.all([
+    sb.from('prev_norma').select('*').order('data', { ascending: false, nullsFirst: false }).limit(2000),
+    fila,
+    sb.from('prev_robo_execucao').select('*').order('iniciado_em', { ascending: false }).limit(8),
+    sb.from('usuario').select('perfil').eq('id', USER.id).maybeSingle(),
+    sb.from('prev_parametro').select('tipo,inicio,valor,ato').lte('inicio', hoje).order('inicio', { ascending: false }).limit(200),
+    sb.from('prev_indice').select('competencia,inpc').order('competencia', { ascending: false }).limit(1),
+    sb.from('prev_sobrevida').select('ano_tabua,vigencia_inicio').order('ano_tabua', { ascending: false }).limit(1),
+  ]);
+  for (const r of [nor, fi, ex]) if (r.error) throw r.error;
+  const vig = {}; for (const p of par.data || []) if (!vig[p.tipo]) vig[p.tipo] = p;
+  Object.assign(PREVB, { normas: nor.data || [], fila: fi.data || [], execs: ex.data || [], titular: eu.data?.perfil === 'titular',
+    vig, ultInpc: ind.data?.[0], tabua: sob.data?.[0] });
+}
+
+async function telaPrevBase(){
+  try { await prevBaseCarregar(); }
+  catch (e) { return erro(prevFaltaBanco(e) ? 'A base de conhecimento ainda não foi instalada no banco: rode banco/39_previdenciario_base.sql no Supabase.' : e.message); }
+  prevBasePintar();
+}
+
+function prevBasePintar(){
+  const B = PREVB, pend = B.fila.filter(f => f.status === 'pendente');
+  const ult = B.execs.find(e => e.terminado_em);
+  const cats = [['fila', `Novidades do robô (${pend.length})`], ['legislacao', 'Legislação'], ['jurisprudencia', 'Jurisprudência'], ['publicacao', 'Publicações'], ['tabelas', 'Tabelas e robô']];
+  app.innerHTML = menu('prev') + `
+  <main><a class="volta" href="#/prev">← Previdenciário</a>
+  <h1>Base de conhecimento</h1>
+  <p class="meta">Leis, temas, súmulas e atos oficiais do regime geral. Toda segunda de manhã o robô lê o Diário Oficial, o banco de precedentes
+    do CNJ (STF, STJ, TNU, TRF1 e TRF5), o INPC do IBGE e as notícias da TNU, e põe aqui o que achou. Nada entra na base nem muda o cálculo sem a sua decisão.</p>
+  <div class="kpis">
+    <div class="kpi"><div class="n">${pend.length}</div><div class="l">novidades a decidir</div></div>
+    <div class="kpi"><div class="n">${pend.filter(f => f.afeta_tabela).length}</div><div class="l">podem mudar tabela de cálculo</div></div>
+    <div class="kpi"><div class="n">${B.normas.length}</div><div class="l">itens na base</div></div>
+    <div class="kpi"><div class="n">${B.normas.filter(n => !n.verificado).length}</div><div class="l">a conferir</div></div>
+    <div class="kpi"><div class="n" style="font-size:15px">${ult ? br(ult.iniciado_em) : '—'}</div><div class="l">última rodada do robô${ult && !ult.ok ? ' (com falha)' : ''}</div></div>
+  </div>
+  <div class="filtros" style="margin:0 0 16px">
+    ${cats.map(([k, r]) => `<button class="btn" style="${B.aba === k ? 'border-color:var(--serie);color:var(--serie)' : ''}" onclick="prevBaseAba('${k}')">${r}</button>`).join('')}
+  </div>
+  ${B.msg ? `<div class="aviso" style="border-color:var(--serie)">${B.msg}</div>` : ''}
+  ${B.afetadas ? prevBaseAfetadas() : ''}
+  ${B.aba === 'fila' ? prevBaseFila() : B.aba === 'tabelas' ? prevBaseTabelas() : prevBaseLista(B.aba)}
+  </main>` + rodape();
+  aplicarRotulos(app);
+}
+window.prevBaseAba = k => { PREVB.aba = k; PREVB.msg = ''; PREVB.editando = null; prevBasePintar(); };
+
+/* ----- fila do robô */
+function prevBaseFila(){
+  const B = PREVB, itens = B.decididos ? B.fila : B.fila.filter(f => f.status === 'pendente');
+  const grupos = [['ibge', 'Índices (IBGE)'], ['dou', 'Diário Oficial'], ['cnj', 'Precedentes (CNJ)'], ['cjf', 'Notícias da TNU (CJF)'], ['manual', 'Outros']];
+  const cartao = f => {
+    const d = f.dados || {}, dec = f.status !== 'pendente';
+    return `<div style="border-top:1px solid var(--ln);padding:12px 18px;${dec ? 'opacity:.6' : ''}">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:4px">
+        ${f.afeta_tabela ? '<span class="pill warn">pode mudar tabela de cálculo</span>' : ''}
+        ${d.ja_na_base ? '<span class="pill serie">atualiza item da base</span>' : ''}
+        ${dec ? `<span class="pill ${f.status === 'incorporado' ? 'good' : 'cin'}">${f.status} ${f.decidido_em ? br(f.decidido_em) : ''}</span>` : ''}
+        <span class="sub" style="display:inline">${f.data ? br(f.data) : ''} · ${esc(PREV_FONTE[f.fonte] || f.fonte)}</span>
+      </div>
+      <b>${esc(f.titulo)}</b>
+      ${f.resumo ? `<div class="q" style="white-space:pre-line">${esc(f.resumo.length > 700 ? f.resumo.slice(0, 700) + '…' : f.resumo)}</div>` : ''}
+      ${f.observacao ? `<div class="sub">${esc(f.observacao)}</div>` : ''}
+      <div class="filtros" style="margin-top:8px">
+        ${f.link ? `<a class="btn" href="${esc(f.link)}" target="_blank" rel="noopener">Abrir na fonte</a>` : ''}
+        ${!dec && B.titular ? (f.tipo === 'indice'
+          ? `<button class="btn ok" onclick="prevBaseIndice('${f.id}')">Lançar na tabela de índices</button>`
+          : `<button class="btn ok" onclick="prevBaseIncluir('${f.id}')">${d.ja_na_base ? 'Atualizar na base' : 'Incluir na base'}</button>`)
+          + (f.afeta_tabela && f.tipo !== 'indice' ? `<button class="btn" onclick="prevBaseFormParam('${f.id}')">Lançar valor na tabela</button>` : '')
+          + `<button class="btn" onclick="prevBaseDescartar('${f.id}')">Descartar</button>` : ''}
+      </div>
+      ${B.editando === 'param-' + f.id ? `<div class="filtros" style="margin-top:8px;background:var(--bg2,#f6f5f2);padding:10px;border-radius:8px">
+        <label style="font-size:12px;color:var(--i3);display:flex;flex-direction:column">Tabela
+          <select id="pb-ptipo">${Object.entries(PREV_PARAM_NOME).map(([k, r]) => `<option value="${k}">${r}</option>`).join('')}</select></label>
+        <label style="font-size:12px;color:var(--i3);display:flex;flex-direction:column">Vale a partir de<input type="date" id="pb-pini"></label>
+        <label style="font-size:12px;color:var(--i3);display:flex;flex-direction:column">Valor (R$)<input type="text" id="pb-pval" placeholder="1.621,00" style="width:120px"></label>
+        <button class="btn ok" onclick="prevBaseParam('${f.id}')">Gravar</button>
+        <span class="sub" style="display:inline">Confira o valor no texto do ato antes de gravar: ele passa a valer no cálculo de todas as análises.</span>
+      </div>` : ''}
+    </div>`;
+  };
+  return `<div class="card"><h2>Novidades do robô</h2>
+    <p class="nota">"Incluir na base" guarda o ato ou o tema na biblioteca. Os índices do IBGE e os valores de mínimo, teto e limite só entram
+      no cálculo quando você lança; o sistema então mostra quais análises abertas mudam.</p>
+    <div class="filtros"><label style="font-size:12.8px;display:flex;gap:6px;align-items:center"><input type="checkbox" ${B.decididos ? 'checked' : ''} onchange="prevBaseDecididos(this.checked)"> mostrar também os já decididos</label></div>
+    ${itens.length ? grupos.map(([k, r]) => { const g = itens.filter(f => (f.fonte === k) || (k === 'manual' && !PREV_FONTE[f.fonte]));
+        return g.length ? `<h2 style="font-size:13px;color:var(--i2);margin-top:8px">${r} (${g.length})</h2>${g.map(cartao).join('')}` : ''; }).join('')
+      : `<div class="vazio">Nada esperando decisão.${B.execs.length ? '' : ' O robô ainda não rodou: ele roda toda segunda às 7h, ou agora, em "Tabelas e robô".'}</div>`}
+  </div>`;
+}
+window.prevBaseDecididos = async v => { PREVB.decididos = v; await prevBaseCarregar(); prevBasePintar(); };
+window.prevBaseFormParam = id => { PREVB.editando = PREVB.editando === 'param-' + id ? null : 'param-' + id; prevBasePintar(); };
+
+async function prevBaseDecidir(f, status, obs){
+  const { error } = await sb.from('prev_atualizacao').update({ status, decidido_em: new Date().toISOString(), decidido_por: USER.id,
+    observacao: obs || f.observacao || null }).eq('id', f.id);
+  if (error) throw error;
+}
+/* análises abertas cuja data-base é igual ou posterior à data em que o valor passou a valer */
+async function prevBaseMarcarAfetadas(desde, motivo){
+  const { data } = await sb.from('prev_analise').select('id,titulo,data_base,situacao,cliente:cliente_id(nome)')
+    .in('situacao', ['aberta', 'requerida']).gte('data_base', desde).order('data_base');
+  PREVB.afetadas = { motivo, lista: data || [] };
+  if (typeof PREV !== 'undefined') PREV.T = null;   // as tabelas do cálculo são relidas na próxima conta
+}
+function prevBaseAfetadas(){
+  const A = PREVB.afetadas;
+  return `<div class="aviso" style="border-color:var(--warn)"><b>${esc(A.motivo)}</b><br>
+    ${A.lista.length ? `Análises abertas ou requeridas que podem mudar (data-base a partir da vigência) — abra e recalcule:
+      <ul style="margin:6px 0 0 18px">${A.lista.map(x => `<li><a class="lnk" href="#/prev/${x.id}">${esc(x.cliente?.nome || x.titulo || 'análise')}</a>
+        <span class="sub" style="display:inline">· data-base ${br(x.data_base)} · ${esc(x.situacao)}</span></li>`).join('')}</ul>`
+      : 'Nenhuma análise aberta ou requerida tem data-base a partir dessa vigência.'}
+    <div><button class="btn" style="margin-top:6px" onclick="PREVB.afetadas=null;prevBasePintar()">Fechar</button></div></div>`;
+}
+
+window.prevBaseIncluir = async id => {
+  const f = PREVB.fila.find(x => x.id === id), d = f.dados || {};
+  try {
+    const chave = d.chave_norma || f.chave.replace(/@.*$/, '');
+    const ja = PREVB.normas.find(n => n.chave === chave);
+    if (ja) {
+      const nota = `Atualizado pelo robô em ${br(new Date().toISOString())}${d.mudou ? ': ' + d.mudou : ''}.`;
+      const { error } = await sb.from('prev_norma').update({ tese: d.tese || ja.tese, situacao: d.situacao || ja.situacao,
+        atualizado_fonte: f.data, atualizado_em: new Date().toISOString(),
+        observacao: [ja.observacao, nota].filter(Boolean).join(' ') }).eq('id', ja.id);
+      if (error) throw error;
+    } else {
+      const titulo = f.titulo.replace(/ \((novo no banco do CNJ|situação:[^)]*|tese alterada)\)/, '');
+      const { error } = await sb.from('prev_norma').insert({ chave, categoria: d.categoria || 'publicacao', tipo: d.tipo || 'outro',
+        numero: d.numero || null, orgao: d.orgao || null, data: f.data, titulo: titulo.slice(0, 300),
+        tese: d.tese || f.resumo || null, situacao: d.situacao || (d.categoria === 'publicacao' ? 'vigente' : null),
+        assuntos: f.afeta_tabela ? ['tabelas'] : [], link: f.link, verificado: true, origem: 'robo', atualizado_fonte: f.data });
+      if (error) throw error;
+    }
+    await prevBaseDecidir(f, 'incorporado');
+    PREVB.msg = ja ? 'Item da base atualizado.' : 'Incluído na base. Dá para completar os assuntos e a observação na biblioteca.';
+  } catch (e) { PREVB.msg = 'Não foi possível: ' + esc(e.message); }
+  await prevBaseCarregar(); prevBasePintar();
+};
+window.prevBaseIndice = async id => {
+  const f = PREVB.fila.find(x => x.id === id), d = f.dados || {};
+  try {
+    const { error } = await sb.from('prev_indice').upsert({ competencia: d.competencia, inpc: d.inpc, fonte: 'IBGE/SIDRA 1736 (robô)',
+      atualizado_em: new Date().toISOString() }, { onConflict: 'competencia' });
+    if (error) throw error;
+    await prevBaseDecidir(f, 'incorporado');
+    await prevBaseMarcarAfetadas(d.competencia, `INPC de ${d.competencia.slice(5, 7)}/${d.competencia.slice(0, 4)} lançado (${String(d.inpc).replace('.', ',')}%).`);
+  } catch (e) { PREVB.msg = 'Não foi possível: ' + esc(e.message); }
+  await prevBaseCarregar(); prevBasePintar();
+};
+window.prevBaseParam = async id => {
+  const f = PREVB.fila.find(x => x.id === id), g = k => document.getElementById('pb-' + k)?.value.trim();
+  const tipo = g('ptipo'), inicio = g('pini'), valor = Number(String(g('pval') || '').replace(/\./g, '').replace(',', '.'));
+  if (!inicio || !(valor > 0)) { PREVB.msg = 'Preencha a data de início e o valor.'; return prevBasePintar(); }
+  try {
+    const { error } = await sb.from('prev_parametro').upsert({ tipo, inicio, valor, ato: f.titulo.slice(0, 200), fonte: f.link,
+      atualizado_em: new Date().toISOString() }, { onConflict: 'tipo,inicio' });
+    if (error) throw error;
+    await prevBaseDecidir(f, 'incorporado', `${PREV_PARAM_NOME[tipo]} de ${br(inicio)}: ${rs(valor)}`);
+    PREVB.editando = null;
+    await prevBaseMarcarAfetadas(inicio, `${PREV_PARAM_NOME[tipo]} a partir de ${br(inicio)}: ${rs(valor)}.`);
+  } catch (e) { PREVB.msg = 'Não foi possível: ' + esc(e.message); }
+  await prevBaseCarregar(); prevBasePintar();
+};
+window.prevBaseDescartar = async id => {
+  try { await prevBaseDecidir(PREVB.fila.find(x => x.id === id), 'descartado'); } catch (e) { PREVB.msg = 'Não foi possível: ' + esc(e.message); }
+  await prevBaseCarregar(); prevBasePintar();
+};
+
+/* ----- biblioteca */
+const PREV_TIPO_NORMA = { constituicao: 'Constituição', emenda: 'Emenda constitucional', lei_complementar: 'Lei complementar', lei: 'Lei', decreto: 'Decreto',
+  medida_provisoria: 'Medida provisória', instrucao_normativa: 'Instrução normativa', portaria: 'Portaria', tema_stf: 'Tema do STF', tema_stj: 'Tema do STJ',
+  tema_tnu: 'Tema da TNU', sumula_stf: 'Súmula do STF', sumula_stj: 'Súmula do STJ', sumula_tnu: 'Súmula da TNU', sumula_vinculante: 'Súmula vinculante',
+  acao_controle: 'Controle de constitucionalidade', controversia: 'Controvérsia (STJ)', irdr: 'IRDR', iac: 'IAC', enunciado_crps: 'Enunciado do CRPS', noticia_tnu: 'Notícia da TNU', outro: 'Outro' };
+const prevSitCor = s => /revog|cancel|superad/i.test(s || '') ? 'crit' : /afetad|pendente|em julgamento|suspens/i.test(s || '') ? 'warn' : /alterad/i.test(s || '') ? 'serie' : 'good';
+function prevBaseLista(cat){
+  const B = PREVB, b = prevSemAcento(B.busca);
+  const itens = B.normas.filter(n => n.categoria === cat && (!B.assunto || (n.assuntos || []).includes(B.assunto))
+    && (!b || prevSemAcento([n.titulo, n.numero, n.tese, n.observacao, n.orgao].join(' ')).includes(b)));
+  const form = n => { const v = k => esc(n?.[k] ?? '');
+    return `<div style="border-top:1px solid var(--ln);padding:12px 18px;background:var(--bg2,#f6f5f2)">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px">
+        <label class="sub" style="display:flex;flex-direction:column">Tipo<select id="pn-tipo">${Object.entries(PREV_TIPO_NORMA).map(([k, r]) => `<option value="${k}" ${n?.tipo === k ? 'selected' : ''}>${r}</option>`).join('')}</select></label>
+        <label class="sub" style="display:flex;flex-direction:column">Número<input id="pn-numero" value="${v('numero')}" placeholder="8.213/1991 ou Tema 995"></label>
+        <label class="sub" style="display:flex;flex-direction:column">Órgão<input id="pn-orgao" value="${v('orgao')}" placeholder="STJ, INSS, Presidência"></label>
+        <label class="sub" style="display:flex;flex-direction:column">Data<input type="date" id="pn-data" value="${v('data')}"></label>
+        <label class="sub" style="display:flex;flex-direction:column">Situação<input id="pn-situacao" value="${v('situacao')}" placeholder="vigente, julgado, afetado…"></label>
+      </div>
+      <label class="sub" style="display:flex;flex-direction:column;margin-top:8px">Título<input id="pn-titulo" value="${v('titulo')}"></label>
+      <label class="sub" style="display:flex;flex-direction:column;margin-top:8px">${cat === 'jurisprudencia' ? 'Tese fixada' : 'O que importa'}<textarea id="pn-tese" rows="4">${v('tese')}</textarea></label>
+      <label class="sub" style="display:flex;flex-direction:column;margin-top:8px">Observação<textarea id="pn-observacao" rows="2">${v('observacao')}</textarea></label>
+      <label class="sub" style="display:flex;flex-direction:column;margin-top:8px">Link oficial<input id="pn-link" value="${v('link')}"></label>
+      <div class="sub" style="margin-top:8px">Assuntos: ${PREV_ASSUNTOS.map(a => `<label style="margin-right:8px;white-space:nowrap"><input type="checkbox" class="pn-ass" value="${a}" ${(n?.assuntos || []).includes(a) ? 'checked' : ''}> ${a}</label>`).join('')}</div>
+      <label style="font-size:12.8px;display:block;margin-top:8px"><input type="checkbox" id="pn-verificado" ${n?.verificado ? 'checked' : ''}> conferido na fonte oficial</label>
+      <div class="filtros" style="margin-top:8px"><button class="btn ok" onclick="prevBaseSalvar(${n ? `'${n.id}'` : 'null'}, '${cat}')">Gravar</button>
+        <button class="btn" onclick="PREVB.editando=null;prevBasePintar()">Cancelar</button></div>
+    </div>`; };
+  const linha = n => B.editando === n.id ? form(n) : `<div style="border-top:1px solid var(--ln);padding:12px 18px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:3px">
+      <span class="sub" style="display:inline">${esc(PREV_TIPO_NORMA[n.tipo] || n.tipo)}${n.numero ? ' · ' + esc(n.numero) : ''}${n.orgao ? ' · ' + esc(n.orgao) : ''}${n.data ? ' · ' + br(n.data) : ''}</span>
+      ${n.situacao ? `<span class="pill ${prevSitCor(n.situacao)}">${esc(n.situacao)}</span>` : ''}
+      ${n.verificado ? '' : '<span class="pill warn" title="ainda não conferido na fonte oficial">conferir</span>'}
+    </div>
+    <b>${esc(n.titulo)}</b>
+    ${n.tese ? `<div class="q">${esc(n.tese)}</div>` : ''}
+    ${n.observacao ? `<div class="sub" style="margin-top:4px">${esc(n.observacao)}</div>` : ''}
+    <div class="filtros" style="margin-top:6px">
+      ${(n.assuntos || []).map(a => `<span class="pill cin" style="cursor:pointer" onclick="prevBaseFiltro('assunto','${a}')">${a}</span>`).join('')}
+      ${n.link ? `<a class="lnk" href="${esc(n.link)}" target="_blank" rel="noopener" style="margin-left:auto">fonte oficial</a>` : ''}
+      ${B.titular ? `<button class="btn" onclick="PREVB.editando='${n.id}';prevBasePintar()">Editar</button>` : ''}
+    </div></div>`;
+  const nome = { legislacao: 'Legislação', jurisprudencia: 'Jurisprudência', publicacao: 'Publicações oficiais' }[cat];
+  return `<div class="card"><h2>${nome} (${itens.length})</h2>
+    <div class="filtros">
+      <input type="search" id="pb-busca" value="${esc(B.busca)}" placeholder="buscar: número, tema, palavra da tese…" style="min-width:260px"
+        oninput="PREVB.busca=this.value;clearTimeout(window._pbT);window._pbT=setTimeout(()=>{prevBasePintar();const i=document.getElementById('pb-busca');i.focus();i.setSelectionRange(i.value.length,i.value.length)},250)">
+      <select onchange="prevBaseFiltro('assunto', this.value)"><option value="">todos os assuntos</option>
+        ${PREV_ASSUNTOS.map(a => `<option value="${a}" ${B.assunto === a ? 'selected' : ''}>${a}</option>`).join('')}</select>
+      ${B.titular ? `<button class="btn ok" onclick="PREVB.editando='novo';prevBasePintar()">+ Nova entrada</button>` : ''}
+    </div>
+    ${B.editando === 'novo' ? form(null) : ''}
+    ${itens.length ? itens.map(linha).join('') : '<div class="vazio">Nada com esse filtro.</div>'}
+  </div>`;
+}
+window.prevBaseFiltro = (k, v) => { PREVB[k] = (k === 'assunto' && v && PREVB[k] === v) ? '' : v; prevBasePintar(); };
+window.prevBaseSalvar = async (id, cat) => {
+  const g = k => document.getElementById('pn-' + k);
+  const reg = { categoria: cat, tipo: g('tipo').value, numero: g('numero').value.trim() || null, orgao: g('orgao').value.trim() || null,
+    data: g('data').value || null, situacao: g('situacao').value.trim() || null, titulo: g('titulo').value.trim(), tese: g('tese').value.trim() || null,
+    observacao: g('observacao').value.trim() || null, link: g('link').value.trim() || null, verificado: g('verificado').checked,
+    assuntos: [...document.querySelectorAll('.pn-ass:checked')].map(x => x.value), atualizado_em: new Date().toISOString() };
+  if (!reg.titulo) { PREVB.msg = 'O título é obrigatório.'; return prevBasePintar(); }
+  const r = id ? await sb.from('prev_norma').update(reg).eq('id', id)
+    : await sb.from('prev_norma').insert({ ...reg, chave: 'manual-' + Date.now().toString(36), origem: 'manual' });
+  PREVB.msg = r.error ? 'Não foi possível gravar: ' + esc(r.error.message) : 'Gravado.';
+  if (!r.error) PREVB.editando = null;
+  await prevBaseCarregar(); prevBasePintar();
+};
+
+/* ----- tabelas vigentes e o registro do robô */
+function prevBaseTabelas(){
+  const B = PREVB, v = B.vig || {};
+  const resumoTxt = r => Object.entries(r || {}).filter(([k]) => ['dou', 'cnj', 'ibge', 'cjf'].includes(k))
+    .map(([k, x]) => `${PREV_FONTE[k]}: ${x.erro ? '<span style="color:var(--crit)">falhou (' + esc(x.erro) + ')</span>' : `${x.novos} nova(s) de ${x.lidos} lida(s)`}`).join(' · ')
+    || (r?.erro ? `<span style="color:var(--crit)">${esc(r.erro)}</span>` : '');
+  return `<div class="card"><h2>Tabelas oficiais em uso no cálculo</h2>
+    <table><tr><th>Tabela</th><th>Valor vigente</th><th>Desde</th><th>Ato</th></tr>
+      ${Object.entries(PREV_PARAM_NOME).map(([k, r]) => `<tr><td>${r}</td><td><b>${v[k] ? rs(v[k].valor) : '—'}</b></td><td class="dt">${v[k] ? br(v[k].inicio) : ''}</td><td class="sub">${esc(v[k]?.ato || '')}</td></tr>`).join('')}
+      <tr><td>INPC (último mês na tabela)</td><td><b>${B.ultInpc ? String(B.ultInpc.inpc).replace('.', ',') + '%' : '—'}</b></td><td class="dt">${B.ultInpc ? B.ultInpc.competencia.slice(5, 7) + '/' + B.ultInpc.competencia.slice(0, 4) : ''}</td><td class="sub">IBGE, SIDRA 1736</td></tr>
+      <tr><td>Tábua de mortalidade (fator previdenciário)</td><td><b>${B.tabua ? 'IBGE ' + B.tabua.ano_tabua : '—'}</b></td><td class="dt">${B.tabua?.vigencia_inicio ? br(B.tabua.vigencia_inicio) : ''}</td><td class="sub">o IBGE publica a tábua nova todo ano no fim de novembro; ela não vem pelo robô e precisa ser incluída na tabela</td></tr>
+    </table>
+  </div>
+  <div class="card"><h2>Robô semanal</h2>
+    <p class="nota">Roda sozinho toda segunda às 7h. Cada fonte busca desde a última vez em que deu certo, então uma fonte fora do ar numa semana é recuperada na seguinte.</p>
+    ${B.titular ? `<div class="filtros"><button class="btn ok" onclick="prevBaseRodar()" ${B.rodando ? 'disabled' : ''}>${B.rodando ? 'Rodando…' : 'Rodar agora'}</button>
+      <span class="sub" id="pb-rob" style="display:inline">${B.rodando ? esc(B.rodando) : ''}</span></div>` : ''}
+    ${B.execs.length ? `<table><tr><th>Quando</th><th>Resultado</th></tr>${B.execs.map(e => `<tr><td class="dt">${br(e.iniciado_em)} ${new Date(e.iniciado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</td>
+      <td>${!e.terminado_em ? '<span class="pill warn">rodando</span>' : `<span class="pill ${e.ok ? 'good' : 'crit'}">${e.ok ? e.novos + ' novidade(s)' : 'falhou'}</span>`}
+        <span class="sub">${resumoTxt(e.resumo)}</span></td></tr>`).join('')}</table>` : '<div class="vazio">O robô ainda não rodou.</div>'}
+  </div>`;
+}
+window.prevBaseRodar = async () => {
+  PREVB.rodando = 'chamando o robô…'; prevBasePintar();
+  try {
+    const r = await chamarFuncao('robo-previdencia', {});
+    const id = r.execucao, t0 = Date.now();
+    while (id && Date.now() - t0 < 7 * 60e3) {
+      await new Promise(ok => setTimeout(ok, 5000));
+      const { data } = await sb.from('prev_robo_execucao').select('terminado_em,ok,novos').eq('id', id).maybeSingle();
+      if (data?.terminado_em) { PREVB.msg = data.ok ? `Rodada concluída: ${data.novos} novidade(s) na fila.` : 'A rodada terminou com falha: veja o registro abaixo.'; break; }
+      PREVB.rodando = `lendo as fontes… ${Math.round((Date.now() - t0) / 1000)} s`;
+      const s = document.getElementById('pb-rob'); if (s) s.textContent = PREVB.rodando;
+    }
+  } catch (e) { PREVB.msg = 'Não foi possível chamar o robô: ' + esc(e.message) + '. A função robo-previdencia está instalada no Supabase?'; }
+  PREVB.rodando = null;
+  await prevBaseCarregar(); prevBasePintar();
+};
+/* PREV-BASE-FIM */
+
 /* ----- lista de análises */
 async function telaPrev(){
   const sub = location.hash.split('?')[0].split('/')[2];
+  if (sub === 'base') return telaPrevBase();
   if (sub) return telaPrevAnalise(sub);
-  const [an, cs] = await Promise.all([
+  const [an, cs, fi, ex] = await Promise.all([
     sb.from('prev_analise').select('id,titulo,situacao,data_base,atualizado_em,cnis_lido_em,caso:caso_id(id,titulo),cliente:cliente_id(nome)')
       .order('atualizado_em', { ascending: false }),
     sb.from('caso').select('id,titulo,area,cliente:cliente_id(nome)').is('encerrado_em', null).order('titulo'),
+    sb.from('prev_atualizacao').select('afeta_tabela').eq('status', 'pendente'),
+    sb.from('prev_robo_execucao').select('iniciado_em,ok').not('terminado_em', 'is', null).order('iniciado_em', { ascending: false }).limit(1),
   ]);
   if (an.error) return erro(prevFaltaBanco(an.error) ? PREV_SEM_BANCO : an.error.message);
+  const novid = fi.error ? null : (fi.data || []), ultRob = ex.data?.[0];
   const lista = an.data || [];
   const prevArea = c => /previd|inss|aposent|benef|loas|bpc|pens[ãa]o|aux[ií]lio/i.test((c.area || '') + ' ' + (c.titulo || ''));
   const casos = (cs.data || []).sort((a, b) => (prevArea(b) - prevArea(a)) || a.titulo.localeCompare(b.titulo));
@@ -11632,6 +11931,12 @@ async function telaPrev(){
     <div class="kpi"><div class="n">${lista.filter(x => x.cnis_lido_em).length}</div><div class="l">com CNIS lido</div></div>
     <div class="kpi"><div class="n">${lista.filter(x => x.situacao === 'requerida').length}</div><div class="l">requeridas no INSS</div></div>
   </div>
+  ${novid ? `<div class="card"><h2>Base de conhecimento</h2>
+    <p class="nota">Leis, temas, súmulas e atos oficiais do regime geral, atualizados pelo robô toda segunda.
+      ${novid.length ? `<b>${novid.length} novidade(s) esperando sua decisão</b>${novid.some(x => x.afeta_tabela) ? ', entre elas algo que pode mudar tabela de cálculo' : ''}.` : 'Nenhuma novidade pendente.'}
+      ${ultRob ? `Última rodada do robô: ${br(ultRob.iniciado_em)}${ultRob.ok ? '' : ' (com falha)'}.` : ''}</p>
+    <div class="filtros"><a class="btn ${novid.length ? 'ok' : ''}" href="#/prev/base">Abrir a base</a></div>
+  </div>` : ''}
   <div class="card"><h2>Nova análise</h2>
     <p class="nota">Escolha o caso. Se ele ainda não existe, crie em Casos primeiro: a análise usa o cliente e os documentos do caso.</p>
     <div class="filtros">
