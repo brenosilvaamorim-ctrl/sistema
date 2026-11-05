@@ -10443,6 +10443,7 @@ const PREV_REGRAS = [
   { k: 'art18', nome: 'Transição da aposentadoria por idade', base: 'EC 103/2019, art. 18' },
   { k: 'art20', nome: 'Transição com pedágio de 100%', base: 'EC 103/2019, art. 20' },
   { k: 'art21', nome: 'Especial — transição por pontos', base: 'EC 103/2019, art. 21' },
+  { k: 'esp_perm', nome: 'Especial — regra permanente, sem idade mínima', base: 'EC 103/2019, art. 19, § 1º, I, sem a idade (STF, ADI 6309, DJe 02/10/2026); art. 26, §§ 2º, IV, e 5º' },
   { k: 'prof15', nome: 'Professor — transição por pontos', base: 'EC 103/2019, art. 15, § 3º', prof: true },
   { k: 'prof16', nome: 'Professor — transição por idade progressiva', base: 'EC 103/2019, art. 16, § 2º', prof: true },
   { k: 'prof20', nome: 'Professor — transição com pedágio de 100%', base: 'EC 103/2019, art. 20, § 1º', prof: true },
@@ -10530,6 +10531,8 @@ function prevChecar(k, n, D, sexo, grau){
     r('Tempo rural + urbano', 15, n.tcHib, n.tcHib >= 15);
     r('Carência (rural + urbano)', 180, n.carHib, n.carHib >= 180, 'meses');
   }
+  /* ADI 6309: o STF afastou a idade mínima do art. 19, § 1º, I; ficam o tempo especial e a carência */
+  if (k === 'esp_perm'){ const g = Number(grau); r(`Tempo especial (${g} anos)`, g, n.esp[grau], n.esp[grau] >= g); car(); }
   if (k === 'perm'){
     r('Idade', F ? 62 : 65, n.idade, n.idade >= (F ? 62 : 65)); r('Tempo de contribuição', F ? 15 : 20, n.tc, n.tc >= (F ? 15 : 20)); car();
   }
@@ -10613,7 +10616,9 @@ function prevRenda(ctx, k, grau, dib){
     avisos.push(`Média de 100% dos salários, como faz o INSS (Decreto 3.048, arts. 70-J e 32). Pela média dos 80% maiores (LC 142, mantida pelo art. 22 da EC 103), a renda seria ${rs(rmiAlt)}: a TNU (Tema 389) estava 4 × 1 por essa tese quando houve pedido de vista (set/2026), e os TRFs divergem.`);
   }
   const vals = sal.lista.map(x => x.corrigido);
-  const tcCoef = k === 'hibrida' ? n.tcHib : n.tc;
+  /* nas especiais o coeficiente conta o tempo efetivo: a conversão (×1,4/×1,2) só leva o tempo
+     especial para as aposentadorias comuns (Lei 8.213, art. 57, § 5º) */
+  const tcCoef = k === 'hibrida' ? n.tcHib : ['art21', 'esp_perm'].includes(k) ? n.bruto : n.tc;
   const tipoMedia = da ? '80' : k.startsWith('pcd') ? PREV_P.pcdMedia : '100';
   const permiteDescarte = !da && !k.startsWith('pcd') && k !== 'hibrida';
 
@@ -10705,11 +10710,16 @@ function prevCalcular(a, vincs, rems, T, opt = {}){
   const regras = [];
   for (const R of PREV_REGRAS){
     if ((R.prof && !temProf) || (R.pcd && !temPcd) || (R.rural && !temRural)) continue;
-    const lista = ['da_especial', 'art21'].includes(R.k) ? graus.map(g => ({ ...R, grau: g, nome: R.nome + ` — ${g} anos` })) : [R];
+    const lista = ['da_especial', 'art21', 'esp_perm'].includes(R.k) ? graus.map(g => ({ ...R, grau: g, nome: R.nome + ` — ${g} anos` })) : [R];
     for (const r of lista){
       const out = { k: r.k, grau: r.grau || null, nome: r.nome, base: r.base, aplicavel: true, motivo: null };
-      const transicao = !r.da && !r.pcd && !r.rural && !['perm', 'prof_perm'].includes(r.k);
+      const transicao = !r.da && !r.pcd && !r.rural && !['perm', 'prof_perm', 'esp_perm'].includes(r.k);
       if (['perm', 'prof_perm'].includes(r.k) && antes) { out.aplicavel = false; out.motivo = 'Filiado antes da reforma: valem as regras de transição.'; }
+      if (r.k === 'esp_perm'){
+        out.nota = 'Decisão recente do STF (ADI 6309): confira embargos e modulação antes de usar em requerimento ou peça.';
+        if (antes && !opt.teseEsp) { out.aplicavel = false; out.motivo = 'Filiado antes da reforma: a EC 103 prevê para ele a transição por pontos (art. 21). A ADI 6309 não tratou do art. 21; para simular a tese de isonomia (especial sem idade nem pontos), marque a opção acima do cálculo.'; }
+        else if (antes) out.nota = 'Tese, não regra assentada: a ADI 6309 afastou a idade mínima do art. 19, que a EC 103 reserva a quem se filiou depois da reforma. Aplicá-la a quem se filiou antes (sem idade nem pontos do art. 21) depende de pedido expresso e do acórdão.';
+      }
       if (transicao && !antes) { out.aplicavel = false; out.motivo = 'Filiado depois da reforma: vale a regra permanente.'; }
       if (r.da && !antes) { out.aplicavel = false; out.motivo = 'Sem contribuição antes de 13/11/2019.'; }
       if (!out.aplicavel) { regras.push(out); continue; }
@@ -11355,7 +11365,7 @@ function prevPeca(tipo, x){
   const nomeB = (regra?.nome || prevConf('benefício')).replace(/ \(.*\)$/, '');
   const benef = regra ? (regra.k.startsWith('prof') ? 'APOSENTADORIA DO PROFESSOR' : regra.k.startsWith('pcd') ? 'APOSENTADORIA DA PESSOA COM DEFICIÊNCIA'
     : regra.k === 'rural_idade' ? 'APOSENTADORIA POR IDADE RURAL' : regra.k === 'hibrida' ? 'APOSENTADORIA POR IDADE HÍBRIDA'
-    : ['da_especial', 'art21'].includes(regra.k) ? 'APOSENTADORIA ESPECIAL' : ['da_idade', 'art18', 'perm'].includes(regra.k) ? 'APOSENTADORIA POR IDADE'
+    : ['da_especial', 'art21', 'esp_perm'].includes(regra.k) ? 'APOSENTADORIA ESPECIAL' : ['da_idade', 'art18', 'perm'].includes(regra.k) ? 'APOSENTADORIA POR IDADE'
     : 'APOSENTADORIA') : 'BENEFÍCIO PREVIDENCIÁRIO';
   const der = op.der || a.data_base;
   const k = regra?.calc;
@@ -12480,7 +12490,7 @@ function prevAbaBeneficios(){
       <table><tr><th>Regra</th><th>Situação</th><th>Coeficiente</th><th>Renda estimada</th></tr>
       ${c.regras.map(r => `<tr style="cursor:pointer;${!r.aplicavel ? 'opacity:.5' : ''}${id(r) === c.melhor ? ';background:color-mix(in srgb,var(--good) 8%,transparent)' : ''}" onclick="prevAbrirRegra('${id(r)}')">
         <td><b>${id(r) === c.melhor ? '★ ' : ''}${esc(r.nome)}</b><span class="sub">${esc(r.base)}</span></td>
-        <td>${situacao(r)}${r.motivo && !r.cumpre ? `<span class="sub">${esc(r.motivo)}</span>` : ''}</td>
+        <td>${situacao(r)}${r.motivo && !r.cumpre ? `<span class="sub">${esc(r.motivo)}</span>` : ''}${r.nota && r.aplicavel ? `<span class="sub" style="color:var(--ser,#b45309)">${esc(r.nota)}</span>` : ''}</td>
         <td>${r.calc ? prevPct(r.calc.coef) : '—'}</td>
         <td class="dt"><b>${r.calc ? rs(r.calc.rmi) : '—'}</b>${r.calc && !r.cumpre ? '<span class="sub">na data em que cumprir</span>' : ''}</td></tr>
         ${PREV.regraAberta === id(r) ? `<tr><td colspan="4">${prevDetalheRegra(r)}</td></tr>` : ''}`).join('')}
@@ -12501,6 +12511,7 @@ function prevAbaBeneficios(){
       (hoje: ${br(a.data_base)}). Para saber quando cada regra seria cumprida se o cliente continuar contribuindo, marque a projeção.</p>
     <div class="filtros">
       <label style="font-size:13px"><input type="checkbox" id="pb-proj" ${o.projetar ? 'checked' : ''}> projetar contribuindo depois da data-base</label>
+      ${PREV.vinc.some(v => v.especial) ? `<label style="font-size:13px" title="ADI 6309: o STF afastou a idade mínima da especial na regra permanente (art. 19). Marcando, o sistema simula essa regra também para quem se filiou antes da reforma — é tese, não regra assentada."><input type="checkbox" id="pb-tese" ${o.teseEsp ? 'checked' : ''}> simular a especial sem idade também para filiado antes da reforma (tese, ADI 6309)</label>` : ''}
       <label style="font-size:13px">salário de contribuição futuro (R$)
         <input type="text" id="pb-sc" value="${esc(o.scFuturo || '')}" placeholder="mínimo" style="width:110px"></label>
       <button class="btn ok" onclick="prevCalcularTela()">Calcular</button>
@@ -12540,7 +12551,7 @@ window.prevAbrirRegra = id => { PREV.regraAberta = PREV.regraAberta === id ? nul
 
 window.prevCalcularTela = async () => {
   const st = document.getElementById('pc2-st');
-  PREV.opt = { projetar: !!document.getElementById('pb-proj')?.checked,
+  PREV.opt = { projetar: !!document.getElementById('pb-proj')?.checked, teseEsp: !!document.getElementById('pb-tese')?.checked,
                scFuturo: (document.getElementById('pb-sc')?.value || '').trim() };
   st.textContent = 'carregando as tabelas oficiais…';
   try { await prevCarregarTabelas(); }
@@ -12551,7 +12562,7 @@ window.prevCalcularTela = async () => {
   try {
     const t = PREV.opt.scFuturo.replace(/[^\d.,]/g, '');
     const sc = t ? (t.includes(',') ? cnisNum(t) : Number(t)) || null : null;
-    PREV.calc = prevCalcular(PREV.a, PREV.vinc, PREV.rem, PREV.T, { projetar: PREV.opt.projetar, scFuturo: sc });
+    PREV.calc = prevCalcular(PREV.a, PREV.vinc, PREV.rem, PREV.T, { projetar: PREV.opt.projetar, scFuturo: sc, teseEsp: PREV.opt.teseEsp });
     PREV.regraAberta = PREV.calc.melhor || PREV.calc.proxima;
   } catch (e) { PREV.calc = { erros: ['Erro no cálculo: ' + e.message], regras: [] }; }
   prevPintar();
