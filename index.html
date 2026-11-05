@@ -11232,6 +11232,324 @@ function prevMsgDocs(nomeCliente, itens){
 }
 /* PREV-DOCS-FIM */
 
+/* PREV-GRAF-INICIO — gráficos para as peças. Devolvem SVG com cores fixas (vão para o
+   papel e para o Word, fora do tema da tela). Três cores categóricas validadas (azul,
+   laranja, verde — separáveis também para daltônicos); o benefício vai hachurado, e o
+   que não conta, em cinza claro. Toda barra leva o nome e os anos escritos ao lado. */
+const PREV_COR = { comum: '#2a78d6', especial: '#eb6834', rural: '#1baf7a', beneficio: 'url(#prevHach)', fora: '#d6d3cc',
+                   tinta: '#1d1c1a', tinta2: '#55534e', tinta3: '#8a877f', grade: '#e3e1dc', fundo: '#ffffff', falta: '#c9c6bf' };
+const prevSvgEsc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const prevAnos = (i, f) => (i || '').slice(0, 4) === (f || '').slice(0, 4) ? (i || '').slice(0, 4) : `${(i || '').slice(0, 4)}–${(f || '').slice(0, 4)}`;
+const prevCorVinc = v => v.considerar === false ? PREV_COR.fora : v.tipo === 'beneficio' ? PREV_COR.beneficio
+  : v.especial ? PREV_COR.especial : (v.rural || v.tipo === 'segurado_especial') ? PREV_COR.rural : PREV_COR.comum;
+
+/* 1. Linha do tempo dos vínculos */
+function prevSvgLinhaTempo(vincs, dataBase){
+  const vs = vincs.filter(v => v.inicio).sort((a, b) => a.inicio.localeCompare(b.inicio));
+  if (!vs.length) return null;
+  const fimDe = v => v.fim || (v.ultima_remun ? cnisFimMes(v.ultima_remun) : dataBase);
+  const ano = d => Number(d.slice(0, 4)) + (Number(d.slice(5, 7)) - 1) / 12 + (Number(d.slice(8, 10)) - 1) / 365;
+  const a0 = Math.floor(Math.min(...vs.map(v => ano(v.inicio)))), a1 = Math.ceil(Math.max(...vs.map(v => ano(fimDe(v)))) + 0.01);
+  const W = 900, rot = 250, mr = 20, linha = 24, top = 46, H = top + vs.length * linha + 50;
+  const x = d => rot + (W - rot - mr) * (ano(d) - a0) / Math.max(1, a1 - a0);
+  const passo = a1 - a0 > 30 ? 5 : a1 - a0 > 12 ? 2 : 1;
+  const marcas = []; for (let y = Math.ceil(a0 / passo) * passo; y <= a1; y += passo) marcas.push(y);
+  const usados = [['comum', 'Emprego ou contribuição'], ['especial', 'Atividade especial'], ['rural', 'Atividade rural'], ['beneficio', 'Benefício'], ['fora', 'Não considerado']]
+    .filter(([k]) => vs.some(v => prevCorVinc(v) === PREV_COR[k]));
+  let leg = '', lx = rot;
+  for (const [k, r] of usados){ leg += `<rect x="${lx}" y="14" width="12" height="12" rx="2" fill="${PREV_COR[k]}"${k === 'beneficio' ? ` stroke="${PREV_COR.tinta2}"` : ''}/><text x="${lx + 17}" y="24" font-size="12" fill="${PREV_COR.tinta2}">${r}</text>`; lx += 30 + r.length * 6.4; }
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" font-family="Arial, Helvetica, sans-serif">
+    <defs><pattern id="prevHach" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="7" height="7" fill="#ffffff"/>
+      <line x1="0" y1="0" x2="0" y2="7" stroke="${PREV_COR.tinta2}" stroke-width="2.4"/></pattern></defs>
+    <rect width="${W}" height="${H}" fill="${PREV_COR.fundo}"/>${leg}
+    ${marcas.map(y => `<line x1="${x(y + '-01-01')}" x2="${x(y + '-01-01')}" y1="${top - 6}" y2="${H - 34}" stroke="${PREV_COR.grade}"/>
+      <text x="${x(y + '-01-01')}" y="${H - 16}" font-size="12" text-anchor="middle" fill="${PREV_COR.tinta3}">${y}</text>`).join('')}
+    ${vs.map((v, i) => { const y = top + i * linha, x1 = x(v.inicio), x2 = Math.max(x(fimDe(v)), x1 + 3);
+      const nome = (v.empregador_nome || PREV_TIPO_NOME[v.tipo] || '').slice(0, 34);
+      return `<text x="${rot - 10}" y="${y + 14}" font-size="12" text-anchor="end" fill="${PREV_COR.tinta}">${prevSvgEsc(nome)}</text>
+        <rect x="${x1}" y="${y + 3}" width="${(x2 - x1).toFixed(1)}" height="15" rx="3" fill="${prevCorVinc(v)}"${v.tipo === 'beneficio' && v.considerar !== false ? ` stroke="${PREV_COR.tinta2}" stroke-width="1"` : ''}/>
+        ${x2 + 80 > W && x2 - x1 > 80
+          ? `<text x="${x2 - 6}" y="${y + 14}" font-size="10.5" text-anchor="end" fill="#ffffff">${prevAnos(v.inicio, fimDe(v))}</text>`
+          : `<text x="${Math.min(x2 + 6, W - 60)}" y="${y + 14}" font-size="10.5" fill="${PREV_COR.tinta3}">${prevAnos(v.inicio, fimDe(v))}</text>`}`; }).join('')}
+  </svg>`;
+}
+
+/* 2. Requisitos da regra: o cumprido contra o exigido (a linha vertical é o exigido) */
+function prevSvgRequisitos(regra){
+  const reqs = (regra.cumpre || !regra.reqFuturo ? regra.req : regra.reqFuturo || []).filter(q => typeof q.exigido === 'number' && typeof q.cumprido === 'number' && q.fmt !== 'simnao');
+  if (!reqs.length) return null;
+  const W = 900, rot = 300, mr = 150, linha = 46, top = 40, H = top + reqs.length * linha + 14;
+  const fmt = (v, f) => f === 'meses' ? Math.floor(v) + ' meses' : f === 'pontos' ? prevArred(v, 1).toLocaleString('pt-BR') + ' pontos' : prevDiasTxt(v * 360).replace(/, 0 dias?$| e 0 dias?$/, '');
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" font-family="Arial, Helvetica, sans-serif">
+    <rect width="${W}" height="${H}" fill="${PREV_COR.fundo}"/>
+    <text x="0" y="20" font-size="14" font-weight="bold" fill="${PREV_COR.tinta}">${prevSvgEsc(regra.nome)} — requisitos</text>
+    ${reqs.map((q, i) => { const y = top + i * linha, max = Math.max(q.exigido, q.cumprido) * 1.08 || 1;
+      const sx = v => rot + (W - rot - mr) * Math.min(v, max) / max;
+      return `<text x="${rot - 12}" y="${y + 17}" font-size="12.5" text-anchor="end" fill="${PREV_COR.tinta}">${prevSvgEsc(q.nome.length > 44 ? q.nome.slice(0, 43) + '…' : q.nome)}</text>
+        <rect x="${rot}" y="${y + 4}" width="${W - rot - mr}" height="18" rx="3" fill="#f3f2ef"/>
+        <rect x="${rot}" y="${y + 4}" width="${(sx(q.cumprido) - rot).toFixed(1)}" height="18" rx="3" fill="${q.ok ? PREV_COR.comum : PREV_COR.falta}"/>
+        <line x1="${sx(q.exigido)}" x2="${sx(q.exigido)}" y1="${y}" y2="${y + 26}" stroke="${PREV_COR.tinta}" stroke-width="2"/>
+        <text x="${W - mr + 10}" y="${y + 12}" font-size="11.5" fill="${PREV_COR.tinta}">${prevSvgEsc(fmt(q.cumprido, q.fmt))}</text>
+        <text x="${W - mr + 10}" y="${y + 26}" font-size="10.5" fill="${PREV_COR.tinta3}">exigido: ${prevSvgEsc(fmt(q.exigido, q.fmt))}${q.ok ? ' ✓' : ''}</text>`; }).join('')}
+  </svg>`;
+}
+
+/* 3. Comparativo das rendas por regra (as cumpridas na data-base em destaque) */
+function prevSvgComparativo(calc){
+  const rs_ = calc.regras.filter(r => r.calc && r.data).sort((a, b) => b.calc.rmi - a.calc.rmi).slice(0, 8);
+  if (!rs_.length) return null;
+  const W = 900, rot = 330, mr = 170, linha = 34, top = 36, H = top + rs_.length * linha + 10;
+  const max = Math.max(...rs_.map(r => r.calc.rmi)) * 1.05;
+  const sx = v => rot + (W - rot - mr) * v / max;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" font-family="Arial, Helvetica, sans-serif">
+    <rect width="${W}" height="${H}" fill="${PREV_COR.fundo}"/>
+    <text x="0" y="20" font-size="14" font-weight="bold" fill="${PREV_COR.tinta}">Renda mensal estimada por regra</text>
+    ${rs_.map((r, i) => { const y = top + i * linha;
+      return `<text x="${rot - 12}" y="${y + 16}" font-size="12.5" text-anchor="end" fill="${PREV_COR.tinta}">${prevSvgEsc(r.nome.length > 46 ? r.nome.slice(0, 45) + '…' : r.nome)}</text>
+        <rect x="${rot}" y="${y + 3}" width="${(sx(r.calc.rmi) - rot).toFixed(1)}" height="18" rx="3" fill="${r.cumpre ? PREV_COR.comum : PREV_COR.falta}"/>
+        <text x="${sx(r.calc.rmi) + 8}" y="${y + 16}" font-size="12" font-weight="${r.cumpre ? 'bold' : 'normal'}" fill="${PREV_COR.tinta}">${prevSvgEsc(rs(r.calc.rmi))}</text>
+        <text x="${sx(r.calc.rmi) + 8 + rs(r.calc.rmi).length * 7.2}" y="${y + 16}" font-size="10.5" fill="${PREV_COR.tinta3}">${r.cumpre ? 'cumpre' : 'em ' + br(r.data)}</text>`; }).join('')}
+  </svg>`;
+}
+
+/* SVG → PNG (dobro da resolução, para impressão nítida) */
+async function prevSvgPng(svg, escala = 2){
+  const m = svg.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/); const w = Number(m[1]), h = Number(m[2]);
+  const img = new Image();
+  const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  await new Promise((ok, falha) => { img.onload = ok; img.onerror = () => falha(new Error('não foi possível desenhar o gráfico')); img.src = url; });
+  const cv = document.createElement('canvas'); cv.width = w * escala; cv.height = h * escala;
+  const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(img, 0, 0, cv.width, cv.height);
+  const blob = await new Promise(ok => cv.toBlob(ok, 'image/png'));
+  return { blob, w, h };
+}
+/* PREV-GRAF-FIM */
+
+/* PREV-PECAS-INICIO — requerimento administrativo, petição inicial (JEF) e recurso ao CRPS,
+   montados com os dados da análise. Função pura: devolve blocos; o Word é feito depois,
+   sobre o modelo timbrado do escritório. Onde falta dado, [CONFERIR: …]. */
+const PREV_ADV = 'BRENO DA SILVA AMORIM';
+const PREV_ADV_OAB = 'OAB/PE 45.776 · OAB/BA 85.258-A';
+const PREV_MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+const prevExtenso = iso => { const [y, m, d] = iso.split('-').map(Number); return `${d} de ${PREV_MESES[m - 1]} de ${y}`; };
+const prevConf = t => `[CONFERIR: ${t}]`;
+
+function prevQualif(c, sexo){
+  if (!c) return prevConf('qualificação do(a) segurado(a)');
+  const o = sexo === 'F' ? 'a' : sexo === 'M' ? 'o' : '(a)';
+  const p = [String(c.nome || '').toUpperCase(), sexo === 'F' ? 'brasileira' : sexo === 'M' ? 'brasileiro' : 'brasileiro(a)'];
+  p.push(c.estado_civil || prevConf('estado civil'));
+  p.push(c.profissao || prevConf('profissão'));
+  if (c.rg) p.push('RG n. ' + c.rg);
+  p.push('CPF n. ' + (c.cpf_cnpj || prevConf('CPF')));
+  const end = [c.endereco, c.cidade && c.uf ? `${c.cidade}/${c.uf}` : c.cidade, c.cep ? 'CEP ' + c.cep : ''].filter(Boolean).join(', ');
+  p.push(`residente e domiciliad${o === '(a)' ? 'o(a)' : o} em ` + (end || prevConf('endereço')));
+  return p.join(', ');
+}
+
+/* blocos: {t:'titulo'|'sub'|'p'|'cit'|'lista'|'tabela'|'img'|'assinatura'|'espaco', ...} */
+function prevPeca(tipo, x){
+  const { a, vincs, pend, calc, regra, op, docs } = x;
+  const B = [], p = s => B.push({ t: 'p', s }), sub = s => B.push({ t: 'sub', s });
+  const cli = a.cliente || {};
+  const nomeB = (regra?.nome || prevConf('benefício')).replace(/ \(.*\)$/, '');
+  const benef = regra ? (regra.k.startsWith('prof') ? 'APOSENTADORIA DO PROFESSOR' : regra.k.startsWith('pcd') ? 'APOSENTADORIA DA PESSOA COM DEFICIÊNCIA'
+    : regra.k === 'rural_idade' ? 'APOSENTADORIA POR IDADE RURAL' : regra.k === 'hibrida' ? 'APOSENTADORIA POR IDADE HÍBRIDA'
+    : ['da_especial', 'art21'].includes(regra.k) ? 'APOSENTADORIA ESPECIAL' : ['da_idade', 'art18', 'perm'].includes(regra.k) ? 'APOSENTADORIA POR IDADE'
+    : 'APOSENTADORIA') : 'BENEFÍCIO PREVIDENCIÁRIO';
+  const der = op.der || a.data_base;
+  const k = regra?.calc;
+  const fimDe = v => v.fim || (v.ultima_remun ? cnisFimMes(v.ultima_remun) : null);
+  const conta = vincs.filter(v => v.considerar !== false && v.inicio);
+  const especiais = conta.filter(v => v.especial), rurais = conta.filter(v => v.rural || v.tipo === 'segurado_especial');
+  const pendV = id => (pend || []).filter(q => q.vinculo_id === id && !q.resolvida).map(q => q.codigo);
+  const extemp = conta.filter(v => pendV(v.id).some(c => /^(PEXT|PREM-EXT|PADM-EMPR|SEM-SAIDA)$/.test(c)));
+  const manuais = conta.filter(v => v.origem === 'manual' && !v.especial && !(v.rural || v.tipo === 'segurado_especial'));
+
+  /* --- endereçamento e qualificação */
+  if (tipo === 'inicial'){
+    B.push({ t: 'cab', s: `EXCELENTÍSSIMO(A) SENHOR(A) JUIZ(A) FEDERAL DO JUIZADO ESPECIAL FEDERAL CÍVEL DA SUBSEÇÃO JUDICIÁRIA DE ${(op.subsecao || prevConf('subseção')).toUpperCase()}` });
+    B.push({ t: 'espaco' });
+    p(`**${prevQualif(cli, a.sexo)}**, por seu advogado (procuração anexa), vem propor **AÇÃO PREVIDENCIÁRIA DE CONCESSÃO DE ${benef}** em face do **INSTITUTO NACIONAL DO SEGURO SOCIAL – INSS**, autarquia federal, pelos fatos e fundamentos a seguir.`);
+  } else if (tipo === 'recurso'){
+    B.push({ t: 'cab', s: 'ILUSTRÍSSIMO(A) SENHOR(A) PRESIDENTE DA JUNTA DE RECURSOS DO CONSELHO DE RECURSOS DA PREVIDÊNCIA SOCIAL – CRPS' });
+    B.push({ t: 'espaco' });
+    p(`Benefício: **${benef}** · NB ${op.nb || prevConf('número do benefício')} · DER ${br(der)}`);
+    p(`**${prevQualif(cli, a.sexo)}**, por seu advogado (procuração anexa), vem interpor **RECURSO ORDINÁRIO** contra a decisão que indeferiu o benefício${op.dataDecisao ? ', da qual teve ciência em ' + br(op.dataDecisao) : ''}, pelas razões a seguir.`);
+  } else {
+    B.push({ t: 'titulo', s: `REQUERIMENTO DE ${benef}` });
+    p('Ao **INSTITUTO NACIONAL DO SEGURO SOCIAL – INSS**');
+    p(`**${prevQualif(cli, a.sexo)}**, por seu advogado (procuração anexa), vem requerer a concessão de **${benef.toLowerCase()}**, pelos fatos e fundamentos a seguir.`);
+  }
+
+  if (tipo === 'inicial' && op.gratuidade){
+    sub('Da justiça gratuita');
+    p('A parte autora não tem condições de arcar com as custas e despesas do processo sem prejuízo do próprio sustento e o declara para os fins dos arts. 98 e 99 do CPC, requerendo a gratuidade da justiça.');
+  }
+  if (tipo === 'recurso'){
+    sub('Da tempestividade');
+    p(`O recurso é interposto no prazo de 30 dias contados da ciência da decisão${op.dataDecisao ? ' (' + br(op.dataDecisao) + ')' : ''}, nos termos do Regulamento da Previdência Social (Decreto 3.048/99) e do Regimento Interno do CRPS.`);
+  }
+
+  /* --- fatos */
+  sub(tipo === 'requerimento' ? 'Síntese' : 'Dos fatos');
+  const F = a.sexo === 'F', Seg = F ? 'A segurada' : 'O segurado', seg = F ? 'a segurada' : 'o segurado', exp = F ? 'exposta' : 'exposto';
+  p(`${Seg} nasceu em ${a.nascimento ? br(a.nascimento) : prevConf('data de nascimento')} e, na data de entrada do requerimento (${br(der)}), contava ${calc ? prevDiasTxt(calc.idadeHoje * 360) : prevConf('idade')} de idade, ${calc ? prevDiasTxt(calc.tcHoje * 360) : prevConf('tempo')} de tempo de contribuição e ${calc ? calc.carHoje : prevConf('carência')} meses de carência.`);
+  if (tipo !== 'requerimento'){
+    p(`Requereu o benefício em ${br(der)} (NB ${op.nb || prevConf('número do benefício')}), que foi indeferido${op.motivo ? ' sob o fundamento de que ' + op.motivo : ' ' + prevConf('motivo do indeferimento')}. A decisão não se sustenta, como se demonstra.`);
+  }
+  p('Os períodos de contribuição estão resumidos abaixo, com a origem e a prova de cada um:');
+  B.push({ t: 'tabela', cab: ['Período', 'Empregador ou origem', 'Tipo', 'Observação'],
+    linhas: conta.map(v => [`${br(v.inicio)} a ${fimDe(v) ? br(fimDe(v)) : 'atual'}`, v.empregador_nome || '—', PREV_TIPO_NOME[v.tipo] || v.tipo,
+      [v.especial ? `especial (${v.especial} anos)` : '', v.rural ? 'rural' : '', v.professor ? 'magistério' : '', v.pcd ? 'PcD ' + v.pcd : '',
+       pendV(v.id).filter(c => c !== 'LACUNA').join(', '), v.prova ? 'prova: ' + v.prova : ''].filter(Boolean).join('; ') || '—']) });
+  B.push({ t: 'img', id: 'linha', legenda: 'Linha do tempo das contribuições.' });
+
+  /* --- direito: períodos que dependem de reconhecimento */
+  if (especiais.length || rurais.length || extemp.length || manuais.length) sub(tipo === 'requerimento' ? 'Dos períodos a reconhecer' : 'Do direito — dos períodos controvertidos');
+  if (especiais.length){
+    p(`**Atividade especial.** Nos períodos abaixo ${seg} trabalhou ${exp} a agentes nocivos, o que se comprova pelo Perfil Profissiográfico Previdenciário (PPP) e pelo laudo técnico (art. 58, § 1º, Lei 8.213/91):`);
+    B.push({ t: 'lista', itens: especiais.map(v => `${v.empregador_nome || 'empregador'}, de ${br(v.inicio)} a ${fimDe(v) ? br(fimDe(v)) : 'atual'} — aposentadoria aos ${v.especial} anos; agente nocivo: ${prevConf('agente e nível de exposição')}`) });
+    p('O tempo especial até 13/11/2019 deve ser convertido em comum pelos fatores do art. 70 do Decreto 3.048/99, como assegura o art. 25, § 2º, da EC 103/2019.');
+  }
+  if (rurais.length){
+    p(`**Atividade rural.** ${Seg} exerceu atividade rural em regime de economia familiar nos períodos abaixo, comprovada por início de prova material contemporânea, a ser corroborada por prova testemunhal (art. 55, § 3º, Lei 8.213/91; Súmula 149 do STJ):`);
+    B.push({ t: 'lista', itens: rurais.map(v => `de ${br(v.inicio)} a ${fimDe(v) ? br(fimDe(v)) : 'atual'}${v.prova ? ' — ' + v.prova : ' — ' + prevConf('documentos rurais do período')}`) });
+  }
+  if (extemp.length){
+    p('**Vínculos com pendência no CNIS.** Os vínculos abaixo constam da carteira de trabalho, cujas anotações gozam de presunção relativa de veracidade (Súmula 75 da TNU), e devem ser computados integralmente:');
+    B.push({ t: 'lista', itens: extemp.map(v => `${v.empregador_nome || 'empregador'}, de ${br(v.inicio)} a ${fimDe(v) ? br(fimDe(v)) : prevConf('data de saída')} (${pendV(v.id).join(', ')})${v.prova ? ' — ' + v.prova : ''}`) });
+  }
+  if (manuais.length){
+    p('**Períodos fora do CNIS.** Também devem ser computados os períodos abaixo, comprovados pelos documentos indicados:');
+    B.push({ t: 'lista', itens: manuais.map(v => `${v.empregador_nome || PREV_TIPO_NOME[v.tipo]}, de ${br(v.inicio)} a ${fimDe(v) ? br(fimDe(v)) : 'atual'}${v.prova ? ' — ' + v.prova : ' — ' + prevConf('prova')}`) });
+  }
+
+  /* --- direito: requisitos e renda */
+  sub(tipo === 'requerimento' ? 'Do direito ao benefício' : 'Do direito ao benefício');
+  if (regra){
+    p(`Somados os períodos, ${seg} cumpre os requisitos da **${regra.nome.toLowerCase()}** (${regra.base})${regra.cumpre ? ' desde a data de entrada do requerimento' : ' em ' + br(regra.data)}:`);
+    const reqs = regra.cumpre || !regra.reqFuturo ? regra.req : regra.reqFuturo;
+    B.push({ t: 'tabela', cab: ['Requisito', 'Exigido', 'Cumprido'], linhas: (reqs || []).map(q => [q.nome, prevFmtReq(q.exigido, q.fmt), prevFmtReq(q.cumprido, q.fmt) + (q.ok ? ' ✓' : '')]) });
+    B.push({ t: 'img', id: 'req', legenda: 'Requisitos exigidos e cumpridos.' });
+    if (k){
+      p(`A renda mensal inicial estimada é de **${rs(k.rmi)}**: ${k.media != null ? `média de ${rs(k.media)}` : ''}${k.fp ? `, fator previdenciário de ${String(k.fp).replace('.', ',')}` : ''}${k.txt ? `, coeficiente de ${prevPct(k.coef)} (${k.txt})` : ''}${k.descartados ? `, com o descarte de ${k.descartados} contribuições que reduziam a média (art. 26, § 6º, EC 103/2019)` : ''}.`);
+    }
+  } else p(prevConf('regra e requisitos do benefício'));
+  if (calc?.regras?.filter(r => r.calc).length > 1){
+    p((F ? 'A segurada' : 'O segurado') + ' tem direito ao benefício mais vantajoso entre as regras que cumpre (STF, RE 630.501, Tema 334). O comparativo das regras está abaixo:');
+    B.push({ t: 'img', id: 'comp', legenda: 'Renda estimada em cada regra.' });
+  }
+  p('Se, na data do requerimento, algum requisito ainda não estiver cumprido, requer-se a reafirmação da DER para o momento em que o for, ainda que no curso do processo (STJ, Tema 995).');
+
+  /* --- pedidos */
+  sub('Dos pedidos');
+  const ped = [];
+  if (tipo === 'inicial') ped.push('a citação do INSS para, querendo, contestar;');
+  if (especiais.length) ped.push('o reconhecimento da atividade especial nos períodos indicados e a conversão em tempo comum do trabalhado até 13/11/2019;');
+  if (rurais.length) ped.push('o reconhecimento da atividade rural nos períodos indicados;');
+  if (extemp.length || manuais.length) ped.push('o cômputo integral dos vínculos e períodos indicados, com a correção do CNIS;');
+  ped.push(`a ${tipo === 'recurso' ? 'reforma da decisão, com a ' : ''}concessão de ${benef.toLowerCase()} desde a DER (${br(der)}), pela regra mais vantajosa${tipo === 'inicial' ? ', com o pagamento das parcelas vencidas, corrigidas e com juros pela taxa Selic (EC 113/2021)' : ''};`);
+  ped.push('subsidiariamente, a reafirmação da DER para a data em que cumpridos os requisitos;');
+  if (tipo === 'inicial' && op.gratuidade) ped.push('a concessão da gratuidade da justiça;');
+  if (tipo === 'inicial') ped.push('a produção de todas as provas admitidas, em especial a documental, a testemunhal' + (especiais.length ? ' e a pericial' : '') + '.');
+  B.push({ t: 'lista', itens: ped });
+  if (tipo === 'inicial'){
+    const v = prevValorCausa(k?.rmi, der, op.hoje || new Date().toISOString().slice(0, 10), x.sm);
+    p(`Dá-se à causa o valor de **${rs(v.total)}** (${v.vencidas} ${v.vencidas === 1 ? 'parcela vencida' : 'parcelas vencidas'} e 12 vincendas de ${rs(k?.rmi || 0)}, na forma do art. 292, §§ 1º e 2º, do CPC).${v.acima ? ` O valor supera 60 salários mínimos (${rs(v.limite)}): ${op.renuncia ? 'a parte autora renuncia ao excedente para litigar no Juizado Especial Federal.' : prevConf('renunciar ao excedente ou ajuizar na vara comum')}` : ''}`);
+  }
+  if (docs?.length){
+    sub('Documentos');
+    B.push({ t: 'lista', itens: docs.map(d => d.descricao) });
+  }
+  B.push({ t: 'espaco' });
+  p(`${op.cidade || 'Petrolina/PE'}, ${prevExtenso(op.hoje || new Date().toISOString().slice(0, 10))}.`);
+  B.push({ t: 'assinatura', s: PREV_ADV, s2: PREV_ADV_OAB });
+  return B;
+}
+
+/* valor da causa: vencidas desde a DER (com 13º proporcional à conta simples) + 12 vincendas */
+function prevValorCausa(rmi, der, hoje, sm){
+  rmi = rmi || 0; let n = 0;
+  for (let ym = prevMes(der); ym <= prevMes(hoje); ym = prevMesSeg(ym)) n++;
+  const total = rmi * (n + 12), limite = (sm || 0) * 60;
+  return { vencidas: n, total, limite, acima: !!sm && total > limite };
+}
+/* PREV-PECAS-FIM */
+
+/* ----- Word: monta o .docx sobre o modelo timbrado (modelos/procuracao.docx) */
+let JSZIP = null;
+async function carregarJsZip(){
+  if (JSZIP) return JSZIP;
+  await new Promise((ok, falha) => { const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'; s.onload = ok; s.onerror = () => falha(new Error('não foi possível carregar o gerador de Word')); document.head.appendChild(s); });
+  JSZIP = window.JSZip; return JSZIP;
+}
+const prevXml = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+/* texto com **negrito** → runs */
+function prevRuns(s, base = ''){
+  return String(s).split(/(\*\*[^*]+\*\*)/).filter(Boolean).map(seg => {
+    const b = seg.startsWith('**') && seg.endsWith('**'), t = b ? seg.slice(2, -2) : seg;
+    const conf = /\[CONFERIR:/.test(t);
+    return `<w:r><w:rPr>${b ? '<w:b/><w:bCs/>' : ''}${conf ? '<w:highlight w:val="yellow"/>' : ''}${base}</w:rPr><w:t xml:space="preserve">${prevXml(t)}</w:t></w:r>`;
+  }).join('');
+}
+const prevPar = (s, estilo = '1Pargrafo', extra = '', base = '') => `<w:p><w:pPr><w:pStyle w:val="${estilo}"/>${extra}</w:pPr>${prevRuns(s, base)}</w:p>`;
+function prevTabelaXml(cab, linhas){
+  const cel = (t, b) => `<w:tc><w:tcPr><w:tcW w:w="0" w:type="auto"/></w:tcPr><w:p><w:pPr><w:pStyle w:val="1Pargrafo"/><w:spacing w:before="20" w:after="20" w:line="240" w:lineRule="auto"/><w:jc w:val="left"/><w:ind w:firstLine="0"/></w:pPr>${prevRuns(b ? '**' + t + '**' : t, '<w:sz w:val="18"/><w:szCs w:val="18"/>')}</w:p></w:tc>`;
+  const borda = '<w:top w:val="single" w:sz="4" w:color="BFBFBF"/><w:left w:val="single" w:sz="4" w:color="BFBFBF"/><w:bottom w:val="single" w:sz="4" w:color="BFBFBF"/><w:right w:val="single" w:sz="4" w:color="BFBFBF"/><w:insideH w:val="single" w:sz="4" w:color="BFBFBF"/><w:insideV w:val="single" w:sz="4" w:color="BFBFBF"/>';
+  return `<w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/><w:tblBorders>${borda}</w:tblBorders><w:tblCellMar><w:left w:w="80" w:type="dxa"/><w:right w:w="80" w:type="dxa"/></w:tblCellMar></w:tblPr>
+    <w:tr><w:trPr><w:tblHeader/></w:trPr>${cab.map(c => cel(c, true)).join('')}</w:tr>${linhas.map(l => `<w:tr>${l.map(c => cel(String(c), false)).join('')}</w:tr>`).join('')}</w:tbl>${prevPar('', '1Pargrafo', '<w:spacing w:before="0" w:after="0"/>')}`;
+}
+function prevImgXml(rid, n, w, h){
+  const largura = 5040000, altura = Math.round(largura * h / w);
+  return `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="120" w:after="0"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${largura}" cy="${altura}"/><wp:docPr id="${900 + n}" name="Gráfico ${n}"/>
+    <wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr>
+    <a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+    <pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${900 + n}" name="grafico${n}.png"/><pic:cNvPicPr/></pic:nvPicPr>
+    <pic:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>
+    <pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${largura}" cy="${altura}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
+}
+
+/* blocos → .docx (Blob). imagens: { id: {blob,w,h} } */
+async function prevDocx(blocos, imagens){
+  const Z = await carregarJsZip();
+  const { data, error } = await sb.storage.from('modelos').download('procuracao.docx');
+  if (error) throw new Error('modelo timbrado não encontrado (modelos/procuracao.docx): ' + error.message);
+  const zip = await Z.loadAsync(await data.arrayBuffer());
+  let doc = await zip.file('word/document.xml').async('string');
+  let rels = await zip.file('word/_rels/document.xml.rels').async('string');
+  let ct = await zip.file('[Content_Types].xml').async('string');
+  if (!/Extension="png"/.test(ct)) ct = ct.replace('<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">', '$&<Default Extension="png" ContentType="image/png"/>');
+  let n = 0; const ridDe = {};
+  for (const [id, im] of Object.entries(imagens || {})){
+    if (!im) continue;
+    n++; const rid = 'rIdPrev' + n;
+    zip.file(`word/media/prev${n}.png`, await im.blob.arrayBuffer());
+    rels = rels.replace('</Relationships>', `<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/prev${n}.png"/></Relationships>`);
+    ridDe[id] = { rid, n, w: im.w, h: im.h };
+  }
+  const corpo = blocos.map(b => {
+    if (b.t === 'titulo') return prevPar(b.s, '2Ttulo', '<w:jc w:val="center"/>');
+    if (b.t === 'cab') return prevPar('**' + b.s + '**', '1Pargrafo', '<w:ind w:firstLine="0"/><w:jc w:val="both"/>');
+    if (b.t === 'sub') return prevPar(b.s, '3Subttulo');
+    if (b.t === 'p') return prevPar(b.s);
+    if (b.t === 'cit') return prevPar(b.s, '4Citao');
+    if (b.t === 'lista') return b.itens.map((it, i) => prevPar(`${String.fromCharCode(97 + (i % 26))}) ${it}`, '1Pargrafo', '<w:ind w:left="567" w:firstLine="0"/>')).join('');
+    if (b.t === 'tabela') return prevTabelaXml(b.cab, b.linhas);
+    if (b.t === 'img'){ const r = ridDe[b.id]; return r ? prevImgXml(r.rid, r.n, r.w, r.h) + prevPar(b.legenda || '', '1Pargrafo', '<w:jc w:val="center"/><w:ind w:firstLine="0"/>', '<w:i/><w:sz w:val="18"/><w:color w:val="666666"/>') : ''; }
+    if (b.t === 'espaco') return prevPar('');
+    if (b.t === 'assinatura') return prevPar('', '1Pargrafo') + prevPar('**' + b.s + '**', '1Pargrafo', '<w:jc w:val="center"/><w:ind w:firstLine="0"/><w:spacing w:after="0"/>') + prevPar(b.s2, '1Pargrafo', '<w:jc w:val="center"/><w:ind w:firstLine="0"/>');
+    return '';
+  }).join('');
+  const sect = (doc.match(/<w:sectPr[\s\S]*?<\/w:sectPr>(?=\s*<\/w:body>)/) || [''])[0];
+  doc = doc.replace(/<w:body>[\s\S]*<\/w:body>/, `<w:body>${corpo}${sect}</w:body>`);
+  zip.file('word/document.xml', doc);
+  zip.file('word/_rels/document.xml.rels', rels);
+  zip.file('[Content_Types].xml', ct);
+  return zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', compression: 'DEFLATE' });
+}
+
 /* ----- leitura do PDF (pdf.js, carregado só quando alguém abre um CNIS) */
 let PDFJS = null;
 async function carregarPdfJs(){
@@ -11356,14 +11674,14 @@ window.prevNova = async (casoId) => {
 /* ----- uma análise */
 async function prevCarregar(id){
   const { data: a, error } = await sb.from('prev_analise')
-    .select('*, caso:caso_id(id,titulo,area), cliente:cliente_id(id,nome,cpf_cnpj,telefone,whatsapp)').eq('id', id).single();
+    .select('*, caso:caso_id(id,titulo,area), cliente:cliente_id(id,nome,cpf_cnpj,rg,estado_civil,profissao,endereco,cidade,uf,cep,telefone,whatsapp)').eq('id', id).single();
   if (error) throw error;
   const [vinc, rem, pend] = await Promise.all([
     prevTodas('prev_vinculo', '*', id),
     prevTodas('prev_remuneracao', 'id,vinculo_id,competencia,valor,contribuicao,pagamento,indicadores,origem,considerar', id),
     prevTodas('prev_pendencia', '*', id),
   ]);
-  if (PREV.a?.id !== id) Object.assign(PREV, { aba: 'dados', previa: null, arquivo: null, editando: null, remAberto: null, msg: '', opt: null, ev: null, evRes: null, cens: null, pl: null, ind: null, docBen: null, docFora: null, cdocs: null });
+  if (PREV.a?.id !== id) Object.assign(PREV, { aba: 'dados', previa: null, arquivo: null, editando: null, remAberto: null, msg: '', opt: null, ev: null, evRes: null, cens: null, pl: null, ind: null, docBen: null, docFora: null, cdocs: null, peca: null });
   PREV.calc = null; PREV.linha = null; PREV.cmp = null;   /* os dados podem ter mudado: o cálculo é refeito quando pedido */
   PREV.sims = (await sb.from('prev_simulacao').select('id,criado_em,data_base,melhor,rmi').eq('analise_id', id)
     .order('criado_em', { ascending: false })).data || [];
@@ -11382,7 +11700,7 @@ async function telaPrevAnalise(id){
 function prevPintar(){
   const a = PREV.a;
   const abertas = PREV.pend.filter(p => !p.resolvida).length;
-  const abas = [['dados', 'Dados e CNIS'], ['vinculos', `Vínculos (${PREV.vinc.length})`], ['pendencias', `Pendências (${abertas})`], ['docs', 'Documentos'], ['beneficios', 'Benefícios e cálculo'], ['plano', 'Planejamento']];
+  const abas = [['dados', 'Dados e CNIS'], ['vinculos', `Vínculos (${PREV.vinc.length})`], ['pendencias', `Pendências (${abertas})`], ['docs', 'Documentos'], ['beneficios', 'Benefícios e cálculo'], ['plano', 'Planejamento'], ['pecas', 'Peças']];
   app.innerHTML = menu('prev') + `
   <main><a class="volta" href="#/prev">← Previdenciário</a>
   <h1>${esc(a.cliente?.nome || a.titulo || 'Análise previdenciária')}</h1>
@@ -11393,13 +11711,14 @@ function prevPintar(){
     ${abas.map(([k, r]) => `<button class="btn" style="${PREV.aba === k ? 'border-color:var(--serie);color:var(--serie)' : ''}" onclick="prevAba('${k}')">${r}</button>`).join('')}
   </div>
   ${PREV.msg ? `<div class="aviso" style="border-color:var(--serie)">${PREV.msg}</div>` : ''}
-  <div id="prev-corpo">${PREV.aba === 'vinculos' ? prevAbaVinculos() : PREV.aba === 'pendencias' ? prevAbaPendencias() : PREV.aba === 'beneficios' ? prevAbaBeneficios() : PREV.aba === 'plano' ? prevAbaPlano() : PREV.aba === 'docs' ? prevAbaDocs() : prevAbaDados()}</div>
+  <div id="prev-corpo">${PREV.aba === 'vinculos' ? prevAbaVinculos() : PREV.aba === 'pendencias' ? prevAbaPendencias() : PREV.aba === 'beneficios' ? prevAbaBeneficios() : PREV.aba === 'plano' ? prevAbaPlano() : PREV.aba === 'docs' ? prevAbaDocs() : PREV.aba === 'pecas' ? prevAbaPecas() : prevAbaDados()}</div>
   </main>` + rodape();
   aplicarRotulos(app);
 }
 window.prevAba = async k => {
   PREV.aba = k; PREV.msg = ''; prevPintar();
   if (k === 'docs') { try { await prevDocCarregarCaso(); } catch (e) {} prevPintar(); }
+  if (k === 'pecas') { try { await prevGarantirCalculo(); } catch (e) { PREV.msg = 'Não foi possível calcular: ' + esc(e.message); } prevPintar(); }
   if (k === 'plano' && !PREV.T) { try { await prevCarregarTabelas(); } catch (e) { PREV.msg = 'Não foi possível carregar as tabelas oficiais: ' + esc(e.message); } prevPintar(); }
 };
 
@@ -12367,6 +12686,185 @@ window.prevDocGuia = () => {
     <div class="r">Pode mandar foto ou PDF pelo WhatsApp do escritório, um arquivo por documento, dando para ler tudo.
       Se não conseguir algum, avise: muitas vezes há outro jeito de provar.</div></body></html>`);
   w.document.close();
+};
+
+
+/* ----- aba Peças: gráficos, requerimento, inicial e recurso em Word sobre o timbre */
+async function prevGarantirCalculo(){
+  await prevCarregarTabelas();
+  if (!PREV.calc || PREV.calc.erros?.length)
+    PREV.calc = prevCalcular(PREV.a, PREV.vinc, PREV.rem, PREV.T, PREV.opt || {});
+  return PREV.calc;
+}
+const PREV_PECAS = [['requerimento', 'Requerimento administrativo ao INSS'], ['inicial', 'Petição inicial (Juizado Especial Federal)'], ['recurso', 'Recurso ordinário ao CRPS']];
+function prevAbaPecas(){
+  const a = PREV.a, c = PREV.calc;
+  if (!c) return `<div class="card"><h2>Peças</h2><p class="nota">Calculando os benefícios…</p></div>`;
+  if (c.erros?.length) return c.erros.map(e => `<div class="aviso">${esc(e)}</div>`).join('');
+  const comCalc = c.regras.filter(r => r.calc && r.data);
+  const o = PREV.peca || (PREV.peca = { tipo: 'requerimento', regra: c.melhor || c.proxima || (comCalc[0] ? prevIdRegra(comCalc[0]) : ''),
+    der: a.data_base, subsecao: 'Petrolina/PE', cidade: 'Petrolina/PE', gratuidade: true, renuncia: false, nb: '', dataDecisao: '', motivo: '' });
+  const regra = c.regras.find(r => prevIdRegra(r) === o.regra);
+  const g1 = prevSvgLinhaTempo(PREV.vinc, a.data_base), g2 = regra ? prevSvgRequisitos(regra) : null, g3 = prevSvgComparativo(c);
+  const quadro = (svg, id, tit) => svg ? `<div style="flex:1 1 420px;min-width:0"><div class="sub" style="margin-bottom:4px">${tit}</div>
+    <div style="border:1px solid var(--ln);border-radius:8px;overflow:hidden;background:#fff">${svg.replace(/width="\d+" height="\d+"/, 'style="width:100%;height:auto;display:block"')}</div>
+    <button class="btn" style="margin-top:6px" onclick="prevBaixarGraf('${id}')">Baixar PNG</button></div>` : '';
+  const tx = (k, rot, tipo = 'text', ph = '') => `<label style="display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--i3)">${rot}
+    <input type="${tipo}" id="pp-${k}" value="${esc(o[k] ?? '')}" placeholder="${ph}"></label>`;
+  return `
+  <div class="card"><h2>Gráficos</h2>
+    <p class="nota">Para inserir em peças e mostrar ao cliente. Já vão dentro do Word gerado abaixo; aqui dá para baixar cada um em PNG.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:16px;padding:0 18px 16px">
+      ${quadro(g1, 'linha', 'Linha do tempo das contribuições')}${quadro(g2, 'req', 'Requisitos da regra escolhida')}${quadro(g3, 'comp', 'Renda estimada por regra')}
+    </div>
+  </div>
+  <div class="card"><h2>Gerar peça</h2>
+    <p class="nota">Monta a peça em Word, no papel timbrado do escritório, com os períodos, os requisitos, o cálculo, os gráficos e os pedidos.
+      O que faltar sai marcado em amarelo como [CONFERIR]. É minuta: revise antes de protocolar.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;padding:0 18px">
+      <label style="display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--i3)">Peça
+        <select id="pp-tipo" onchange="prevPecaLer();prevPintar()">${PREV_PECAS.map(([k, r]) => `<option value="${k}" ${o.tipo === k ? 'selected' : ''}>${r}</option>`).join('')}</select></label>
+      <label style="display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--i3)">Regra
+        <select id="pp-regra" onchange="prevPecaLer();prevPintar()">${comCalc.map(r => `<option value="${prevIdRegra(r)}" ${o.regra === prevIdRegra(r) ? 'selected' : ''}>${esc(r.nome)} — ${rs(r.calc.rmi)}${r.cumpre ? '' : ' (em ' + br(r.data) + ')'}</option>`).join('')}</select></label>
+      ${tx('der', 'DER (data de entrada do requerimento)', 'date')}
+      ${o.tipo !== 'requerimento' ? tx('nb', 'Número do benefício (NB)', 'text', '000.000.000-0') + tx('dataDecisao', o.tipo === 'recurso' ? 'Ciência da decisão' : 'Data do indeferimento', 'date')
+        + `<label style="display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--i3);grid-column:1/-1">Motivo do indeferimento (como consta na carta)
+          <input type="text" id="pp-motivo" value="${esc(o.motivo || '')}" placeholder="não foi comprovado o tempo de contribuição mínimo"></label>` : ''}
+      ${o.tipo === 'inicial' ? tx('subsecao', 'Subseção judiciária') : ''}
+      ${tx('cidade', 'Cidade (local e data)')}
+      ${o.tipo === 'inicial' ? `<label style="font-size:12.8px;display:flex;gap:6px;align-items:center"><input type="checkbox" id="pp-gratuidade" ${o.gratuidade ? 'checked' : ''}> pedir gratuidade da justiça</label>
+        <label style="font-size:12.8px;display:flex;gap:6px;align-items:center"><input type="checkbox" id="pp-renuncia" ${o.renuncia ? 'checked' : ''}> renunciar ao que passar de 60 mínimos (JEF)</label>` : ''}
+    </div>
+    <div class="filtros" style="margin-top:12px"><button class="btn ok" onclick="prevGerarPeca()">Gerar Word</button>
+      <span class="sub" id="pp-st" style="display:inline"></span></div>
+  </div>
+  ${prevCardForms()}`;
+}
+window.prevPecaLer = () => {
+  const o = PREV.peca, g = k => document.getElementById('pp-' + k); if (!o) return;
+  for (const k of ['tipo', 'regra', 'der', 'nb', 'dataDecisao', 'motivo', 'subsecao', 'cidade']) if (g(k)) o[k] = g(k).value.trim();
+  for (const k of ['gratuidade', 'renuncia']) if (g(k)) o[k] = g(k).checked;
+};
+window.prevBaixarGraf = async id => {
+  const c = PREV.calc, regra = c.regras.find(r => prevIdRegra(r) === PREV.peca?.regra);
+  const svg = id === 'linha' ? prevSvgLinhaTempo(PREV.vinc, PREV.a.data_base) : id === 'req' ? prevSvgRequisitos(regra) : prevSvgComparativo(c);
+  if (!svg) return;
+  const { blob } = await prevSvgPng(svg);
+  const u = URL.createObjectURL(blob), l = document.createElement('a');
+  l.href = u; l.download = `grafico-${id}-${(PREV.a.cliente?.nome || 'segurado').split(' ')[0].toLowerCase()}.png`; l.click();
+  setTimeout(() => URL.revokeObjectURL(u), 2000);
+};
+window.prevGerarPeca = async () => {
+  prevPecaLer();
+  const st = document.getElementById('pp-st'), o = PREV.peca, c = PREV.calc;
+  const regra = c.regras.find(r => prevIdRegra(r) === o.regra);
+  st.textContent = 'montando…';
+  try {
+    if (!PREV.cdocs) await prevDocCarregarCaso().catch(() => {});
+    const docs = (PREV.cdocs || []).filter(d => d.recebido_em);
+    const blocos = prevPeca(o.tipo, { a: PREV.a, vincs: PREV.vinc, pend: PREV.pend, calc: c, regra, op: { ...o, hoje: new Date().toISOString().slice(0, 10) },
+      docs, sm: prevVigente(PREV.T.sm, new Date().toISOString().slice(0, 10))?.valor });
+    st.textContent = 'desenhando os gráficos…';
+    const imgs = {};
+    const s1 = prevSvgLinhaTempo(PREV.vinc, PREV.a.data_base), s2 = regra ? prevSvgRequisitos(regra) : null, s3 = prevSvgComparativo(c);
+    if (s1) imgs.linha = await prevSvgPng(s1); if (s2) imgs.req = await prevSvgPng(s2); if (s3) imgs.comp = await prevSvgPng(s3);
+    st.textContent = 'gerando o Word…';
+    const blob = await prevDocx(blocos, imgs);
+    const nome = `${o.tipo}-${(PREV.a.cliente?.nome || PREV.a.titulo || 'segurado').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)}.docx`;
+    const u = URL.createObjectURL(blob), l = document.createElement('a'); l.href = u; l.download = nome; l.click();
+    setTimeout(() => URL.revokeObjectURL(u), 3000);
+    st.textContent = 'pronto: ' + nome;
+  } catch (e) { st.textContent = 'não foi possível: ' + e.message; }
+};
+
+
+/* ----- formulários oficiais do INSS (pasta modelos-inss/, baixados de gov.br/inss).
+   Os PDFs com campos saem preenchidos com os dados do cliente e da análise; os demais,
+   no modelo oficial, para completar. */
+const PREV_FORMS = [
+  { f: 'procuracao.docx', n: 'Procuração', b: 'IN PRES/INSS 128/2022, Anexo XXII', usos: ['todos'] },
+  { f: 'termo-representacao.doc', n: 'Termo de representação e autorização de acesso a informações previdenciárias', b: 'Portaria PRES/INSS 1.538/2022, Anexo IX', usos: ['todos'] },
+  { f: 'termo-responsabilidade.pdf', n: 'Termo de responsabilidade do procurador', b: 'IN 128/2022, Anexo XXVII', usos: ['todos'], preencher: 'responsabilidade' },
+  { f: 'decl-outro-regime.pdf', n: 'Declaração de recebimento de pensão ou aposentadoria em outro regime', b: 'IN 128/2022, Anexo XXIV (EC 103, art. 24)', usos: ['aposentadoria', 'pensao'], preencher: 'outroRegime' },
+  { f: 'decl-outro-regime-beneficio.docx', n: 'Declaração de recebimento de benefício em outro regime (modelo novo do site do INSS)', b: 'gov.br/inss — conferir antes de usar', usos: ['aposentadoria', 'pensao'] },
+  { f: 'req-incapacidade.pdf', n: 'Requerimento de benefício por incapacidade', b: 'formulário do INSS', usos: ['incapacidade', 'acidente'], preencher: 'incapacidade' },
+  { f: 'justificacao-administrativa.pdf', n: 'Requerimento de justificação administrativa (testemunhas)', b: 'formulário do INSS', usos: ['rural', 'aposentadoria', 'pensao'], preencher: 'justificacao' },
+  { f: 'req-contribuicao-atraso.pdf', n: 'Requerimento de cálculo de contribuição em atraso', b: 'IN 128/2022, Anexo VII', usos: ['aposentadoria'], preencher: 'atraso' },
+  { f: 'autodeclaracao-rural.docx', n: 'Autodeclaração do segurado especial — rural', b: 'IN 128/2022, Anexo VIII', usos: ['rural'] },
+  { f: 'autodeclaracao-pescador.pdf', n: 'Autodeclaração do segurado especial — pescador artesanal', b: 'IN 128/2022, Anexo IX', usos: ['rural'] },
+  { f: 'autodeclaracao-seringueiro.pdf', n: 'Autodeclaração do segurado especial — seringueiro ou extrativista', b: 'IN 128/2022, Anexo X', usos: ['rural'] },
+  { f: 'certidao-rural-indigena.docx', n: 'Certidão de exercício de atividade rural — indígena (emitida pela Funai)', b: 'IN 128/2022, Anexo XXV', usos: ['rural'] },
+  { f: 'ppp-anexo-xvii.docx', n: 'PPP — Perfil Profissiográfico Previdenciário (papel)', b: 'IN 128/2022, Anexo XVII — desde 2023 o PPP é eletrônico (eSocial); o papel vale para períodos anteriores', usos: ['especial'] },
+  { f: 'decl-dependencia-economica.pdf', n: 'Declaração de dependência econômica', b: 'formulário do INSS', usos: ['pensao', 'reclusao'] },
+  { f: 'bpc-formularios.pdf', n: 'Formulários do BPC/LOAS', b: 'formulário do INSS', usos: ['bpc'] },
+  { f: 'recurso-jr.pdf', n: 'Recurso à Junta de Recursos (CRPS)', b: 'formulário do INSS', usos: ['todos'] },
+  { f: 'recurso-caj.pdf', n: 'Recurso à Câmara de Julgamento (CRPS)', b: 'formulário do INSS', usos: ['todos'] },
+  { f: 'revisao-beneficio.pdf', n: 'Requerimento de revisão de benefício', b: 'formulário do INSS', usos: ['todos'] },
+  { f: 'termo-compromisso.pdf', n: 'Termo de compromisso', b: 'formulário do INSS', usos: ['todos'] },
+];
+
+/* dados para os campos: cliente + análise */
+function prevDadosForm(){
+  const a = PREV.a, c = a.cliente || {}, hoje = new Date().toISOString().slice(0, 10);
+  const end = [c.endereco, c.cidade && c.uf ? `${c.cidade}/${c.uf}` : c.cidade].filter(Boolean).join(', ');
+  return { nome: (c.nome || '').toUpperCase(), cpf: c.cpf_cnpj || a.cpf || '', rg: c.rg || '', nit: a.nit || '', nasc: a.nascimento ? br(a.nascimento) : '',
+    mae: a.nome_mae || '', tel: c.whatsapp || c.telefone || '', endereco: c.endereco || '', enderecoCompleto: end, cidade: c.cidade || '', uf: c.uf || '', cep: c.cep || '',
+    estadoCivil: c.estado_civil || '', profissao: c.profissao || '', sexo: a.sexo, local: c.cidade ? `${c.cidade}/${c.uf || ''}` : 'Petrolina/PE', data: br(hoje),
+    adv: PREV_ADV, advCpf: '' };
+}
+const PREV_PREENCHER = {
+  outroRegime: (d, set) => { set('Eu', d.nome); set('portador do CPF n', d.cpf); set('e RG n', d.rg); set('Local', d.local); set('Data', d.data); },
+  responsabilidade: (d, set) => { set('Eu', d.adv); set('Nome', d.nome); set('CPF', d.cpf); set('Local', d.local); set('Data', d.data); },
+  incapacidade: (d, set, chk) => {
+    set('Nome', d.nome); set('Data de Nascimento', d.nasc); set('Nacionalidade', 'brasileira'); set('Endereço', d.endereco); set('Cidade', d.cidade);
+    set('Estado', d.uf); set('CEP', d.cep); set('Localidade', d.local); set('Data', d.data);
+    if (d.sexo === 'M') chk('masculino'); if (d.sexo === 'F') chk('feminino');
+    const ec = (d.estadoCivil || '').toLowerCase();
+    if (/solteir/.test(ec)) chk('Solteiro'); else if (/casad/.test(ec)) chk('Casado'); else if (/vi[úu]v/.test(ec)) chk('Viúvo'); else if (/divorc|separ|desquit/.test(ec)) chk('DesquitadoDivorciado');
+  },
+  justificacao: (d, set, chk) => { set('NOME', d.nome); set('NACIONALIDADE', 'brasileira'); set('ESTADO CIVIL', d.estadoCivil); set('PROFISSÃO', d.profissao);
+    set('Residente na', d.enderecoCompleto); chk('SEGURADO'); set('LOCAL', d.local); set('DATA', d.data); },
+  atraso: (d, set) => { set('Nome', d.nome); set('Data de Nascimento', d.nasc); set('Nome da mãe', d.mae); set('Telefone', d.tel); set('Endereço', d.enderecoCompleto);
+    set('CEP', d.cep); set('NIT PISPASEPCISUS', d.nit); set('CPF', d.cpf); set('N Carteira de Identidade', d.rg); },
+};
+async function prevPreencherForm(item){
+  const r = await fetch('modelos-inss/' + item.f);
+  if (!r.ok) throw new Error('formulário não encontrado');
+  const buf = await r.arrayBuffer();
+  if (!item.preencher) return { blob: new Blob([buf]), nome: item.f, faltam: [] };
+  const { PDFDocument } = await carregarPdfLib();
+  const pdf = await PDFDocument.load(buf, { ignoreEncryption: true });
+  const form = pdf.getForm(), faltam = [];
+  const set = (campo, v) => { try { const f = form.getTextField(campo); if (v) f.setText(String(v)); else faltam.push(campo); } catch (e) { faltam.push(campo + ' (campo não encontrado)'); } };
+  const chk = campo => { try { form.getCheckBox(campo).check(); } catch (e) {} };
+  PREV_PREENCHER[item.preencher](prevDadosForm(), set, chk);
+  const bytes = await pdf.save();
+  return { blob: new Blob([bytes], { type: 'application/pdf' }), nome: item.f.replace('.pdf', '-preenchido.pdf'), faltam };
+}
+function prevCardForms(){
+  const ben = PREV.docBen || prevDocsSugeridos(PREV.a, PREV.vinc);
+  const uteis = PREV_FORMS.filter(x => x.usos.includes('todos') || x.usos.some(u => ben.includes(u)));
+  const outros = PREV_FORMS.filter(x => !uteis.includes(x));
+  const linha = (x, i) => `<tr><td><b>${esc(x.n)}</b><span class="sub">${esc(x.b)}</span></td>
+    <td>${x.preencher ? '<span class="pill good">sai preenchido</span>' : `<span class="pill cin">${x.f.endsWith('.pdf') ? 'PDF oficial' : 'Word oficial'}</span>`}</td>
+    <td><button class="btn ${x.preencher ? 'ok' : ''}" onclick="prevBaixarForm(${PREV_FORMS.indexOf(x)})">${x.preencher ? 'Preencher e baixar' : 'Baixar'}</button></td></tr>`;
+  return `<div class="card"><h2>Formulários oficiais do INSS</h2>
+    <p class="nota">Modelos atuais baixados do site do INSS (gov.br/inss), conforme os anexos da IN 128/2022. Os PDFs com campos saem com nome, CPF,
+      RG, NIT, nascimento, endereço, local e data; o restante se completa à mão. Os do benefício desta análise aparecem primeiro.
+      <span id="pf-st"></span></p>
+    <table>${uteis.map(linha).join('')}</table>
+    ${outros.length ? `<details style="padding:4px 18px 14px"><summary class="sub" style="cursor:pointer">Outros formulários (${outros.length})</summary><table>${outros.map(linha).join('')}</table></details>` : ''}
+  </div>`;
+}
+window.prevBaixarForm = async i => {
+  const st = document.getElementById('pf-st'), item = PREV_FORMS[i];
+  st.textContent = ' — preparando…';
+  try {
+    const r = await prevPreencherForm(item);
+    const u = URL.createObjectURL(r.blob), l = document.createElement('a'); l.href = u; l.download = r.nome; l.click();
+    setTimeout(() => URL.revokeObjectURL(u), 3000);
+    st.textContent = r.faltam.length ? ` — baixado; sem dado no cadastro para: ${r.faltam.join(', ')}.` : ' — baixado.';
+  } catch (e) { st.textContent = ' — não foi possível: ' + e.message; }
 };
 
 /* --------------------------------------------------------------- tutoriais */
