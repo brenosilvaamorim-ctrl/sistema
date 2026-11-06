@@ -61,6 +61,40 @@ Responda APENAS com JSON, sem comentário e sem cerca de código:
  "rubricas":[{"nome":"","especie":"entrada","valor":0,"percentual":null,"base":"","parcelas":1,"primeiro_vencimento":"","condicao":"","trecho":"","lancar":true}],
  "observacao":"o que ficou ilegível, duvidoso ou precisa de conferência"}`;
 
+// Modo "inss": lê documentos previdenciários — sobretudo a cópia do processo
+// administrativo do INSS (requerimento, despachos, contagem de tempo, carta de decisão,
+// exigências, PPP, perícias). Também só extrai: o cruzamento com o CNIS e o cálculo é
+// feito pelo sistema, na tela da análise. Um processo longo chega em partes; cada parte
+// é lida sozinha e o sistema junta as leituras.
+const SISTEMA_INSS = `Você lê documentos previdenciários brasileiros do RGPS — cópia de processo administrativo do INSS, carta de decisão, comunicação de exigência, resumo de cálculo de tempo de contribuição, PPP, LTCAT, laudo de perícia médica, CTPS — e devolve dado estruturado.
+Regras absolutas:
+- Só extraia o que está ESCRITO. Nunca deduza, nunca complete, nunca estime, nunca calcule o que o documento não calculou.
+- Campo ilegível ou ausente: deixe fora. É melhor faltar do que inventar.
+- Datas em AAAA-MM-DD. Números como número.
+- "pagina": o número da página DESTE arquivo (a primeira é 1) onde a informação aparece.
+- "requerimentos": cada pedido de benefício que aparece (NB, espécie, DER, situação). "situacao": "deferido", "indeferido", "em análise", "cessado" ou "outro". "motivo": o motivo do indeferimento ou da cessação, com as palavras do INSS. "fundamento": o dispositivo legal citado, se houver.
+- "ciencia": a data em que o segurado tomou ciência da decisão (AR, e-mail, Meu INSS), se constar.
+- "tempo_inss": o tempo de contribuição e a carência APURADOS PELO INSS no resumo/contagem, como estão escritos (anos, meses, dias; carência em número de contribuições) e a data de referência.
+- "periodos": cada período da contagem do INSS. "situacao": "computado", "nao computado", "especial reconhecido" ou "especial negado". "motivo": por que não foi computado ou por que o especial foi negado, se constar.
+- "especiais": cada PPP, LTCAT ou laudo técnico: empresa, período, cargo/função, agentes nocivos e intensidade, se o EPI foi declarado eficaz ("S"/"N"), responsável técnico (sim/não) e o tipo do documento.
+- "exigencias": cada exigência ou carta de exigência: data, o que foi pedido, prazo e se consta o cumprimento.
+- "pericias": cada perícia médica: data, conclusão, CID, data de início da doença (DID) e da incapacidade (DII), se constarem.
+- "documentos": os documentos juntados ao processo, um por item, com a página.
+- "fatos": outros fatos relevantes com data, com o trecho exato que os comprova.
+Responda APENAS com JSON, sem comentário e sem cerca de código:
+{"tipo":"processo administrativo|carta de decisão|exigência|contagem de tempo|PPP|LTCAT|laudo pericial|CTPS|outro",
+ "segurado":{"nome":"","cpf":"","nit":""},
+ "requerimentos":[{"nb":"","especie":"","der":"","situacao":"","data_decisao":"","motivo":"","fundamento":"","pagina":1}],
+ "ciencia":{"data":"","pagina":1},
+ "tempo_inss":{"anos":0,"meses":0,"dias":0,"carencia":0,"data_referencia":"","pagina":1},
+ "periodos":[{"empresa":"","inicio":"","fim":"","situacao":"","motivo":"","pagina":1}],
+ "especiais":[{"empresa":"","inicio":"","fim":"","funcao":"","agentes":"","intensidade":"","epi_eficaz":"","responsavel_tecnico":"","documento":"PPP","pagina":1}],
+ "exigencias":[{"data":"","texto":"","prazo":"","cumprida":false,"pagina":1}],
+ "pericias":[{"data":"","conclusao":"","cid":"","did":"","dii":"","pagina":1}],
+ "documentos":[{"nome":"","pagina":1}],
+ "fatos":[{"data":"","descricao":"","trecho":"","pagina":1}],
+ "observacao":"o que ficou ilegível ou duvidoso"}`;
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   const key = Deno.env.get('ANTHROPIC_API_KEY');
@@ -75,7 +109,7 @@ Deno.serve(async (req) => {
 
   const body = await req.json().catch(() => ({}));
   const { arquivo, mime, nome = 'documento', caso_id, modo } = body;
-  const nfse = modo === 'nfse', contrato = modo === 'contrato';
+  const nfse = modo === 'nfse', contrato = modo === 'contrato', inss = modo === 'inss';
   if (!arquivo) return resp({ erro: 'arquivo obrigatório' }, 400);
   if (arquivo.length > 9_000_000) return resp({ erro: 'arquivo grande demais; mande até ~6 MB' }, 400);
 
@@ -90,8 +124,8 @@ Deno.serve(async (req) => {
       /* Contrato vai em Opus: é dele que sai dinheiro lançado, e a cláusula de
          honorário muda de forma a cada área. Os demais modos seguem no Sonnet. */
       model: contrato ? 'claude-opus-5-5' : 'claude-sonnet-5',
-      max_tokens: contrato ? 16000 : (nfse ? 4000 : 12000),
-      system: contrato ? SISTEMA_CONTRATO : (nfse ? SISTEMA_NFSE : SISTEMA),
+      max_tokens: contrato ? 16000 : inss ? 16000 : (nfse ? 4000 : 12000),
+      system: contrato ? SISTEMA_CONTRATO : inss ? SISTEMA_INSS : (nfse ? SISTEMA_NFSE : SISTEMA),
       messages: [{ role: 'user', content: [bloco,
         { type: 'text', text: `Arquivo: ${nome}. Extraia o que estiver escrito, no formato pedido.` }] }],
     }),
@@ -100,13 +134,21 @@ Deno.serve(async (req) => {
   const j = await r.json();
   /* Resposta cortada no limite devolve JSON pela metade: avisa em vez de falhar na análise. */
   if (j.stop_reason === 'max_tokens')
-    return resp({ erro: 'O documento é longo demais para uma leitura só. Mande só as páginas das cláusulas de honorário.' }, 422);
+    return resp({ erro: inss ? 'Esta parte do processo tem conteúdo demais para uma leitura só.' : 'O documento é longo demais para uma leitura só. Mande só as páginas das cláusulas de honorário.', longo: true }, 422);
   const txt = (j.content ?? []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n').trim();
   const m = txt.replace(/^```(json)?/i, '').replace(/```$/, '').trim().match(/\{[\s\S]*\}/);
   let lido: any = null;
   try { lido = JSON.parse(m ? m[0] : txt); } catch { /* devolve cru abaixo */ }
   if (!lido) return resp({ erro: 'não consegui estruturar a leitura', cru: txt.slice(0, 1500) }, 422);
   if (nfse) return resp({ notas: Array.isArray(lido.notas) ? lido.notas : [], observacao: lido.observacao || '', arquivo: nome });
+  if (inss) {
+    const lista = (k: string) => (Array.isArray(lido[k]) ? lido[k] : []).filter((x: any) => x && typeof x === 'object');
+    return resp({ tipo: String(lido.tipo || 'outro'), segurado: lido.segurado || {},
+      requerimentos: lista('requerimentos'), ciencia: lido.ciencia || null, tempo_inss: lido.tempo_inss || null,
+      periodos: lista('periodos'), especiais: lista('especiais'), exigencias: lista('exigencias'), pericias: lista('pericias'),
+      documentos: lista('documentos'), fatos: lista('fatos').filter((f: any) => f.descricao),
+      observacao: String(lido.observacao || ''), arquivo: nome, uso: j.usage || null });
+  }
 
   if (contrato) {
     const ESPECIES = ['entrada', 'parcela', 'exito', 'despesa', 'outro'];

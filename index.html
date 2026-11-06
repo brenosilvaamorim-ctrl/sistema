@@ -41,6 +41,21 @@ main{max-width:1180px;margin:0 auto;padding:24px 18px 70px}
 h1{font-size:21px;margin:0 0 3px}.meta{color:var(--i2);font-size:13.5px;margin-bottom:20px}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:11px;margin-bottom:22px}
 .kpi{background:var(--s1);border:1px solid var(--ln);border-radius:12px;padding:14px 16px}
+.ptl{position:relative;padding:2px 18px 6px}.ptl-l{display:grid;grid-template-columns:minmax(120px,230px) 1fr;gap:12px;align-items:center}
+.ptl-r{font-size:12.2px;color:var(--i2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ptl-r span{display:block;font-size:10.8px;color:var(--i3)}
+.ptl-f{position:relative;border-bottom:1px solid var(--ln)}.ptl-g{position:absolute;inset:0;pointer-events:none}
+.ptl-g span{position:absolute;top:0;bottom:0;border-left:1px dashed var(--ln)}.ptl-g .ptl-hoje{border-left:2px solid var(--hoje);opacity:.7}
+.ptl-b{position:absolute;height:12px;border-radius:4px;cursor:pointer;min-width:3px;box-sizing:border-box}
+.ptl-b:hover{outline:2px solid var(--ink);outline-offset:1px;z-index:2}
+.ptl-p{position:absolute;right:-5px;top:-9px;font-size:10px;color:var(--warn);text-shadow:0 0 2px var(--s1)}
+.ptl-u{background:var(--ink);opacity:.82;height:14px}.ptl-lac{background:repeating-linear-gradient(135deg,var(--crit) 0 3px,transparent 3px 6px);height:14px;box-shadow:inset 0 0 0 1px var(--crit)}
+.ptl-tot .ptl-r{font-weight:600;color:var(--ink)}.ptl-t{font-size:10.8px;text-transform:uppercase;letter-spacing:.05em;color:var(--i3);margin:8px 0 2px}
+.ptl-x .ptl-f{height:16px;border:0;font-size:10.8px;color:var(--i3)}.ptl-x .ptl-f span{position:absolute;transform:translateX(-50%)}
+.ptl-leg{display:flex;flex-wrap:wrap;gap:4px 14px;margin:0 18px 10px;font-size:12px;color:var(--i2)}
+.ptl-leg i{display:inline-block;width:14px;height:9px;border-radius:3px;margin-right:5px;vertical-align:middle}
+.ptl-dica{display:none;position:absolute;z-index:5;background:var(--s1);border:1px solid var(--ln);border-radius:8px;padding:8px 10px;
+  font-size:12px;line-height:1.45;color:var(--ink);box-shadow:0 4px 14px rgba(0,0,0,.14);pointer-events:none;max-width:300px}
+@media(max-width:640px){.ptl-l{grid-template-columns:92px 1fr;gap:8px}.ptl{padding:2px 10px 6px}}
 .kpi .n{font-size:29px;font-weight:650;line-height:1.1;letter-spacing:-.02em}
 .kpi .l{color:var(--i2);font-size:12.5px;margin-top:2px}.kpi.al .n{color:var(--crit)}
 .card{background:var(--s1);border:1px solid var(--ln);border-radius:12px;margin-bottom:18px;overflow:hidden}
@@ -12305,7 +12320,7 @@ async function prevCarregar(id){
     prevTodas('prev_remuneracao', 'id,vinculo_id,competencia,valor,contribuicao,pagamento,indicadores,origem,considerar', id),
     prevTodas('prev_pendencia', '*', id),
   ]);
-  if (PREV.a?.id !== id) Object.assign(PREV, { aba: 'dados', previa: null, arquivo: null, editando: null, remAberto: null, msg: '', opt: null, ev: null, evRes: null, cens: null, pl: null, ind: null, docBen: null, docFora: null, cdocs: null, peca: null });
+  if (PREV.a?.id !== id) Object.assign(PREV, { aba: 'dados', previa: null, arquivo: null, editando: null, remAberto: null, msg: '', opt: null, ev: null, evRes: null, cens: null, pl: null, ind: null, docBen: null, docFora: null, cdocs: null, peca: null, docPeca: null, docProg: null });
   PREV.calc = null; PREV.linha = null; PREV.cmp = null;   /* os dados podem ter mudado: o cálculo é refeito quando pedido */
   PREV.sims = (await sb.from('prev_simulacao').select('id,criado_em,data_base,melhor,rmi').eq('analise_id', id)
     .order('criado_em', { ascending: false })).data || [];
@@ -12313,6 +12328,7 @@ async function prevCarregar(id){
   PREV.vinc = vinc.sort((x, y) => (x.inicio || '9999').localeCompare(y.inicio || '9999') || (x.seq || 0) - (y.seq || 0));
   PREV.rem = rem.sort((x, y) => x.competencia.localeCompare(y.competencia));
   PREV.pend = pend.sort((x, y) => Number(x.resolvida) - Number(y.resolvida) || x.criado_em.localeCompare(y.criado_em));
+  try { await prevDocCarregar(id); } catch (e) { PREV.docs = []; }
 }
 
 async function telaPrevAnalise(id){
@@ -12528,6 +12544,115 @@ window.prevRefazerPendencias = async () => {
   prevPintar();
 };
 
+/* ----- linha do tempo dos vínculos (aba Vínculos)
+   Uma faixa por empregador (os vínculos com a mesma empresa ficam na mesma faixa),
+   uma para os recolhimentos próprios, uma para o rural e uma para os benefícios; embaixo,
+   a união do que conta e as lacunas entre os períodos. Passar o mouse mostra o período;
+   clicar abre o vínculo para editar. */
+function prevLinhaTempo(vs, fimDe, uniao){
+  const base = PREV.a.data_base || new Date().toISOString().slice(0, 10);
+  const comData = vs.filter(v => v.inicio);
+  if (!comData.length) return '';
+  const fimV = v => fimDe(v) || base;
+  const ano = d => Number(d.slice(0, 4)) + (Number(d.slice(5, 7)) - 1) / 12 + (Number(d.slice(8, 10)) - 1) / 365;
+  const todas = comData.flatMap(v => [v.inicio, fimV(v)]).concat(base);
+  const a0 = Math.floor(ano(todas.reduce((x, y) => x < y ? x : y))), a1 = Math.ceil(ano(todas.reduce((x, y) => x > y ? x : y)) + 0.01);
+  const pct = d => Math.min(100, Math.max(0, (ano(d) - a0) / (a1 - a0) * 100));
+  const passo = a1 - a0 > 30 ? 5 : a1 - a0 > 12 ? 2 : 1;
+  const marcas = []; for (let y = Math.ceil(a0 / passo) * passo; y <= a1; y += passo) marcas.push(y);
+  const remPorV = new Map(); for (const r of PREV.rem) remPorV.set(r.vinculo_id, (remPorV.get(r.vinculo_id) || 0) + 1);
+  const pendPorV = new Map(); for (const x of PREV.pend) if (!x.resolvida && x.vinculo_id) pendPorV.set(x.vinculo_id, (pendPorV.get(x.vinculo_id) || 0) + 1);
+
+  const grupoDe = v => v.tipo === 'beneficio' ? 'ben' : (v.rural || v.tipo === 'segurado_especial') ? 'rural'
+    : ['individual', 'facultativo'].includes(v.tipo) ? 'rec' : 'emp';
+  const cor = v => v.tipo === 'beneficio' ? 'var(--presc)' : v.especial ? 'var(--ser)' : grupoDe(v) === 'rural' ? 'var(--good)'
+    : grupoDe(v) === 'rec' ? 'var(--taref)' : 'var(--serie)';
+
+  /* faixas: empregos agrupados pela empresa (documento, ou nome); os outros, um grupo cada */
+  const faixas = new Map();
+  for (const v of comData){
+    const g = grupoDe(v);
+    const chave = g === 'emp' ? 'emp:' + (v.empregador_doc || (v.empregador_nome || '').toUpperCase().trim() || v.id) : g;
+    if (!faixas.has(chave)) faixas.set(chave, { g, nome: g === 'emp' ? (v.empregador_nome || PREV_TIPO_NOME[v.tipo]) :
+      { rec: 'Recolhimentos próprios', rural: 'Rural / segurado especial', ben: 'Benefícios' }[g], vs: [] });
+    faixas.get(chave).vs.push(v);
+  }
+  const ordem = { emp: 0, rec: 1, rural: 2, ben: 3 };
+  const lista = [...faixas.values()].sort((x, y) => ordem[x.g] - ordem[y.g]
+    || x.vs.map(v => v.inicio).sort()[0].localeCompare(y.vs.map(v => v.inicio).sort()[0]));
+  /* benefícios ou recolhimentos que se sobrepõem descem para uma subfaixa */
+  for (const f of lista){
+    const fins = [];
+    for (const v of f.vs.sort((x, y) => x.inicio.localeCompare(y.inicio))){
+      let k = fins.findIndex(e => e < v.inicio); if (k < 0) { k = fins.length; fins.push(''); }
+      fins[k] = fimV(v); v._sub = k;
+    }
+    f.subs = Math.max(1, fins.length);
+  }
+
+  const dur = (i, f) => prevTempoTxt(prevDiff(i, f)).replace(/^0 anos, /, '').replace(/ e 0 dias$/, '');
+  const dica = v => {
+    const l = [`<b>${esc(v.empregador_nome || PREV_TIPO_NOME[v.tipo])}</b>`,
+      `${br(v.inicio)} a ${v.fim ? br(v.fim) : (v.ultima_remun ? br(fimV(v)) + ' (última remuneração)' : br(base) + ' (sem saída)')}`, dur(v.inicio, fimV(v))];
+    if (v.beneficio_especie) l.push(esc(v.beneficio_especie) + (v.beneficio_nb ? ' · NB ' + esc(v.beneficio_nb) : ''));
+    if (remPorV.get(v.id)) l.push(remPorV.get(v.id) + ' competência(s) no CNIS');
+    if (v.especial) l.push('especial ' + v.especial + ' anos');
+    if ((v.indicadores || []).length) l.push('indicadores: ' + v.indicadores.map(esc).join(', '));
+    if (pendPorV.get(v.id)) l.push(`<span style="color:var(--warn)">▲</span> ${pendPorV.get(v.id)} pendência(s)`);
+    if (!v.considerar) l.push('<i>não conta</i>'); if (v.origem === 'manual') l.push('<i>incluído à mão</i>');
+    return l.join('<br>');
+  };
+  const barra = v => {
+    const l = pct(v.inicio), w = Math.max(0.35, pct(fimV(v)) - l), c = cor(v);
+    const fundo = v.origem === 'manual' ? `repeating-linear-gradient(90deg,${c} 0 6px,transparent 6px 9px)` : c;
+    return `<div class="ptl-b" data-tip="${esc(dica(v))}" onclick="prevEditar('${v.id}')"
+      style="left:${l.toFixed(2)}%;width:${w.toFixed(2)}%;top:${4 + v._sub * 16}px;background:${fundo};opacity:${v.considerar ? 1 : .3};${v.origem === 'manual' ? 'box-shadow:inset 0 0 0 1px ' + c + ';' : ''}">
+      ${pendPorV.get(v.id) ? '<span class="ptl-p" aria-label="tem pendência">▲</span>' : ''}</div>`;
+  };
+  const grade = `<div class="ptl-g">${marcas.map(y => `<span style="left:${pct(y + '-01-01').toFixed(2)}%"></span>`).join('')}
+    <span class="ptl-hoje" style="left:${pct(base).toFixed(2)}%" title="data-base ${br(base)}"></span></div>`;
+  const linha = (rot, sub, alt, miolo, cls = '') => `<div class="ptl-l ${cls}"><div class="ptl-r" title="${esc(rot)}">${esc(rot)}${sub ? `<span>${sub}</span>` : ''}</div>
+    <div class="ptl-f" style="height:${alt}px">${grade}${miolo}</div></div>`;
+  const titulos = { emp: 'Empregos', rec: 'Recolhimentos', rural: 'Rural', ben: 'Benefícios' };
+  let html = '', ultimoG = null;
+  for (const f of lista){
+    if (f.g !== ultimoG && f.g === 'emp') html += `<div class="ptl-t">${titulos.emp}</div>`;
+    if (f.g !== ultimoG && ultimoG === 'emp') html += '<div class="ptl-t"></div>';
+    ultimoG = f.g;
+    const n = f.vs.length;
+    html += linha(f.nome, f.g === 'emp' ? (n > 1 ? n + ' vínculos' : '') : n + (f.g === 'ben' ? ' benefício(s)' : ' período(s)'), 8 + f.subs * 16, f.vs.map(barra).join(''));
+  }
+  /* o que conta, somado, e as lacunas entre os períodos */
+  const lac = [];
+  for (let i = 1; i < uniao.length; i++){
+    const de = prevMaisDia(uniao[i - 1].fim, 1), ate = prevMaisDia(uniao[i].inicio, -1);
+    if (de <= ate) lac.push({ de, ate });
+  }
+  const soma = uniao.map(u => `<div class="ptl-b ptl-u" data-tip="${esc(`<b>Conta</b><br>${br(u.inicio)} a ${br(u.fim)}<br>${dur(u.inicio, u.fim)}`)}"
+      style="left:${pct(u.inicio).toFixed(2)}%;width:${Math.max(0.35, pct(u.fim) - pct(u.inicio)).toFixed(2)}%;top:4px"></div>`).join('')
+    + lac.map(x => `<div class="ptl-b ptl-lac" data-tip="${esc(`<b>Lacuna</b><br>${br(x.de)} a ${br(x.ate)}<br>${dur(x.de, x.ate)} sem contribuição`)}"
+      style="left:${pct(x.de).toFixed(2)}%;width:${Math.max(0.35, pct(x.ate) - pct(x.de)).toFixed(2)}%;top:4px"></div>`).join('');
+  html += '<div class="ptl-t"></div>' + linha('Conta para o tempo', lac.length ? lac.length + ' lacuna(s)' : 'sem lacunas', 24, soma, 'ptl-tot');
+  const eixo = `<div class="ptl-l ptl-x"><div class="ptl-r"></div><div class="ptl-f">${marcas.map(y => `<span style="left:${pct(y + '-01-01').toFixed(2)}%">${y}</span>`).join('')}</div></div>`;
+  const item = (c, t, extra = '') => `<span><i style="background:${c};${extra}"></i>${t}</span>`;
+  return `<div class="card"><h2>Linha do tempo</h2>
+    <div class="ptl-leg">${item('var(--serie)', 'empregado')}${item('var(--taref)', 'recolhimento próprio')}${item('var(--ser)', 'especial')}${item('var(--good)', 'rural')}${item('var(--presc)', 'benefício')}
+      ${item('repeating-linear-gradient(90deg,var(--i3) 0 4px,transparent 4px 6px)', 'incluído à mão', 'box-shadow:inset 0 0 0 1px var(--i3)')}${item('var(--i3)', 'não conta', 'opacity:.3')}
+      <span><b style="color:var(--warn)">▲</b> pendência</span><span><i style="background:var(--hoje);width:2px"></i>data-base</span></div>
+    <div class="ptl" onmousemove="prevTlDica(event)" onmouseleave="prevTlDica(null)">${eixo}${html}${eixo}<div class="ptl-dica" id="ptl-dica"></div></div>
+    <p class="sub" style="margin:0 18px 14px">Passe o mouse para ver o período; clique para editar o vínculo.</p></div>`;
+}
+window.prevTlDica = ev => {
+  const d = document.getElementById('ptl-dica'); if (!d) return;
+  const b = ev && ev.target.closest('[data-tip]');
+  if (!b) { d.style.display = 'none'; return; }
+  const caixa = d.parentElement.getBoundingClientRect();
+  d.innerHTML = b.dataset.tip; d.style.display = 'block';
+  const x = ev.clientX - caixa.left, y = ev.clientY - caixa.top;
+  d.style.left = Math.min(x + 14, caixa.width - d.offsetWidth - 4) + 'px';
+  d.style.top = (y + 16 + d.offsetHeight > caixa.height ? y - d.offsetHeight - 10 : y + 16) + 'px';
+};
+
 /* ----- aba Vínculos */
 function prevAbaVinculos(){
   const vs = PREV.vinc;
@@ -12540,32 +12665,7 @@ function prevAbaVinculos(){
   const semFim = contam.filter(v => !v.fim && ['empregado', 'domestico'].includes(v.tipo)).length;
   const especiais = contam.filter(v => v.especial).length;
 
-  /* linha do tempo: cada vínculo numa faixa, na escala dos anos cobertos */
-  const datas = vs.filter(v => v.inicio).flatMap(v => [v.inicio, fimDe(v) || PREV.a.data_base]);
-  let tl = '';
-  if (datas.length){
-    const ano = d => Number(d.slice(0, 4)) + (Number(d.slice(5, 7)) - 1) / 12 + (Number(d.slice(8, 10)) - 1) / 365;
-    const a0 = Math.floor(ano(datas.reduce((x, y) => x < y ? x : y))), a1 = Math.ceil(ano(datas.reduce((x, y) => x > y ? x : y)) + 0.01);
-    const pct = d => ((ano(d) - a0) / (a1 - a0) * 100).toFixed(2);
-    const cor = v => v.tipo === 'beneficio' ? 'var(--presc)' : v.especial ? 'var(--ser)' : (v.rural || v.tipo === 'segurado_especial') ? 'var(--good)' : ['individual', 'facultativo'].includes(v.tipo) ? 'var(--taref)' : 'var(--serie)';
-    const marcas = []; for (let y = a0; y <= a1; y += (a1 - a0 > 24 ? 5 : 2)) marcas.push(y);
-    tl = `<div class="card"><h2>Linha do tempo</h2>
-      <p class="nota"><span style="color:var(--serie)">■</span> empregado · <span style="color:var(--taref)">■</span> recolhimento próprio ·
-        <span style="color:var(--ser)">■</span> especial · <span style="color:var(--good)">■</span> rural · <span style="color:var(--presc)">■</span> benefício · tracejado: incluído à mão · apagado: não conta</p>
-      <div style="padding:4px 18px 18px">
-        ${vs.filter(v => v.inicio).map(v => {
-          const f = fimDe(v) || PREV.a.data_base;
-          return `<div style="display:grid;grid-template-columns:minmax(110px,220px) 1fr;gap:10px;align-items:center;font-size:12.2px;padding:2px 0">
-            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--i2)" title="${esc(v.empregador_nome || '')}">${esc(v.empregador_nome || PREV_TIPO_NOME[v.tipo])}</span>
-            <div style="position:relative;height:12px;background:var(--s0);border-radius:3px">
-              <div title="${br(v.inicio)} a ${br(fimDe(v))}" style="position:absolute;left:${pct(v.inicio)}%;width:max(2px,${(pct(f) - pct(v.inicio)).toFixed(2)}%);top:0;bottom:0;border-radius:3px;
-                background:${cor(v)};opacity:${v.considerar ? 1 : .3};${v.origem === 'manual' ? 'background:repeating-linear-gradient(90deg,' + cor(v) + ' 0 6px,transparent 6px 9px);' : ''}"></div>
-            </div></div>`; }).join('')}
-        <div style="display:grid;grid-template-columns:minmax(110px,220px) 1fr;gap:10px;font-size:10.8px;color:var(--i3)"><span></span>
-          <div style="position:relative;height:14px">${marcas.map(y => `<span style="position:absolute;left:${((y - a0) / (a1 - a0) * 100).toFixed(2)}%;transform:translateX(-50%)">${y}</span>`).join('')}</div></div>
-      </div></div>`;
-  }
-
+  const tl = prevLinhaTempo(vs, fimDe, uniao);
   const ed = PREV.editando;
   return `
   <div class="kpis">
@@ -13217,6 +13317,310 @@ window.prevPlanilhaPlano = () => {
 
 /* ----- aba Documentos: checklist do benefício, com envio ao cliente e inclusão no caso */
 const prevDocChave = t => String(t || '').trim().toLowerCase();
+/* PREV-PA-INICIO — documentos anexados à análise (processo administrativo do INSS,
+   carta de decisão, PPP, LTCAT, laudo, CTPS). O arquivo fica no bucket da análise; a
+   IA lê (função ler-documento, modo 'inss'), parte por parte quando o processo é longo,
+   e o sistema cruza a leitura com o CNIS e os vínculos. Nada muda sozinho nos vínculos:
+   a tela mostra o que achou e o advogado decide. */
+const PREV_DOC_TIPOS = [['processo', 'Cópia do processo administrativo (INSS)'], ['decisao', 'Carta de decisão / indeferimento'],
+  ['ppp', 'PPP'], ['ltcat', 'LTCAT / laudo técnico'], ['laudo', 'Laudo ou perícia médica'], ['ctps', 'CTPS'], ['outro', 'Outro documento']];
+const PREV_DOC_PAGS = 20;           /* páginas por parte enviada à IA */
+const PREV_DOC_BYTES = 4_400_000;   /* tamanho máximo de cada parte (a função aceita ~6 MB) */
+
+/* ----- junta as leituras das partes num só resultado, com a página do arquivo inteiro */
+function prevDocJuntar(leituras){
+  const out = { tipo: 'outro', segurado: {}, requerimentos: [], ciencia: null, tempo_inss: null, periodos: [], especiais: [],
+                exigencias: [], pericias: [], documentos: [], fatos: [], observacao: [], partes: leituras.length };
+  const pag = (x, de) => ({ ...x, pagina: (Number(x?.pagina) || 1) + de - 1 });
+  const data = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null;
+  const vistos = {};
+  const poe = (k, x, chave) => { vistos[k] = vistos[k] || new Map(); const c = chave(x);
+    const ja = vistos[k].get(c);
+    if (!ja) { vistos[k].set(c, x); out[k].push(x); }
+    else for (const [kk, vv] of Object.entries(x)) if ((ja[kk] === '' || ja[kk] == null) && vv !== '' && vv != null) ja[kk] = vv; };
+  for (const { de, ate, r } of leituras){
+    if (!r) continue;
+    if (out.tipo === 'outro' && r.tipo && r.tipo !== 'outro') out.tipo = r.tipo;
+    for (const [k, v] of Object.entries(r.segurado || {})) if (v && !out.segurado[k]) out.segurado[k] = v;
+    for (const x of r.requerimentos || []) poe('requerimentos', { ...pag(x, de), der: data(x.der), data_decisao: data(x.data_decisao) },
+      y => [String(y.nb || '').replace(/\D/g, ''), y.der || '', y.situacao || ''].join('|'));
+    if (data(r.ciencia?.data)) out.ciencia = pag({ data: data(r.ciencia.data), pagina: r.ciencia.pagina }, de);
+    const t = r.tempo_inss;
+    if (t && (Number(t.anos) || Number(t.meses) || Number(t.dias) || Number(t.carencia)))
+      if (!out.tempo_inss || (data(t.data_referencia) || '') >= (out.tempo_inss.data_referencia || '')) out.tempo_inss = pag({ ...t, data_referencia: data(t.data_referencia) }, de);
+    for (const x of r.periodos || []) poe('periodos', { ...pag(x, de), inicio: data(x.inicio), fim: data(x.fim) },
+      y => [y.inicio, y.fim, y.situacao, (y.empresa || '').slice(0, 12).toUpperCase()].join('|'));
+    for (const x of r.especiais || []) poe('especiais', { ...pag(x, de), inicio: data(x.inicio), fim: data(x.fim) },
+      y => [y.inicio, y.fim, (y.empresa || '').slice(0, 12).toUpperCase()].join('|'));
+    for (const k of ['exigencias', 'pericias', 'documentos', 'fatos']) for (const x of r[k] || []) out[k].push(pag(x, de));
+    if (r.observacao) out.observacao.push(`págs. ${de}–${ate}: ${r.observacao}`);
+  }
+  out.observacao = out.observacao.join(' · ');
+  return out;
+}
+
+/* ----- cruza o que foi lido nos documentos com os vínculos da análise */
+function prevDocsAnalise(docs, a, vinc, hoje = new Date().toISOString().slice(0, 10)){
+  const lidos = (docs || []).filter(d => d.status === 'lido' && d.lido);
+  if (!lidos.length) return null;
+  const com = (d, x) => ({ ...x, doc: d.id, docNome: d.nome });
+  const todos = k => lidos.flatMap(d => (d.lido[k] || []).map(x => com(d, x)));
+  const R = { requerimentos: todos('requerimentos').sort((x, y) => (y.der || '').localeCompare(x.der || '')),
+              exigencias: todos('exigencias'), pericias: todos('pericias'), fatos: todos('fatos'), avisos: [] };
+  /* o requerimento que interessa: o indeferido mais recente; sem ele, o mais recente */
+  R.principal = R.requerimentos.find(r => /indefer/i.test(r.situacao || '')) || R.requerimentos[0] || null;
+  const ciencias = lidos.filter(d => d.lido.ciencia?.data).map(d => com(d, d.lido.ciencia)).sort((x, y) => y.data.localeCompare(x.data));
+  R.ciencia = ciencias[0] || null;
+  /* prazo do recurso ordinário: 30 dias da ciência (Decreto 3.048/99, art. 305, § 1º) */
+  if (R.ciencia){
+    R.prazo = prevMaisDia(R.ciencia.data, 30);
+    R.diasPrazo = Math.round((new Date(R.prazo + 'T12:00:00Z') - new Date(hoje + 'T12:00:00Z')) / 864e5);
+  }
+  /* tempo: o que o INSS apurou x o que os vínculos daqui somam até a mesma data */
+  const tempos = lidos.filter(d => d.lido.tempo_inss).map(d => com(d, d.lido.tempo_inss)).sort((x, y) => (y.data_referencia || '').localeCompare(x.data_referencia || ''));
+  const fimDe = v => v.fim || (v.ultima_remun ? cnisFimMes(v.ultima_remun) : null);
+  const conta = (vinc || []).filter(v => v.considerar && v.inicio);
+  if (tempos[0]){
+    const t = tempos[0], ate = t.data_referencia || R.principal?.der || a.data_base;
+    const u = prevUniao(conta.map(v => ({ inicio: v.inicio, fim: [fimDe(v) || a.data_base, ate].sort()[0] })));
+    const nosso = prevSoma(u.map(p => prevDiff(p.inicio, p.fim)));
+    const dias = x => (Number(x.a) || 0) * 360 + (Number(x.m) || 0) * 30 + (Number(x.d) || 0);
+    const inss = { a: Number(t.anos) || 0, m: Number(t.meses) || 0, d: Number(t.dias) || 0 };
+    R.tempo = { inss, nosso, ate, carencia: Number(t.carencia) || null, dif: dias(nosso) - dias(inss), fonte: t };
+  }
+  /* períodos: o que o INSS não contou e os vínculos daqui contam é o centro do recurso */
+  const sobre = (p, v) => p.inicio && v.inicio && p.inicio <= (fimDe(v) || a.data_base) && v.inicio <= (p.fim || p.inicio);
+  R.periodos = todos('periodos').filter(p => p.inicio).map(p => {
+    const vs = conta.filter(v => sobre(p, v));
+    const negado = /n[ãa]o\s*computad|negad/i.test(p.situacao || '');
+    return { ...p, negado, vinculos: vs.map(v => ({ id: v.id, nome: v.empregador_nome || PREV_TIPO_NOME[v.tipo], especial: v.especial })),
+      leitura: negado ? (vs.length ? 'o INSS não contou; os vínculos daqui contam' : 'o INSS não contou e não há vínculo daqui no período')
+        : (vs.length ? 'contado dos dois lados' : 'o INSS contou, mas não há vínculo daqui no período') };
+  });
+  R.negados = R.periodos.filter(p => p.negado);
+  /* PPP e laudos: a que vínculo cada um se refere, e se o vínculo já está marcado como especial */
+  R.especiais = todos('especiais').map(e => {
+    const v = (vinc || []).find(v => v.inicio && e.inicio && sobre(e, v) && !['beneficio', 'individual', 'facultativo'].includes(v.tipo));
+    return { ...e, vinculo: v ? { id: v.id, nome: v.empregador_nome, especial: v.especial } : null };
+  });
+  R.exigAbertas = R.exigencias.filter(x => !x.cumprida);
+  if (R.principal && !R.ciencia) R.avisos.push('A data de ciência da decisão não foi encontrada: confira no processo para contar o prazo do recurso.');
+  return R;
+}
+
+/* ----- tela: anexar, listar e mostrar a análise (aba Documentos) */
+function prevCardAnexos(){
+  if (PREV.docsSemBanco) return `<div class="card"><h2>Documentos do segurado</h2><div class="aviso">Para anexar documentos à análise, aplique banco/43_previdenciario_documentos.sql no Supabase (SQL Editor) e recarregue.</div></div>`;
+  const docs = PREV.docs || [], prog = PREV.docProg || {};
+  const tipoNome = Object.fromEntries(PREV_DOC_TIPOS);
+  const sit = d => prog[d.id] ? `<span class="pill serie">${esc(prog[d.id])}</span>`
+    : d.status === 'lido' ? `<span class="pill good">lido ${br(d.lido_em)}</span>` : d.status === 'erro' ? `<span class="pill crit" title="${esc(d.erro || '')}">não foi lido</span>`
+    : d.status === 'lendo' ? '<span class="pill warn">leitura interrompida</span>' : '<span class="pill cin">guardado</span>';
+  return `<div class="card"><h2>Documentos do segurado</h2>
+    <p class="nota">Anexe a cópia do processo administrativo do INSS, a carta de indeferimento, PPP, LTCAT, laudos, CTPS. A IA lê cada um
+      (inclusive páginas escaneadas) e o sistema cruza com o CNIS: períodos que o INSS não contou, tempo apurado, motivo do indeferimento,
+      prazo do recurso, PPP de cada vínculo. A leitura usa crédito da API da Anthropic; processos longos são lidos em partes de ${PREV_DOC_PAGS} páginas.</p>
+    <div class="filtros"><select id="pdx-tipo">${PREV_DOC_TIPOS.map(([k, r]) => `<option value="${k}">${r}</option>`).join('')}</select>
+      <input type="file" multiple accept="application/pdf,.pdf,image/jpeg,image/png" onchange="prevDocAnexar(this.files, document.getElementById('pdx-tipo').value)">
+      <span class="sub" id="pdx-st" style="display:inline"></span></div>
+    ${docs.length ? `<table><tr><th>Documento</th><th>Tipo</th><th>Págs.</th><th>Leitura</th><th></th></tr>
+      ${docs.map(d => `<tr><td><a class="lnk" onclick="prevDocAbrir('${d.id}')">${esc(d.nome)}</a><span class="sub">anexado ${br(d.criado_em)}</span>
+          ${d.status === 'erro' && d.erro ? `<span class="q">${esc(d.erro)}</span>` : ''}${d.lido?.observacao ? `<span class="q">${esc(d.lido.observacao.slice(0, 300))}</span>` : ''}</td>
+        <td><select onchange="prevDocTipo('${d.id}', this.value)">${PREV_DOC_TIPOS.map(([k, r]) => `<option value="${k}" ${d.tipo === k ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
+        <td>${d.paginas ?? '—'}</td><td>${sit(d)}</td>
+        <td class="acoes">${prog[d.id] ? '' : `<button class="btn ${d.status === 'lido' ? '' : 'ok'}" onclick="prevDocLer('${d.id}')">${d.status === 'lido' ? 'ler de novo' : 'ler com IA'}</button>
+          <button class="btn" onclick="prevDocExcluir('${d.id}')">excluir</button>`}</td></tr>`).join('')}</table>` : '<div class="vazio">Nenhum documento anexado.</div>'}
+  </div>${prevCardAnaliseDocs()}`;
+}
+function prevCardAnaliseDocs(){
+  const R = prevDocsAnalise(PREV.docs, PREV.a, PREV.vinc);
+  if (!R) return '';
+  const fonte = x => x?.doc ? ` <a class="lnk sub" style="display:inline" onclick="prevDocAbrir('${x.doc}', ${Number(x.pagina) || 1})">${esc(x.docNome)}, p. ${Number(x.pagina) || 1}</a>` : '';
+  const tempoTxt = t => prevTempoTxt(t);
+  const p = R.principal;
+  const bloco = (tit, corpo) => corpo ? `<h2 style="font-size:13px;color:var(--i2);margin-top:10px">${tit}</h2>${corpo}` : '';
+  const reqs = R.requerimentos.length ? `<table><tr><th>NB</th><th>Espécie</th><th>DER</th><th>Situação</th><th>Motivo</th></tr>
+    ${R.requerimentos.map(r => `<tr><td>${esc(r.nb || '—')}</td><td>${esc(r.especie || '—')}</td><td class="dt">${br(r.der)}</td>
+      <td><span class="pill ${/indefer/i.test(r.situacao || '') ? 'crit' : /defer/i.test(r.situacao || '') ? 'good' : 'cin'}">${esc(r.situacao || '—')}</span>${r.data_decisao ? `<span class="sub">decisão ${br(r.data_decisao)}</span>` : ''}</td>
+      <td style="font-size:12.8px">${esc(r.motivo || '—')}${r.fundamento ? `<span class="sub">${esc(r.fundamento)}</span>` : ''}${fonte(r)}</td></tr>`).join('')}</table>` : '';
+  const prazo = R.ciencia ? `<div class="aviso" style="border-color:var(--${R.diasPrazo < 0 ? 'i3' : R.diasPrazo <= 7 ? 'crit' : 'warn'})">
+      Ciência da decisão em ${br(R.ciencia.data)}${fonte(R.ciencia)}. Prazo do recurso ordinário: <b>${br(R.prazo)}</b>
+      ${R.diasPrazo >= 0 ? `(faltam ${R.diasPrazo} dia(s); 30 dias da ciência, Decreto 3.048/99, art. 305, § 1º).`
+        : '— já passou. Cabe novo requerimento ou ação judicial: o indeferimento já mostra o interesse de agir (STF, RE 631.240, Tema 350).'}</div>` : '';
+  const tempo = R.tempo ? `<div class="kpis" style="margin:0 18px 8px">
+      <div class="kpi"><div class="n" style="font-size:17px">${tempoTxt(R.tempo.inss)}</div><div class="l">tempo que o INSS apurou${R.tempo.carencia ? ` · carência ${R.tempo.carencia}` : ''}${fonte(R.tempo.fonte)}</div></div>
+      <div class="kpi"><div class="n" style="font-size:17px">${tempoTxt(R.tempo.nosso)}</div><div class="l">soma dos vínculos daqui até ${br(R.tempo.ate)} (bruto, sem conversão)</div></div>
+      <div class="kpi ${R.tempo.dif > 30 ? 'al' : ''}"><div class="n" style="font-size:17px">${R.tempo.dif > 0 ? '+' : ''}${prevDiasTxt(Math.abs(R.tempo.dif)) || '0 dia'}</div>
+        <div class="l">${R.tempo.dif > 0 ? 'a mais aqui do que o INSS contou' : R.tempo.dif < 0 ? 'a menos aqui: confira se falta vínculo' : 'mesma contagem'}</div></div></div>` : '';
+  const pers = R.periodos.length ? `<table><tr><th>Período (INSS)</th><th>Empresa</th><th>Situação no INSS</th><th>Aqui</th></tr>
+    ${R.periodos.sort((x, y) => Number(y.negado) - Number(x.negado) || x.inicio.localeCompare(y.inicio)).map(x => `<tr style="${x.negado ? '' : 'opacity:.7'}">
+      <td class="dt">${br(x.inicio)} a ${br(x.fim)}</td><td>${esc(x.empresa || '—')}</td>
+      <td><span class="pill ${x.negado ? 'crit' : 'good'}">${esc(x.situacao || '—')}</span>${x.motivo ? `<span class="sub">${esc(x.motivo)}</span>` : ''}${fonte(x)}</td>
+      <td style="font-size:12.8px">${esc(x.leitura)}${x.vinculos.map(v => `<span class="sub"><a class="lnk" onclick="prevDocIrVinculo('${v.id}')">${esc(v.nome)}</a></span>`).join('')}</td></tr>`).join('')}</table>` : '';
+  const esp = R.especiais.length ? `<table><tr><th>Documento</th><th>Período</th><th>Agentes</th><th>EPI eficaz</th><th>Vínculo daqui</th></tr>
+    ${R.especiais.map(e => `<tr><td>${esc(e.documento || 'PPP')} — ${esc(e.empresa || '—')}${e.funcao ? `<span class="sub">${esc(e.funcao)}</span>` : ''}${fonte(e)}</td>
+      <td class="dt">${br(e.inicio)} a ${br(e.fim)}</td><td style="font-size:12.8px">${esc(e.agentes || '—')}${e.intensidade ? `<span class="sub">${esc(e.intensidade)}</span>` : ''}${e.responsavel_tecnico ? `<span class="sub">responsável técnico: ${esc(e.responsavel_tecnico)}</span>` : ''}</td>
+      <td>${esc(e.epi_eficaz || '—')}</td>
+      <td>${e.vinculo ? `<a class="lnk" onclick="prevDocIrVinculo('${e.vinculo.id}')">${esc(e.vinculo.nome || 'vínculo')}</a>${e.vinculo.especial ? `<span class="pill ser">especial ${e.vinculo.especial} anos</span>` : '<span class="sub">ainda não marcado como especial</span>'}` : '<span class="sub">nenhum vínculo no período</span>'}</td></tr>`).join('')}</table>` : '';
+  const exig = R.exigencias.length ? `<table>${R.exigencias.map(x => `<tr><td class="dt">${br(x.data)}</td><td style="font-size:12.8px">${esc(x.texto || '—')}${x.prazo ? `<span class="sub">prazo: ${esc(x.prazo)}</span>` : ''}${fonte(x)}</td>
+      <td>${x.cumprida ? '<span class="pill good">cumprida</span>' : '<span class="pill warn">sem cumprimento no processo</span>'}</td></tr>`).join('')}</table>` : '';
+  const per = R.pericias.length ? `<table>${R.pericias.map(x => `<tr><td class="dt">${br(x.data)}</td><td style="font-size:12.8px">${esc(x.conclusao || '—')}${fonte(x)}</td>
+      <td>${x.cid ? 'CID ' + esc(x.cid) : ''}${x.did ? `<span class="sub">DID ${br(x.did)}</span>` : ''}${x.dii ? `<span class="sub">DII ${br(x.dii)}</span>` : ''}</td></tr>`).join('')}</table>` : '';
+  const fatos = R.fatos.length ? `<details style="padding:0 18px 12px"><summary class="sub" style="cursor:pointer">Outros fatos (${R.fatos.length})</summary><table>
+    ${R.fatos.map(x => `<tr><td class="dt">${br(x.data)}</td><td style="font-size:12.8px">${esc(x.descricao)}${x.trecho ? `<span class="q">"${esc(x.trecho)}"</span>` : ''}${fonte(x)}</td></tr>`).join('')}</table></details>` : '';
+  return `<div class="card"><h2>Análise dos documentos</h2>
+    <p class="nota">O que a IA leu, cruzado com os vínculos desta análise. Cada informação traz a página de onde saiu: confira no documento antes de usar.</p>
+    ${R.avisos.map(x => `<div class="aviso">${esc(x)}</div>`).join('')}
+    ${p ? `<div class="filtros" style="margin:0 18px 8px">
+      <button class="btn ok" onclick="prevDocUsarPeca()">Levar NB, DER e motivo para a peça</button>
+      ${p.der && p.der !== PREV.a.data_base ? `<button class="btn" onclick="prevDocUsarDer('${p.der}')">Usar a DER (${br(p.der)}) como data-base</button>` : ''}
+      <span class="sub" id="pdx-an" style="display:inline"></span></div>` : ''}
+    ${prazo}
+    ${bloco('Requerimentos', reqs)}
+    ${bloco('Tempo de contribuição', tempo)}
+    ${bloco(`Períodos na contagem do INSS${R.negados.length ? ` — ${R.negados.length} não computado(s)` : ''}`, pers)}
+    ${bloco('Atividade especial (PPP, LTCAT, laudos)', esp)}
+    ${bloco(`Exigências${R.exigAbertas.length ? ` — ${R.exigAbertas.length} sem cumprimento` : ''}`, exig)}
+    ${bloco('Perícias médicas', per)}
+    ${fatos}
+  </div>`;
+}
+
+/* ----- ações */
+async function prevDocCarregar(id){
+  const { data, error } = await sb.from('prev_documento').select('*').eq('analise_id', id).order('criado_em');
+  if (error) { if (/prev_documento|PGRST205|42P01/.test((error.message || '') + (error.code || ''))) { PREV.docs = []; PREV.docsSemBanco = true; return; } throw error; }
+  PREV.docs = data || []; PREV.docsSemBanco = false;
+}
+window.prevDocAnexar = async (arquivos, tipo) => {
+  const st = document.getElementById('pdx-st'), a = PREV.a, novos = [];
+  try {
+    const eid = await escId();
+    for (const arq of [...arquivos || []]){
+      if (arq.size > 60_000_000) { st.textContent = `${arq.name}: maior que 60 MB, divida o arquivo.`; continue; }
+      st.textContent = `guardando ${arq.name}…`;
+      const pdf = /pdf/i.test(arq.type) || /\.pdf$/i.test(arq.name);
+      let paginas = pdf ? null : 1;
+      if (pdf) { try { const { PDFDocument } = await carregarPdfLib(); paginas = (await PDFDocument.load(await arq.arrayBuffer(), { ignoreEncryption: true })).getPageCount(); } catch (e) {} }
+      const caminho = `${eid}/${a.id}/docs/${Date.now()}-${arq.name.normalize('NFD').replace(/[^\w.\-]+/g, '_').slice(-80)}`;
+      const up = await sb.storage.from('previdenciario').upload(caminho, arq, { upsert: false, contentType: arq.type || 'application/pdf' });
+      if (up.error) throw up.error;
+      const { data, error } = await sb.from('prev_documento').insert({ escritorio_id: eid, analise_id: a.id, tipo, nome: arq.name, arquivo: caminho, paginas }).select().single();
+      if (error) throw error;
+      PREV.docs.push(data); novos.push(data);
+    }
+  } catch (e) { st.textContent = 'não foi possível anexar: ' + e.message; return; }
+  prevPintar();
+  for (const d of novos) await prevDocLer(d.id);
+};
+/* divide o PDF em partes que caibam numa leitura */
+async function prevDocPartes(buf){
+  const { PDFDocument } = await carregarPdfLib();
+  const src = await PDFDocument.load(buf, { ignoreEncryption: true });
+  const n = src.getPageCount(), partes = [];
+  const monta = async (i, k) => { const d = await PDFDocument.create(); (await d.copyPages(src, Array.from({ length: k }, (_, j) => i + j))).forEach(p => d.addPage(p)); return d.save(); };
+  for (let i = 0; i < n; ){
+    let k = Math.min(PREV_DOC_PAGS, n - i), bytes = await monta(i, k);
+    while (bytes.length > PREV_DOC_BYTES && k > 1) { k = Math.ceil(k / 2); bytes = await monta(i, k); }
+    partes.push({ de: i + 1, ate: i + k, bytes }); i += k;
+  }
+  return { n, partes, monta };
+}
+window.prevDocLer = async id => {
+  const d = PREV.docs.find(x => x.id === id); if (!d) return;
+  PREV.docProg = PREV.docProg || {};
+  const prog = t => { PREV.docProg[id] = t; if (PREV.aba === 'docs') prevPintar(); };
+  try {
+    prog('baixando…');
+    await sb.from('prev_documento').update({ status: 'lendo', erro: null }).eq('id', id);
+    const { data: blob, error } = await sb.storage.from('previdenciario').download(d.arquivo);
+    if (error) throw error;
+    const pdf = /pdf/i.test(blob.type) || /\.pdf$/i.test(d.nome);
+    const leituras = [];
+    const ler = async (bytes, mime, de, ate) => {
+      const r = await chamarFuncao('ler-documento', { arquivo: await nfB64(new Blob([bytes])), mime, modo: 'inss',
+        nome: `${d.nome}${pdf ? ` (páginas ${de} a ${ate})` : ''}` });
+      leituras.push({ de, ate, r });
+    };
+    let n = 1;
+    if (pdf){
+      prog('dividindo o PDF…');
+      const P = await prevDocPartes(await blob.arrayBuffer()); n = P.n;
+      if (P.partes.some(p => p.bytes.length > 6_300_000)) throw new Error('há página grande demais para a leitura (mais de 6 MB numa página só); digitalize em resolução menor');
+      let feitas = 0;
+      const fila = [...P.partes];
+      const trabalha = async () => { for (let p; (p = fila.shift()); ){
+        try { await ler(p.bytes, 'application/pdf', p.de, p.ate); }
+        catch (e) {
+          /* parte com conteúdo demais: lê em duas metades */
+          if (!/demais/.test(e.message) || p.ate === p.de) throw e;
+          const meio = Math.floor((p.de + p.ate) / 2);
+          fila.push({ de: p.de, ate: meio, bytes: await P.monta(p.de - 1, meio - p.de + 1) }, { de: meio + 1, ate: p.ate, bytes: await P.monta(meio, p.ate - meio) });
+          continue;
+        }
+        prog(`lendo… ${++feitas} parte(s) de ${feitas + fila.length}`);
+      } };
+      prog(`lendo… 0 parte(s) de ${P.partes.length}`);
+      await Promise.all([trabalha(), trabalha()]);
+    } else {
+      if (blob.size > 6_300_000) throw new Error('imagem grande demais (mais de 6 MB)');
+      prog('lendo…'); await ler(await blob.arrayBuffer(), blob.type || 'image/jpeg', 1, 1);
+    }
+    leituras.sort((x, y) => x.de - y.de);
+    const lido = prevDocJuntar(leituras);
+    const upd = { status: 'lido', lido, lido_em: new Date().toISOString(), paginas: n, erro: null };
+    const { error: e2 } = await sb.from('prev_documento').update(upd).eq('id', id);
+    if (e2) throw e2;
+    Object.assign(d, upd);
+  } catch (e) {
+    Object.assign(d, { status: 'erro', erro: e.message });
+    await sb.from('prev_documento').update({ status: 'erro', erro: String(e.message).slice(0, 500) }).eq('id', id);
+  }
+  delete PREV.docProg[id];
+  if (PREV.aba === 'docs') prevPintar();
+};
+window.prevDocAbrir = async (id, pagina) => {
+  const d = PREV.docs.find(x => x.id === id); if (!d) return;
+  const { data, error } = await sb.storage.from('previdenciario').createSignedUrl(d.arquivo, 600);
+  if (error) return alert(error.message);
+  window.open(data.signedUrl + (pagina ? '#page=' + pagina : ''), '_blank');
+};
+window.prevDocTipo = async (id, tipo) => {
+  const { error } = await sb.from('prev_documento').update({ tipo }).eq('id', id);
+  if (error) return alert(error.message);
+  PREV.docs.find(x => x.id === id).tipo = tipo;
+};
+window.prevDocExcluir = async id => {
+  const d = PREV.docs.find(x => x.id === id); if (!d) return;
+  if (!confirm(`Excluir "${d.nome}" da análise?\n\nO arquivo é apagado do armazenamento e a leitura se perde.`)) return;
+  const { error } = await sb.from('prev_documento').delete().eq('id', id);
+  if (error) return alert(error.message);
+  await sb.storage.from('previdenciario').remove([d.arquivo]);
+  PREV.docs = PREV.docs.filter(x => x.id !== id); prevPintar();
+};
+window.prevDocIrVinculo = vid => { PREV.aba = 'vinculos'; PREV.editando = vid; PREV.remAberto = null; prevPintar(); };
+/* NB, DER, ciência e motivo do requerimento principal vão para o formulário da peça */
+function prevDocDadosPeca(){
+  const R = prevDocsAnalise(PREV.docs, PREV.a, PREV.vinc), p = R?.principal;
+  if (!p) return null;
+  return { nb: p.nb || '', der: p.der || '', dataDecisao: R.ciencia?.data || p.data_decisao || '', motivo: p.motivo || '',
+           tipo: R.ciencia && R.diasPrazo >= 0 ? 'recurso' : 'inicial' };
+}
+window.prevDocUsarPeca = async () => {
+  const x = prevDocDadosPeca(); if (!x) return;
+  PREV.docPeca = x;
+  if (PREV.peca) Object.assign(PREV.peca, Object.fromEntries(Object.entries(x).filter(([, v]) => v)));
+  await prevAba('pecas');
+};
+window.prevDocUsarDer = async der => {
+  const st = document.getElementById('pdx-an');
+  const { error } = await sb.from('prev_analise').update({ data_base: der, atualizado_em: new Date().toISOString() }).eq('id', PREV.a.id);
+  if (error) { if (st) st.textContent = error.message; return; }
+  PREV.a.data_base = der; PREV.calc = null; PREV.linha = null; PREV.cmp = null;
+  PREV.msg = `Data-base da análise mudou para a DER, ${br(der)}. O cálculo é refeito com ela.`; prevPintar();
+};
+/* PREV-PA-FIM */
+
 function prevAbaDocs(){
   const a = PREV.a;
   if (!PREV.docBen) PREV.docBen = prevDocsSugeridos(a, PREV.vinc);
@@ -13228,7 +13632,7 @@ function prevAbaDocs(){
   const marcados = itens.filter(i => !PREV.docFora.has(prevDocChave(i.t)));
   const fone = a.cliente?.whatsapp || a.cliente?.telefone;
   const faltam = (PREV.cdocs || []).filter(d => !d.recebido_em).length;
-  return `
+  return `${prevCardAnexos()}
   <div class="card"><h2>Para qual benefício</h2>
     <p class="nota">O checklist junta os documentos básicos, os de cada benefício marcado e os que saem do CNIS e dos vínculos
       (PPP de cada período especial, provas de vínculos com pendência, guias de meses em aberto, o que fez nos intervalos).</p>
@@ -13328,7 +13732,8 @@ function prevAbaPecas(){
   if (c.erros?.length) return c.erros.map(e => `<div class="aviso">${esc(e)}</div>`).join('');
   const comCalc = c.regras.filter(r => r.calc && r.data);
   const o = PREV.peca || (PREV.peca = { tipo: 'requerimento', regra: c.melhor || c.proxima || (comCalc[0] ? prevIdRegra(comCalc[0]) : ''),
-    der: a.data_base, subsecao: 'Petrolina/PE', cidade: 'Petrolina/PE', gratuidade: true, renuncia: false, nb: '', dataDecisao: '', motivo: '' });
+    der: a.data_base, subsecao: 'Petrolina/PE', cidade: 'Petrolina/PE', gratuidade: true, renuncia: false, nb: '', dataDecisao: '', motivo: '',
+    ...Object.fromEntries(Object.entries(PREV.docPeca || prevDocDadosPeca() || {}).filter(([, v]) => v)) });
   const regra = c.regras.find(r => prevIdRegra(r) === o.regra);
   const g1 = prevSvgLinhaTempo(PREV.vinc, a.data_base), g2 = regra ? prevSvgRequisitos(regra) : null, g3 = prevSvgComparativo(c);
   const quadro = (svg, id, tit) => svg ? `<div style="flex:1 1 420px;min-width:0"><div class="sub" style="margin-bottom:4px">${tit}</div>
