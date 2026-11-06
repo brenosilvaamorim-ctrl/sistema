@@ -4373,9 +4373,9 @@ async function telaCaso(id){
 
   <div class="card"><h2>Contrato e honorários</h2>
     <p class="nota">Anexe o contrato assinado. O sistema lê as cláusulas de honorário e mostra o que entendeu,
-      rubrica por rubrica, com a cláusula de onde tirou cada uma. Depois da sua conferência, entrada, parcelas
-      e despesas vão para o <a class="lnk" href="#/financeiro">Financeiro</a> já amarradas a este caso.
-      O êxito não vira lançamento agora: fica registrado e espera o caso ser ganho, quando o proveito é conhecido.</p>
+      rubrica por rubrica, com a cláusula de onde tirou cada uma. Cada rubrica tem o seu botão de lançar no
+      <a class="lnk" href="#/financeiro">Financeiro</a>, e sai quando for devida: a entrada agora, a condicional
+      quando o fato ocorrer, o êxito quando a posse ou o proveito chegar. O lançamento nasce amarrado a este caso.</p>
     <div id="honcard"></div></div>
 
   <div class="card"><h2>Documentos do cliente</h2>
@@ -5439,9 +5439,10 @@ Não existe OCR separado: as páginas são vistas como imagem, então **PDF de t
 
 **Contrato e honorários.** Anexe o contrato assinado e o sistema lê as cláusulas de honorário, devolvendo uma **rubrica por obrigação** — entrada, parcelas, êxito, despesas —, cada uma com a cláusula de onde foi tirada. O desenho muda por área e o leitor não tem campo fixo: o que estiver escrito vira rubrica.
 
-- **Nada é lançado sozinho.** Você confere valor, número de parcelas e primeiro vencimento, desmarca o que não quiser, e só então manda para o Financeiro. O lançamento nasce ligado ao caso e ao cliente.
+- **Nada é lançado sozinho, e cada rubrica tem o seu botão.** Você confere valor, número de parcelas e primeiro vencimento na linha e lança aquela rubrica. O lançamento nasce ligado ao caso, ao cliente e ao contrato, e a rubrica fica marcada com a data em que saiu — não sai duas vezes.
+- **Cada rubrica sai quando se torna devida.** A entrada sai na assinatura. A condicional ("em caso de ajuizamento") espera o fato e sai no dia em que ele ocorre. O êxito espera a posse ou o proveito: acerte o valor e o 1º vencimento na linha e lance por ali.
 - **Parcelamento vira uma linha por mês**, a partir do primeiro vencimento, como no lançamento manual.
-- **Êxito não entra no "a receber".** Percentual sobre proveito econômico não tem valor até o caso ser ganho; fica registrado no cartão, à vista, e você lança pelo Financeiro quando souber o valor. O mesmo vale para rubrica condicional ("em caso de ajuizamento").
+- **Rubrica sem quantia certa aparece como "sem valor".** Percentual sobre proveito econômico não vira lançamento enquanto o valor não for apurado; fica registrado à vista no cartão.
 - **Confira sempre a ressalva da leitura.** Contrato escaneado torto ou com a cláusula cortada sai incompleto — o aviso aparece em destaque.
 - **Trocar** remove o contrato e a leitura; o que já foi lançado continua no Financeiro.
 
@@ -9257,40 +9258,47 @@ function pintarAssinaturas(){
    O contrato assinado entra aqui e vira dinheiro previsto. A leitura é feita pela
    função ler-documento no modo 'contrato' e NADA é lançado sozinho: o que a IA
    entendeu aparece rubrica por rubrica, com a cláusula de origem, para conferência.
-   Êxito e rubrica condicional ficam registrados sem lançamento — o valor ainda não
-   existe —, e só entram no financeiro quando o caso é ganho e o proveito é conhecido. */
+   Cada rubrica é lançada por si, no dia em que se torna devida — a entrada na
+   assinatura, a condicional quando o fato ocorre, o êxito quando o proveito é
+   conhecido — e guarda em lancada_em a data em que saiu, para não sair de novo. */
 let CASOHON = null;
 const ESPECIE_ROT = { entrada:'Entrada', parcela:'Parcela', exito:'Êxito', despesa:'Despesa', outro:'Outro' };
 
-function honTotalPrevisto(){
-  return (CASOHON?.rubricas || []).filter(r => r.lancar)
-    .reduce((t, r) => t + Number(r.valor || 0) * Math.max(Number(r.parcelas) || 1, 1), 0);
+/* O "valor" da rubrica é sempre o de CADA parcela, nunca o total do contrato. */
+function honTotalRubrica(r){
+  return Number(r.valor || 0) * Math.max(Number(r.parcelas) || 1, 1);
 }
+function honSoma(lista){ return (lista || []).reduce((t, r) => t + honTotalRubrica(r), 0); }
 function honLinha(r, i){
-  const lancado = !!CASOHON.lancado_em;
+  const lancada = !!r.lancada_em;
   const quanto = r.valor != null
     ? (Number(r.parcelas) > 1 ? `${r.parcelas} x ${rs(r.valor)}` : rs(r.valor))
     : (r.percentual != null ? `${String(r.percentual).replace('.', ',')}%${r.base ? ' sobre ' + esc(r.base) : ''}` : '—');
-  /* Êxito e condicional não têm caixa de marcar: não há valor a lançar hoje. */
-  const podeLancar = r.especie !== 'exito' && !r.condicao && r.valor != null;
-  return `<tr${r.lancar ? '' : ' style="opacity:.62"'}>
+  /* Lançar é por rubrica e a qualquer tempo: a entrada sai hoje, a condicional sai
+     quando o fato ocorre, o êxito quando a posse ou o proveito chega. O que o leitor
+     marcou em "lancar" vira só o destaque do botão — não tranca mais nada, porque
+     foi assim que a entrada da fase judicial ficou sem ter por onde ser lançada. */
+  const temValor = r.valor != null;
+  const editavel = !lancada && temValor;
+  return `<tr${lancada || r.lancar ? '' : ' style="opacity:.62"'}>
     <td><b>${esc(r.nome)}</b><span class="sub">${esc(ESPECIE_ROT[r.especie] || r.especie)}${r.trecho ? ' · ' + esc(r.trecho) : ''}</span>
       ${/* a condição às vezes já vem começando por "devida/devido": tira, para não sair "devida devida" */
         r.condicao ? `<span class="sub" style="color:var(--i2)">devida ${esc(r.condicao.replace(/^devid[ao]s?\s+/i, ''))}</span>` : ''}</td>
     <td class="proc">${quanto}</td>
-    <td>${podeLancar && !lancado
+    <td>${editavel
       ? `<input type="number" min="1" max="120" value="${Number(r.parcelas) || 1}" style="width:62px;font-size:12px"
            onchange="honCampo(${i},'parcelas',this.value)">`
       : (Number(r.parcelas) > 1 ? r.parcelas : '—')}</td>
-    <td>${podeLancar && !lancado
+    <td>${editavel
       ? `<input type="date" value="${r.primeiro_vencimento || ''}" style="font-size:12px;width:140px"
            onchange="honCampo(${i},'primeiro_vencimento',this.value)">`
       : (r.primeiro_vencimento ? br(r.primeiro_vencimento) : '—')}</td>
-    <td style="text-align:center">${lancado
-      ? (r.lancar ? '<span class="pill good">lançada</span>' : '<span class="sub" style="display:inline">—</span>')
-      : (podeLancar
-        ? `<input type="checkbox" ${r.lancar ? 'checked' : ''} onchange="honCampo(${i},'lancar',this.checked)">`
-        : '<span class="sub" style="display:inline" title="sem valor certo: não há o que lançar hoje">aguarda</span>')}</td>
+    <td style="text-align:center">${lancada
+      ? `<span class="pill good" title="já está no Financeiro">lançada ${br(String(r.lancada_em).slice(0, 10))}</span>`
+      : (temValor
+        ? `<button class="btn${r.lancar ? ' ok' : ''}" style="font-size:11.4px;padding:4px 8px"
+             onclick="lancarRubrica(${i})">Lançar</button>`
+        : '<span class="sub" style="display:inline" title="rubrica sem quantia certa: percentual só vira lançamento quando o valor for apurado">sem valor</span>')}</td>
   </tr>`;
 }
 async function pintarHonorario(){
@@ -9306,9 +9314,10 @@ async function pintarHonorario(){
         a cláusula de honorário cortada sai com leitura incompleta — confira sempre antes de lançar.</p></div>`;
     return;
   }
-  const h = CASOHON, rub = h.rubricas || [], lancado = !!h.lancado_em;
-  const marcadas = rub.filter(r => r.lancar).length;
-  const exito = rub.filter(r => r.especie === 'exito');
+  const h = CASOHON, rub = h.rubricas || [];
+  const lancadas = rub.filter(r => r.lancada_em);
+  const porLancar = rub.filter(r => !r.lancada_em && r.valor != null);
+  const exito = rub.filter(r => r.especie === 'exito' && !r.lancada_em);
   alvo.innerHTML = `
     <div style="padding:0 18px 10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
       ${h.arquivo_path
@@ -9320,21 +9329,23 @@ async function pintarHonorario(){
     ${h.leitura_obs ? `<div class="aviso" style="margin:0 18px 10px"><b>A leitura deixou dúvida:</b> ${esc(h.leitura_obs)}</div>` : ''}
     ${!rub.length ? '<div class="vazio">A leitura não encontrou cláusula de honorário neste arquivo.</div>' : `
     <table><thead><tr><th>Rubrica</th><th>Quanto</th><th style="width:80px">Parcelas</th>
-      <th style="width:160px">1º vencimento</th><th style="width:90px">Lançar</th></tr></thead>
+      <th style="width:160px">1º vencimento</th><th style="width:130px">Lançar</th></tr></thead>
       <tbody>${rub.map(honLinha).join('')}</tbody></table>
-    <div style="padding:10px 18px 18px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-      ${lancado
-        ? `<span class="pill good">lançado no Financeiro em ${br(String(h.lancado_em).slice(0,10))}</span>
-           <a class="lnk" href="#/financeiro">ver no Financeiro</a>`
-        : `<button class="btn ok" onclick="lancarHonorario()" ${marcadas ? '' : 'disabled'}>
-             Lançar ${marcadas} rubrica(s) no Financeiro — ${rs(honTotalPrevisto())}</button>
-           <span class="sub" style="margin:0">confira os valores antes; depois de lançado, a correção é no Financeiro</span>`}
+    <div style="padding:10px 18px 18px">
+      ${lancadas.length
+        ? `<span class="pill good">${lancadas.length} rubrica(s) no Financeiro — ${rs(honSoma(lancadas))}</span>
+           <a class="lnk" href="#/financeiro" style="margin-left:10px">ver no Financeiro</a>` : ''}
+      <p class="nota" style="margin:${lancadas.length ? '10px' : '0'} 0 0;padding:0">${porLancar.length
+        ? `Falta lançar ${porLancar.length} rubrica(s). Cada uma sai quando for devida: a condicional quando o fato
+           ocorrer, o êxito quando a posse ou o proveito chegar. Confira parcelas e primeiro vencimento na linha
+           antes de lançar — depois, a correção é no Financeiro.`
+        : 'Todas as rubricas com quantia certa já foram lançadas.'}</p>
     </div>`}
     ${exito.length ? `<div style="padding:0 18px 18px"><p class="nota" style="margin:0;padding:0">
       <b>Êxito registrado:</b> ${exito.map(r => esc(r.nome) + ' — ' +
         (r.percentual != null ? String(r.percentual).replace('.', ',') + '%' + (r.base ? ' sobre ' + esc(r.base) : '') : rs(r.valor))).join(' · ')}.
-      Não entra no previsto porque o proveito econômico ainda não existe. Quando o caso for ganho,
-      lance pelo Financeiro com o valor apurado.</p></div>` : ''}`;
+      Não entra no previsto porque o proveito econômico ainda não existe. Quando o caso for ganho, acerte o
+      valor e o 1º vencimento na linha e lance por ali — o lançamento nasce ligado a este contrato.</p></div>` : ''}`;
 }
 window.honCampo = (i, campo, v) => {
   const r = CASOHON?.rubricas?.[i]; if (!r) return;
@@ -9355,6 +9366,14 @@ window.lerContrato = async (input) => {
   const st = document.getElementById('hon-st');
   const diz = (t, cor) => { if (st) { st.style.color = cor || 'var(--i3)'; st.textContent = t; } };
   if (f.size > 6 * 1024 * 1024) return diz('arquivo acima de 6 MB — mande só as páginas das cláusulas de honorário.', 'var(--crit)');
+  /* A releitura troca as rubricas inteiras, e com elas a marca de quem já foi lançada.
+     O dinheiro no Financeiro continua lá, mas o cartão passaria a oferecer o lançamento
+     de novo: avisa antes, em vez de deixar duplicar em silêncio. */
+  const jaLancadas = (CASOHON?.rubricas || []).filter(r => r.lancada_em).length;
+  if (jaLancadas && !confirm(`Este contrato já teve ${jaLancadas} rubrica(s) lançada(s) no Financeiro.\n\n`
+    + 'Reler substitui as rubricas e perde essa marca: o que já foi lançado continua no Financeiro, '
+    + 'mas o cartão vai mostrar essas rubricas como por lançar. Confira no Financeiro antes de lançar de novo.'
+    + '\n\nSeguir mesmo assim?')) { input.value = ''; return; }
   diz('lendo o contrato…');
   try {
     const { data: { session } } = await sb.auth.getSession();
@@ -9400,36 +9419,57 @@ window.tirarContrato = async () => {
   if (error) return alert('Não foi possível: ' + error.message);
   CASOHON = null; pintarHonorario();
 };
-window.lancarHonorario = async () => {
-  if (!CASOHON || CASOHON.lancado_em) return;
-  const rub = (CASOHON.rubricas || []).filter(r => r.lancar && r.valor != null);
-  if (!rub.length) return;
+/* Uma rubrica de cada vez, quando ela se tornar devida. A entrada sai na assinatura;
+   a condicional, no dia em que o fato ocorre; o êxito, quando o proveito é conhecido.
+   Cada rubrica guarda a própria data de lançamento, para não sair duas vezes. */
+let HON_LANCANDO = false;
+window.lancarRubrica = async (i) => {
+  const r = CASOHON?.rubricas?.[i];
+  if (!r || r.lancada_em || r.valor == null || HON_LANCANDO) return;
   const st = document.getElementById('hon-st');
-  if (!confirm(`Lançar ${rub.length} rubrica(s) no Financeiro, somando ${rs(honTotalPrevisto())}?\n\n`
-    + 'Entram como "a receber", ligadas a este caso. A baixa continua manual, quando o dinheiro entrar.')) return;
+  const n = Math.max(Number(r.parcelas) || 1, 1);
+  const semData = !r.primeiro_vencimento;
+  const primeiro = r.primeiro_vencimento || hoje();
+  const aviso = r.condicao
+    ? `\n\nATENÇÃO — rubrica condicional: devida ${r.condicao.replace(/^devid[ao]s?\s+/i, '')}.\nSó lance se isso já aconteceu.`
+    : (r.especie === 'exito'
+      ? '\n\nATENÇÃO — honorário de êxito: só lance depois de conhecido o proveito.' : '');
+  if (!confirm(`Lançar "${r.nome}" no Financeiro?\n\n`
+    + `${n} parcela(s) de ${rs(r.valor)}, a primeira em ${br(primeiro)}${semData ? ' (o contrato não trouxe data; é a de hoje)' : ''}`
+    + ` — ${rs(honTotalRubrica(r))}.\n\nEntra como "a receber", ligada a este caso. A baixa continua manual.${aviso}`)) return;
+  HON_LANCANDO = true;
   if (st) { st.style.color = 'var(--i3)'; st.textContent = 'lançando…'; }
-  const esc1 = await escId();
-  const linhas = [];
-  for (const r of rub) {
-    const n = Math.max(Number(r.parcelas) || 1, 1);
+  try {
+    const esc1 = await escId();
     const grupo = n > 1 ? crypto.randomUUID() : null;
-    const primeiro = r.primeiro_vencimento || hoje();
-    for (let i = 0; i < n; i++) linhas.push({
+    const linhas = [];
+    for (let k = 0; k < n; k++) linhas.push({
       escritorio_id: esc1, tipo: 'entrada',
       descricao: r.nome + ' — ' + (CASO.titulo || 'caso'),
       caso_id: CASO.id, cliente_id: CASO.cliente_id || null, honorario_id: CASOHON.id,
-      valor: Number(r.valor), vencimento: finMaisMeses(primeiro, i), situacao: 'previsto',
-      parcela: n > 1 ? i + 1 : null, total_parcelas: n > 1 ? n : null, grupo_parcelas: grupo,
+      valor: Number(r.valor), vencimento: finMaisMeses(primeiro, k), situacao: 'previsto',
+      parcela: n > 1 ? k + 1 : null, total_parcelas: n > 1 ? n : null, grupo_parcelas: grupo,
       observacoes: r.trecho ? 'contrato, ' + r.trecho : null,
     });
-  }
-  const { error } = await sb.from('lancamento').insert(linhas);
-  if (error) { if (st) { st.style.color = 'var(--crit)'; st.textContent = 'erro: ' + error.message; } return; }
-  const agora = new Date().toISOString();
-  await sb.from('honorario').update({ lancado_em: agora, atualizado_em: agora }).eq('id', CASOHON.id);
-  CASOHON.lancado_em = agora;
-  if (st) { st.style.color = 'var(--good)'; st.textContent = linhas.length + ' lançamento(s) criados'; }
-  pintarHonorario();
+    const { error } = await sb.from('lancamento').insert(linhas);
+    if (error) { if (st) { st.style.color = 'var(--crit)'; st.textContent = 'erro: ' + error.message; } return; }
+    const agora = new Date().toISOString();
+    r.lancada_em = agora; r.primeiro_vencimento = primeiro;
+    /* lancado_em na linha guarda só quando saiu o PRIMEIRO lançamento deste contrato;
+       quem decide se uma rubrica já saiu é o lancada_em dela. */
+    const campos = { rubricas: CASOHON.rubricas, atualizado_em: agora };
+    if (!CASOHON.lancado_em) campos.lancado_em = agora;
+    const up = await sb.from('honorario').update(campos).eq('id', CASOHON.id);
+    if (up.error) {
+      /* Os lançamentos já existem: avisar alto, senão a rubrica aparece por lançar e sai duas vezes. */
+      if (st) { st.style.color = 'var(--crit)';
+        st.textContent = `os ${linhas.length} lançamentos foram criados, mas não consegui marcar a rubrica (${up.error.message}) — NÃO lance de novo; recarregue e confira no Financeiro`; }
+      return;
+    }
+    if (!CASOHON.lancado_em) CASOHON.lancado_em = agora;
+    if (st) { st.style.color = 'var(--good)'; st.textContent = linhas.length + ' lançamento(s) criados'; }
+    pintarHonorario();
+  } finally { HON_LANCANDO = false; }
 };
 
 /* --------------------------------------------- tempo de trâmite e paralisação */
