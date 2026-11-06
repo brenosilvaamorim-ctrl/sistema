@@ -10161,7 +10161,7 @@ const CNIS_IND = {
   'AVRC-DEF': ['Acerto de vínculo ou remuneração já deferido pelo INSS.', 'Conferir se o acerto ficou correto.'],
 };
 /* Indicadores que só informam (o período já conta): não viram pendência. */
-const CNIS_IND_INFO = /^(AEXT|AVRC|AVRC-DEF)/;
+const CNIS_IND_INFO = /^(AEXT|AVRC|ACNISVR$|PSE-POS$)/;
 
 const CNIS_TIPOS = [
   [/empregado\s+dom[eé]stico|dom[eé]stico/i, 'domestico'],
@@ -10178,7 +10178,7 @@ const PREV_TIPO_NOME = { empregado:'Empregado', domestico:'Doméstico', avulso:'
 
 const cnisRe = {
   cab:   /^(\d{1,3})\s+(\d{3}\.?\d{5}\.?\d{2}-?\d)\b\s*(.*)$/,
-  doc:   /\b\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}\b|\b\d{2}\.\d{3}\.\d{5}\/\d{2}\b|\b\d{3}\.\d{3}\.\d{3}-\d{2}\b/,
+  doc:   /\b\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}\b|\b\d{2}\.\d{3}\.\d{5}\/\d{2}\b|\b\d{3}\.\d{3}\.\d{3}-\d{2}\b|\b\d{2}\.\d{3}\.\d{3}\b(?![\/.\-\d])/,
   data:  /\b\d{2}\/\d{2}\/\d{4}\b/g,
   comp:  /^(0[1-9]|1[0-2])\/(\d{4})$/,
   compG: /(?:^|\s)((?:0[1-9]|1[0-2])\/\d{4})(?=\s|$)/g,
@@ -10201,10 +10201,22 @@ function cnisEhInd(t, legenda){
 
 /* Lê a legenda de indicadores que o extrato traz no fim ("PEXT - Pendência…"). */
 function cnisLegenda(L){
-  const leg = {};
+  const leg = {}, ehCod = c => cnisRe.ind.test(c) || /^[A-Z]{4,}$/.test(c);
+  let naLegenda = false;
   for (const l of L){
     const m = l.match(/^([A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*)\s+[-–]\s+(.{6,})$/);
-    if (m && /[a-zà-ú]/.test(m[2]) && (cnisRe.ind.test(m[1]) || /^[A-Z]{4,}$/.test(m[1]))) leg[m[1]] = m[2].trim();
+    if (m && /[a-zà-ú]/.test(m[2]) && ehCod(m[1])) { leg[m[1]] = m[2].trim(); continue; }
+    if (/^legenda/i.test(l)) { naLegenda = true; continue; }
+    /* formato em tabela: "CÓDIGO Descrição CÓDIGO Descrição"; linhas de continuação ficam de fora */
+    if (!naLegenda) continue;
+    const cods = [...l.matchAll(/(?:^|\s)([A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*)\s+(?=[A-ZÀ-Ú]?[a-zà-ú])/g)].filter(x => ehCod(x[1]));
+    if (!cods.length || cods[0].index !== 0) continue;
+    cods.forEach((x, i) => {
+      const ini = x.index + x[0].length, fim = cods[i + 1] ? cods[i + 1].index : l.length;
+      const d = l.slice(ini, fim).trim().replace(/[,;]$/, '');
+      /* descrição cortada pela quebra de linha (termina em "de", "dos", "sem"…): fica a do sistema */
+      if (d.length >= 6 && !leg[x[1]] && !/\s(de|do|dos|da|das|no|na|nos|em|com|sem|ou|e|a|o|que|outro|recolhida)$/i.test(d)) leg[x[1]] = d;
+    });
   }
   return leg;
 }
@@ -10220,26 +10232,39 @@ function cnisLer(linhas){
   r.filiado.nome = pega(/(?:^|\s)Nome:\s*([A-ZÀ-Ú][A-ZÀ-Ú'´`.\- ]+?)(?=\s+(?:Data de nascimento|Nome da m[ãa]e|CPF|NIT)\b|\n|$)/);
   r.filiado.nascimento = cnisIso(pega(/nascimento:?\s*(\d{2}\/\d{2}\/\d{4})/i));
   r.filiado.mae  = pega(/Nome da m[ãa]e:?\s*([A-ZÀ-Ú][A-ZÀ-Ú'´`.\- ]+?)(?=\s+(?:Data|CPF|NIT)\b|\n|$)/i);
-  r.filiado.emitido = cnisIso(pega(/(?:emiss[ãa]o|emitido em|gerado em)[^0-9\n]{0,25}(\d{2}\/\d{2}\/\d{4})/i));
+  r.filiado.emitido = cnisIso(pega(/(?:emiss[ãa]o|emitido em|gerado em)[^0-9\n]{0,25}(\d{2}\/\d{2}\/\d{4})/i)
+    || pega(/^(\d{2}\/\d{2}\/\d{4})\s+\d{2}:\d{2}(?::\d{2})?$/m));
 
   /* Cada vínculo começa numa linha "Seq NIT …"; o que vem até o próximo é dele. */
+  /* Em alguns extratos o texto de uma célula longa ("Empregado ou Agente / Público",
+     "91 - AUXILIO DOENCA POR ACIDENTE DO / TRABALHO") quebra em linhas acima e abaixo da
+     linha do vínculo: o que fica entre o cabeçalho "Seq. NIT …" e ela vai em "antes";
+     a primeira linha depois, se for só texto, em "depois". */
   const blocos = [];
+  let antes = [];
   for (const l of L){
     const m = l.match(cnisRe.cab);
-    if (m) { blocos.push({ seq: Number(m[1]), nit: m[2], cab: m[3] || '', corpo: [] }); continue; }
-    if (/^legenda/i.test(l)) { blocos.push({ fim: true }); continue; }
+    if (m) {
+      const b = { seq: Number(m[1]), nit: m[2], cab: m[3] || '', antes, depois: '', corpo: [] };
+      blocos.push(b); antes = []; continue;
+    }
+    if (/^seq\.?\s/i.test(l)) { antes = []; } else if (antes) antes.push(l);
+    if (/^legenda|^valores consolidados/i.test(l)) { blocos.push({ fim: true }); antes = null; continue; }
     const b = blocos[blocos.length - 1];
-    if (b && !b.fim) b.corpo.push(l);
+    if (b && !b.fim){
+      if (!b.corpo.length && !b.depois && /^[A-Za-zÀ-ú ]+$/.test(l) && !/^(indicadores|remunera|contribui|recolhimento)/i.test(l) && !cnisRe.rodape.test(l)) { b.depois = l; continue; }
+      b.corpo.push(l);
+    }
   }
 
   for (const b of blocos.filter(x => !x.fim)){
-    const h = b.cab;
+    const h = b.cab, quebra = [...(b.antes || []).slice(-2), b.depois].filter(Boolean).join(' ');
     const v = { seq: b.seq, nit: b.nit, tipo: 'outro', tipo_cnis: null, empregador_doc: null, empregador_nome: null,
                 inicio: null, fim: null, ultima_remun: null, indicadores: [], beneficio_nb: null, beneficio_especie: null,
                 remuneracoes: [] };
 
     /* tipo: no cabeçalho ou nas primeiras linhas do bloco ("Tipo Filiado no Vínculo: …") */
-    const ondeTipo = [h, ...b.corpo.slice(0, 3)].join(' ');
+    const ondeTipo = [h, quebra, ...b.corpo.slice(0, 3)].join(' ');
     for (const [re, t] of CNIS_TIPOS){ const m = ondeTipo.match(re); if (m) { v.tipo = t; v.tipo_cnis = m[0]; break; } }
 
     const doc = h.match(cnisRe.doc);
@@ -10256,26 +10281,37 @@ function cnisLer(linhas){
       v.fim = comps[1] ? cnisFimMes(cnisCompIso(comps[1])) : null;
     }
 
-    const nb = h.match(cnisRe.nb);
+    const nb = h.match(cnisRe.nb) || (/benef[ií]cio/i.test(h) && h.match(/^\d{10}\b/));
     if (v.tipo === 'beneficio' || nb){
       v.tipo = 'beneficio';
       v.beneficio_nb = nb ? nb[0] : null;
-      const esp = h.match(/\b(\d{2})\s*-\s*([A-ZÀ-Ú][A-ZÀ-Ú /]+?)(?=\s+\d{2}\/|\s+[A-Z]{3,}-|\s*$)/);
+      const esp = h.match(/\b(\d{2})\s*-\s*([A-ZÀ-Ú][A-ZÀ-Ú /]+?)(?=\s+\d{2}\/|\s+\d{1,2}\s*-\s|\s+[A-Z]{3,}-|\s*$)/)
+        || quebra.match(/^(\d{2})\s*-\s*([A-ZÀ-Ú][A-ZÀ-Ú /]+)$/);
       v.beneficio_especie = esp ? `${esp[1]} - ${esp[2].trim()}` : null;
+      /* benefício indeferido: nunca existiu, não entra */
+      if (!datas.length && /\bINDEFERIDO\b/i.test(h)) {
+        r.avisos.push(`Benefício indeferido${v.beneficio_nb ? ' (NB ' + v.beneficio_nb + ')' : ''} no extrato: não entrou como vínculo.`);
+        continue;
+      }
       v.empregador_nome = 'Benefício' + (v.beneficio_especie ? ' ' + v.beneficio_especie : '');
     } else {
       /* nome do empregador: o que está entre o documento e o tipo/primeira data */
       let resto = doc ? h.slice(h.indexOf(doc[0]) + doc[0].length) : h;
       const cortes = [resto.search(/\b\d{2}\/\d{2}\/\d{4}\b/), resto.search(/(?:^|\s)\d{2}\/\d{4}(?=\s|$)/)];
-      if (v.tipo_cnis){ const i = resto.indexOf(v.tipo_cnis); if (i >= 0) cortes.push(i); }
+      if (v.tipo_cnis){
+        const ms = [...resto.matchAll(new RegExp(v.tipo_cnis.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'))];
+        const i = ms.length ? ms[ms.length - 1].index : -1; if (i > 0) cortes.push(i);
+      }
       const corte = Math.min(...cortes.filter(i => i >= 0), resto.length);
-      v.empregador_nome = resto.slice(0, corte).replace(/\s+/g, ' ').trim() || null;
+      /* o número no fim é a matrícula do trabalhador, não parte do nome */
+      v.empregador_nome = resto.slice(0, corte).replace(/\s+/g, ' ').trim().replace(/\s+\d{3,}$/, '') || null;
       if (!v.empregador_nome && v.tipo === 'individual') v.empregador_nome = 'Recolhimentos';
       if (!v.empregador_nome && v.tipo === 'facultativo') v.empregador_nome = 'Recolhimentos como facultativo';
     }
 
     /* indicadores do vínculo: os códigos que aparecem no cabeçalho */
-    v.indicadores = [...new Set(h.split(/[\s,;]+/).filter(t => cnisEhInd(t, r.legenda)))];
+    const linhaInd = b.corpo.filter(l => /^indicadores:/i.test(l)).map(l => l.replace(/^indicadores:/i, '')).join(' ');
+    v.indicadores = [...new Set((h + ' ' + linhaInd).split(/[\s,;]+/).filter(t => cnisEhInd(t, r.legenda)))];
 
     /* remunerações e recolhimentos: cada competência (mm/aaaa) abre um registro */
     let cur = null;
@@ -11828,10 +11864,40 @@ async function pdfLinhas(buf){
   const doc = await lib.getDocument({ data: buf }).promise;
   const linhas = [];
   for (let p = 1; p <= doc.numPages; p++){
-    const tc = await (await doc.getPage(p)).getTextContent();
+    /* Posição na página como ela aparece na tela: alguns CNIS vêm com a página girada
+       (Rotate 90), e sem isso as colunas viram linhas. */
+    const pg = await doc.getPage(p), vp = pg.getViewport({ scale: 1 });
+    const tc = await pg.getTextContent();
     const its = tc.items.filter(i => i.str && i.str.trim())
-      .map(i => ({ s: i.str, x: i.transform[4], y: i.transform[5], w: i.width || 0 }))
-      .sort((a, b) => b.y - a.y || a.x - b.x);
+      .map(i => { const t = lib.Util.transform(vp.transform, i.transform); return { s: i.str, x: t[4], y: t[5], w: i.width || 0, h: Math.hypot(t[2], t[3]), f: i.fontName }; })
+      .sort((a, b) => a.y - b.y || a.x - b.x);
+    /* Célula com texto que não coube na largura: o resto desce para a linha de baixo, na
+       mesma coluna ("Empregado ou Agente" / "Público"; "IREM-" / "VINC-PROC-TRAB").
+       Junta os pedaços no primeiro, para que fiquem na linha do vínculo ou da competência. */
+    const usado = new Set();
+    const continua = (a, b) => {
+      const dy = b.y - a.y;
+      if (dy < 6.5 || dy > 11.5 || Math.abs(a.h - b.h) > 0.6 || a.f !== b.f) return false;  /* fonte diferente: o título da coluna não emenda no dado */
+      if (b.x >= a.x + a.w + 1 || b.x + b.w <= a.x - 1) return false;
+      const ta = a.s.trim(), tb = b.s.trim();
+      return /[-,]$/.test(ta) || /\s(de|do|dos|da|das|no|na|em|com|sem|ou|e|que)$/i.test(ta)
+        /* palavra curta centrada embaixo da célula ("Público", "TRABALHO") */
+        || (!/\d/.test(tb) && tb.split(/\s+/).length <= 3 && Math.abs((a.x + a.w / 2) - (b.x + b.w / 2)) < Math.max(4, a.w * 0.15));
+    };
+    const cel = [];
+    its.forEach((a, ia) => {
+      if (usado.has(ia)) return;
+      const m = { ...a }; let cauda = a;
+      for (let ib = ia + 1; ib < its.length && its[ib].y - cauda.y <= 11.5; ib++){
+        const b = its[ib];
+        if (usado.has(ib) || !continua({ ...cauda, s: cauda === a ? m.s : cauda.s }, b)) continue;
+        m.s = /-$/.test(m.s.trim()) ? m.s.trim() + b.s.trim() : m.s.trim() + ' ' + b.s.trim();
+        const fim = Math.max(m.x + m.w, b.x + b.w); m.x = Math.min(m.x, b.x); m.w = fim - m.x;
+        usado.add(ib); cauda = b;
+      }
+      cel.push(m);
+    });
+    its.length = 0; its.push(...cel);
     let grupo = [], yref = null;
     const fecha = () => {
       if (!grupo.length) return;
@@ -11840,7 +11906,7 @@ async function pdfLinhas(buf){
       for (const i of grupo){ if (t && (fimx === null || i.x - fimx > 0.8)) t += ' '; t += i.s; fimx = i.x + i.w; }
       linhas.push(t); grupo = [];
     };
-    for (const i of its){ if (yref === null || Math.abs(i.y - yref) > 2.5) { fecha(); yref = i.y; } grupo.push(i); }
+    for (const i of its){ if (yref === null || Math.abs(i.y - yref) > 3.5) { fecha(); yref = i.y; } grupo.push(i); }
     fecha();
   }
   return linhas;
