@@ -86,3 +86,30 @@ cálculo sem a decisão do titular na tela. Não usa chave nem IA: só fontes p�
 
 **Se uma fonte falhar** (o site mudou ou ficou fora do ar), o registro mostra qual. As outras
 seguem normalmente, e a que falhou busca desde a última vez em que deu certo na rodada seguinte.
+
+## Conector do Claude (função `mcp-escritorio`)
+
+Deixa o Claude (claude.ai e Claude Desktop) consultar o sistema numa conversa: buscar
+clientes e casos, ver o caso inteiro, a análise previdenciária, as remunerações do CNIS,
+os prazos e a agenda, a base de normas e abrir os PDFs guardados. **Só lê**: nenhuma
+ferramenta grava. Cada consulta fica no histórico (`historico`, entidade `mcp`).
+O uso sai da assinatura do Claude, não do crédito da API.
+
+**Instalar:**
+
+1. **Segredo** — gere um token longo no Terminal (ele vai direto para a área de
+   transferência, sem aparecer na tela): `openssl rand -hex 32 | pbcopy`. Em Supabase →
+   Edge Functions → **Secrets**, crie `MCP_TOKEN` e cole. Guarde o token num cofre de
+   senhas: ele é a chave do conector.
+2. **Função** — Edge Functions → Deploy a new function → Via Editor, nome
+   `mcp-escritorio`, colar `mcp-escritorio.ts`. Em Settings da função, **desligar
+   "Verify JWT"** (quem confere o acesso é o próprio código, pelo `MCP_TOKEN`).
+3. **Claude** — claude.ai → Configurações → Conectores → Adicionar conector
+   personalizado. URL: `https://wrdfyudabvvpvfcrvvzd.supabase.co/functions/v1/mcp-escritorio`.
+   Autenticação: **sem login**. Em cabeçalhos da requisição: `Authorization` com o valor
+   `Bearer <o token>`.
+
+**Cortar o acesso:** troque ou apague o segredo `MCP_TOKEN`. O conector para na hora.
+
+**Privacidade:** com dados de clientes, deixe desligada no Claude a opção de usar as
+conversas para melhorar os modelos (Configurações → Privacidade).
