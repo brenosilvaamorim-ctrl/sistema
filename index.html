@@ -9275,7 +9275,8 @@ function honLinha(r, i){
   const podeLancar = r.especie !== 'exito' && !r.condicao && r.valor != null;
   return `<tr${r.lancar ? '' : ' style="opacity:.62"'}>
     <td><b>${esc(r.nome)}</b><span class="sub">${esc(ESPECIE_ROT[r.especie] || r.especie)}${r.trecho ? ' · ' + esc(r.trecho) : ''}</span>
-      ${r.condicao ? `<span class="sub" style="color:var(--i2)">devida ${esc(r.condicao)}</span>` : ''}</td>
+      ${/* a condição às vezes já vem começando por "devida/devido": tira, para não sair "devida devida" */
+        r.condicao ? `<span class="sub" style="color:var(--i2)">devida ${esc(r.condicao.replace(/^devid[ao]s?\s+/i, ''))}</span>` : ''}</td>
     <td class="proc">${quanto}</td>
     <td>${podeLancar && !lancado
       ? `<input type="number" min="1" max="120" value="${Number(r.parcelas) || 1}" style="width:62px;font-size:12px"
