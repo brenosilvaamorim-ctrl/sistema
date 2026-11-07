@@ -14,6 +14,34 @@ Supabase → Edge Functions → **Deploy a new function → Via Editor**, com o 
 colando o conteúdo do arquivo. Ou, pela linha de comando, criar
 `supabase/functions/<nome>/index.ts` com o conteúdo e rodar `supabase functions deploy <nome>`.
 
+## Quem pode chamar cada função
+
+Toda função que responde com a **chave de serviço** (que ignora a RLS) confere quem está
+pedindo, por `doEscritorio(req)`. Passam três:
+
+1. a própria chave de serviço no `Authorization`;
+2. um login do escritório — alguém com linha ativa em `usuario`;
+3. a **chave dos robôs**, em `?chave=` ou no cabeçalho `x-chave-robo`: é o
+   `escritorio.robo_token`, criado pelo banco em `banco/46_chave_dos_robos.sql`. As tarefas
+   do `pg_cron` a leem no momento da chamada. O valor não está em lugar nenhum fora do banco.
+
+Quem não passa recebe `403 acesso restrito ao escritório`.
+
+Têm conferência própria, e por isso ficaram como estavam: `backup-diario` (token na URL,
+conferido contra `escritorio.backup_token`), `agenda-ics` e `google-sync` (`agenda_token`),
+`google-oauth` (nonce guardado no banco), `whatsapp-bot` (segredo no endereço do webhook,
+comparado em tempo constante), `convidar-membro` (exige perfil titular) e `nota-fiscal`.
+
+`painel` não precisa: é só a casca HTML, e todo dado dela vem com a sessão de quem abriu.
+
+`ler-documento` e `ler-extrato` **não** usam a chave de serviço — rodam com o login de quem
+chamou, então a RLS vale. Aceitam qualquer login válido de propósito, porque a área da casa
+(`familia/`) usa o `ler-extrato`. O que elas expõem a um convidado não é dado, é gasto de
+API; se isso incomodar, o caminho é um teto de gasto na Anthropic, não uma trava aqui.
+
+Para chamar uma função protegida à mão, use a sessão do escritório (o `access_token` do
+login) no `Authorization`. A chave pública da página **não** serve mais para isso.
+
 ## Segredos
 
 Nenhuma chave está escrita no código: todas são lidas de variáveis de ambiente
