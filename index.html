@@ -2515,9 +2515,33 @@ window.salvarViab = async (id) => {
    verdade — o mesmo tipo de registro de uma reunião — já ligado ao lead. */
 let LEADEV = {};
 const rotConsulta = e => br(String(e.inicio).slice(0,10)) + ' às ' + String(e.inicio).slice(11,16);
+/* Como a consulta acontece. Vídeo gera o Meet sozinho (função consulta-meet);
+   presencial já vem com o endereço do escritório; ligação, com o telefone da pessoa. */
+const FORMATOS = [['presencial','Presencial'],['video','Videochamada (Meet)'],['telefone','Ligação']];
+const ROT_FORMATO = { presencial:'presencial', video:'por vídeo', telefone:'por ligação' };
+let ESC_END = null;
+window.trocarFormato = (id) => {
+  const f = document.getElementById('cs-formato-'+id)?.value || 'presencial';
+  const l = LEADS.find(x => x.id === id) || {};
+  const loc = document.getElementById('cs-local-'+id);
+  const sala = document.getElementById('cs-sala-'+id);
+  const aviso = document.getElementById('cs-meet-'+id);
+  if (loc) {
+    loc.style.display = f === 'video' ? 'none' : '';
+    const auto = loc.dataset.auto === '1';
+    if (!loc.value || auto) {
+      loc.value = f === 'presencial' ? (ESC_END || 'Escritório') : (f === 'telefone' ? 'Ligação para ' + (l.telefone || 'a pessoa') : '');
+      loc.dataset.auto = '1';
+    }
+    loc.placeholder = f === 'telefone' ? 'número para a ligação' : 'onde (escritório, endereço)';
+  }
+  if (sala) sala.style.display = 'none';
+  if (aviso) aviso.style.display = f === 'video' ? '' : 'none';
+};
 window.abrirConsulta = (id) => {
   const el = document.getElementById('cs'+id); if (!el) return;
   el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  if (el.style.display === 'block') trocarFormato(id);
 };
 window.agendarConsulta = async (id) => {
   const l = LEADS.find(x => x.id === id); if (!l) return;
@@ -2528,24 +2552,41 @@ window.agendarConsulta = async (id) => {
   const hora = g('hora') || '09:00';
   st.style.color = 'var(--i3)'; st.textContent = 'marcando…';
 
+  const formato = g('formato') || 'presencial';
+  const antiga = LEADEV[id];
   const campos = {
     escritorio_id: await escritorioId(), lead_id: id, tipo: 'reuniao',
     titulo: 'Consulta — ' + l.nome,
-    descricao: ['Consulta de captação.', l.resumo, g('obs')].filter(Boolean).join(' '),
-    inicio: data + 'T' + hora + ':00+00:00',
-    local: g('local') || null, link_sala: g('sala') || null, urgencia: 'normal',
+    descricao: ['Consulta de captação' + (ROT_FORMATO[formato] ? ', ' + ROT_FORMATO[formato] : '') + '.',
+                l.resumo, g('obs')].filter(Boolean).join(' '),
+    inicio: data + 'T' + hora + ':00+00:00', formato,
+    /* por vídeo, o lugar é a sala; a sala que já existia continua valendo na remarcação */
+    local: formato === 'video' ? null : (g('local') || null),
+    link_sala: formato === 'video' ? (antiga?.link_sala || null) : null,
+    urgencia: 'normal',
   };
-  const antiga = LEADEV[id];
-  let error;
+  let error, evId = antiga?.id;
   if (antiga) ({ error } = await sb.from('evento').update(campos).eq('id', antiga.id));
-  else        ({ error } = await sb.from('evento').insert(campos));
+  else {
+    let r; ({ data: r, error } = await sb.from('evento').insert(campos).select('id').single());
+    evId = r?.id;
+  }
   if (error) { st.style.color='var(--crit)'; return st.textContent = 'erro: ' + error.message; }
 
   /* A etapa acompanha o fato: marcou a consulta, o lead está em "Consulta
      marcada". E o retorno passa a ser o dia dela. */
   await sb.from('lead').update({ etapa:'consulta', proximo_contato: data,
     atualizado_em: new Date().toISOString() }).eq('id', id);
-  telaCaptacao();
+
+  /* Por vídeo sem sala: o Google cria o evento já com o Meet, na hora. */
+  let falhaMeet = null;
+  if (formato === 'video' && !campos.link_sala && evId) {
+    st.textContent = 'gerando a sala do Meet…';
+    try { await chamarFuncao('consulta-meet', { evento_id: evId }); }
+    catch (e) { falhaMeet = e.message; }
+  }
+  await telaCaptacao();
+  if (falhaMeet) alert('A consulta foi marcada, mas o Meet não foi gerado: ' + falhaMeet);
 };
 window.desmarcarConsulta = async (id) => {
   const e = LEADEV[id]; if (!e) return;
@@ -2579,7 +2620,13 @@ function cartaoLead(l){
         : ''; })()}
     ${(() => { const e = LEADEV[l.id]; return e
       ? `<div class="pill serie" title="${esc(e.local || e.link_sala || 'sem local informado')}"
-           >consulta ${rotConsulta(e)}</div>` : ''; })()}
+           >consulta ${rotConsulta(e)}${ROT_FORMATO[e.formato] ? ' · ' + ROT_FORMATO[e.formato] : ''}</div>` : ''; })()}
+    ${(() => { const e = LEADEV[l.id];
+      if (!e?.link_sala || !l.telefone) return '';
+      const txt = `Olá, ${nomeProprio((l.nome||'').split(' ')[0])}! Aqui é do escritório Breno S. Amorim Advocacia. ` +
+        `Nossa conversa está marcada para ${rotConsulta(e)}, por videochamada. É só entrar por este link no horário: ${e.link_sala}`;
+      return `<a class="btn" style="font-size:11.4px;padding:4px 8px;text-decoration:none;display:inline-block;margin-top:4px"
+        href="${linkWa(l.telefone, txt)}" target="_blank" rel="noreferrer">Mandar o link do Meet</a>`; })()}
     <div style="margin-top:6px;display:flex;gap:5px;flex-wrap:wrap">
       <button class="btn" style="font-size:11.4px;padding:4px 8px"
         onclick="abrirViab('${l.id}')">Viabilidade</button>
@@ -2600,10 +2647,17 @@ function cartaoLead(l){
         <input type="date" id="cs-data-${l.id}" value="${d.slice(0,10)}" style="font-size:11.4px">
         <input type="time" id="cs-hora-${l.id}" value="${d ? d.slice(11,16) : '09:00'}" style="font-size:11.4px">
       </div>
+      <select id="cs-formato-${l.id}" onchange="trocarFormato('${l.id}')"
+              style="font-size:11.4px;width:100%;margin-top:4px">
+        ${FORMATOS.map(([v,r]) => `<option value="${v}" ${(e?.formato || (e?.link_sala ? 'video' : 'presencial')) === v ? 'selected' : ''}>${r}</option>`).join('')}
+      </select>
       <input type="text" id="cs-local-${l.id}" placeholder="onde (escritório, endereço)"
-             value="${esc(e?.local || '')}" style="font-size:11.4px;width:100%;margin-top:4px">
-      <input type="url" id="cs-sala-${l.id}" placeholder="link, se for por vídeo"
-             value="${esc(e?.link_sala || '')}" style="font-size:11.4px;width:100%;margin-top:4px">
+             value="${esc(e?.local || '')}" oninput="this.dataset.auto='0'"
+             style="font-size:11.4px;width:100%;margin-top:4px">
+      <input type="url" id="cs-sala-${l.id}" value="${esc(e?.link_sala || '')}" style="display:none">
+      <div class="sub" id="cs-meet-${l.id}" style="display:none;margin:4px 0 0">${e?.link_sala
+        ? 'Sala do Meet: <a href="' + esc(e.link_sala) + '" target="_blank" rel="noreferrer">' + esc(e.link_sala) + '</a>. Remarcar mantém a mesma sala.'
+        : 'O link do Meet é gerado no Google Agenda ao marcar.'}</div>
       <input type="text" id="cs-obs-${l.id}" placeholder="o que levar, o que pedir para a pessoa trazer"
              style="font-size:11.4px;width:100%;margin-top:4px">
       <div style="margin-top:6px;display:flex;gap:6px;align-items:center">
@@ -3233,11 +3287,15 @@ async function telaCaptacao(){
     sb.from('lead').select('*').order('criado_em', { ascending:false }),
     sb.from('area_atuacao').select('id,nome').eq('ativo',true).order('ordem'),
     sb.from('origem_captacao').select('id,nome').eq('ativo',true).order('nome'),
-    sb.from('evento').select('id,titulo,inicio,local,link_sala,situacao,lead_id')
+    sb.from('evento').select('id,titulo,inicio,local,link_sala,formato,situacao,lead_id')
       .not('lead_id','is',null).not('situacao','in','("concluida","cancelada")'),
     sb.from('bot_conversa').select('id,lead_id,estado,telefone').not('lead_id','is',null),
   ]);
   if (le.error) return erro(le.error.message);
+  if (ESC_END === null) {
+    const { data: es } = await sb.from('escritorio').select('endereco').limit(1).maybeSingle();
+    ESC_END = es?.endereco || '';
+  }
   LEADEV = {}; (cs.data||[]).forEach(e => { LEADEV[e.lead_id] = e; });
   LEADCONV = {}; (bc?.data||[]).forEach(c => { LEADCONV[c.lead_id] = { id: c.id, estado: c.estado, telefone: c.telefone }; });
   AREAS = ar.data||[]; ORIGENS = og.data||[];
