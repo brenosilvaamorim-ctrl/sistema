@@ -82,6 +82,33 @@ em que existe um login que não é.
    Ficou de fora, de propósito, `registrar-achado` (escreve na base de conhecimento; chamada
    pelas skills), por eu não saber ainda quem a chama de fora do escritório.
 
+## O teste da parede, 07/11/2026
+
+Feito com um login de fora de verdade (`brenosilvaamorim+teste@gmail.com`), que entrou por
+link de e-mail e virou membro da parceria. Da sessão dele, e não da tela:
+
+- **Ler o escritório:** `caso`, `cliente`, `processo`, `lead`, `lancamento`, `intimacao`,
+  `movimentacao`, `prazo`, `evento`, `usuario`, `escritorio`, `tese`, `honorario`,
+  `parceiro`, `oab` e `auditoria` responderam **0 linhas** — num banco com 306 casos e 270
+  clientes. `meu_escritorio()` devolveu nulo; `sou_parceira()`, verdadeiro.
+- **As sete visões** (`caso_quadro`, `caso_competencia`, `cliente_painel`,
+  `processo_painel`, `mensageria_painel`, `movimentacao_traduzida`, `google_conta_visao`):
+  **0 linhas** cada. Era por aí que vazava antes do `security_invoker`.
+- **Funções de borda:** `gerar-documento`, `minutar-peca`, `absorver-peca` e `custo-api`
+  responderam 403; `mcp-escritorio`, 401.
+- **Escrever onde não devia:** abrir caso sem o carimbo da parceria, 42501; inserir-se em
+  `usuario`, 42501; virar titular em `parceria_membro`, 0 linhas alteradas.
+- **Com um caso da parceria na mão:** apagar, 0 linhas; tirar da parceria, 42501; trocar o
+  `escritorio_id`, o gatilho devolveu o valor anterior. O caso continuou existindo, com os
+  dois carimbos intactos.
+- **A volta:** o caso aberto na parceria apareceu no escritório na hora, no quadro e na tela
+  do caso, com a pílula *em parceria*. Depois o teste foi desfeito — caso, cliente, convite
+  e login de teste apagados, e o banco voltou aos 306 casos, sem nenhuma linha carimbada.
+
+O teste também achou um defeito, corrigido no mesmo dia: o primeiro acesso parava em
+"Erro ao carregar" porque `sb.rpc(...)` não tem `.catch` — e, com isso, o
+`entrar_na_parceria()` nunca rodava.
+
 ## Publicações: pelo processo, nunca pela OAB
 
 Decisão de 07/11/2026. A captura do Diário é por OAB (`oab`, com `monitorar`), e monitorar a
