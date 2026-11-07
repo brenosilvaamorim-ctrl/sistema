@@ -247,7 +247,7 @@ let ESC_NOME = 'Breno S. Amorim Advocacia', ESC_LOGO = null, ESC_ID = null, ESC_
    depois o que se escreve, depois a conta do escritório, e só no fim o sistema.
    Quem já tinha mexido na ordem continua com a dele — a troca abaixo só alcança
    quem nunca personalizou. */
-const MENU_PADRAO = [['inicio','Início'],['prazos','Prazos e publicações'],['agenda','Agenda'],['mensageria','Mensagens'],['whatsapp','Conversas do WhatsApp'],['captacao','Captação'],['clientes','Clientes'],['parceiros','Parceiros'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['prev','Previdenciário'],['minutas','Minutas'],['playbook','Playbook'],['documentos','Documentos'],['dicionario','Dicionário'],['aprender','Aprender'],['financeiro','Financeiro'],['notas','Notas fiscais'],['metricas','Métricas'],['jurimetria','Jurimetria'],['projetos','Ideias e projetos'],['pessoal','Casa e família ↗'],['investir','Investir'],['manual','Manual'],['tutoriais','Tutoriais'],['regras','Regras'],['importar','Importar antigos'],['config','Configurações']];
+const MENU_PADRAO = [['inicio','Início'],['prazos','Prazos e publicações'],['agenda','Agenda'],['mensageria','Mensagens'],['whatsapp','Conversas do WhatsApp'],['captacao','Captação'],['clientes','Clientes'],['parceiros','Parceiros'],['parceria','Parceria ↗'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['prev','Previdenciário'],['minutas','Minutas'],['playbook','Playbook'],['documentos','Documentos'],['dicionario','Dicionário'],['aprender','Aprender'],['financeiro','Financeiro'],['notas','Notas fiscais'],['metricas','Métricas'],['jurimetria','Jurimetria'],['projetos','Ideias e projetos'],['pessoal','Casa e família ↗'],['investir','Investir'],['manual','Manual'],['tutoriais','Tutoriais'],['regras','Regras'],['importar','Importar antigos'],['config','Configurações']];
 /* Ordem anterior, guardada só para reconhecer quem nunca mexeu no menu. */
 const MENU_ORDEM_ANTIGA = ['inicio','prazos','agenda','captacao','casos','processos','andamento','clientes','mensageria','metricas','jurimetria','financeiro','parceiros','minutas','playbook','aprender','dicionario','documentos','tutoriais','regras','importar','manual','investir','pessoal','config'];
 let MENUCFG = MENU_PADRAO.map(([k,r]) => ({ k, r, v:true }));
@@ -367,7 +367,7 @@ const grupoDe = k => (GRUPOS.find(([, ks]) => ks.includes(k)) || ['Outros'])[0];
    olho de uma vez. */
 const GRUPOS = [
   ['Meu dia',           ['inicio','prazos','agenda','mensageria','whatsapp']],
-  ['Pessoas',           ['captacao','clientes','parceiros']],
+  ['Pessoas',           ['captacao','clientes','parceiros','parceria']],
   ['Casos e processos', ['casos','processos','andamento','prev']],
   ['Escrever',          ['minutas','playbook','documentos','dicionario','aprender']],
   ['Escritório',        ['financeiro','notas','metricas','jurimetria','projetos']],
@@ -400,6 +400,8 @@ function menu(atual){
       <button class="gbt" onclick="abrirGrupo(event, '${esc(nome)}')">${esc(nome)}<span class="seta">▾</span></button>
       <div class="lista">${l.map(m => m.k === 'pessoal'
         ? `<a href="familia/" title="área da família: contas de casa e a obra — porta separada do escritório">${esc(m.r)}</a>`
+        : m.k === 'parceria'
+        ? `<a href="parceria/" title="os casos em parceria, na porta que o advogado de fora enxerga — mesmo login, mesma linha">${esc(m.r)}</a>`
         : `<a class="${atual===m.k?'on':''}" href="#/${m.k}">${esc(m.r)}</a>`).join('')}</div>
     </div>`).join('')}
     <span class="dir">${esc(USER.email)} · <a onclick="sb.auth.signOut().then(()=>location.reload())">sair</a></span></nav>`;
@@ -5451,6 +5453,15 @@ No quadro **Novo contato** há dois botões. **Registrar** grava o contato e vol
 O campo *o que a pessoa relatou* é o resumo de triagem, de uma linha. O relato completo — jornada, salário, saúde, testemunhas, documentos — vive na ficha, e é dela que saem os fatos da inicial.
 
 Se o atendimento foi presencial e a pessoa já preencheu e assinou o papel, o campo **Ficha em papel** anexa o PDF ou a foto (até 15 MB). O arquivo fica guardado junto das respostas, num armazenamento privado que só abre por link temporário, e vai junto com o caso quando o lead fechar. Dentro da ficha, o mesmo quadro permite anexar depois, abrir e tirar o arquivo.
+
+## 3c. Parceria — a terceira porta
+
+Os casos que você divide com advogado de fora vivem em
+**sistema.brenosamorimadvocacia.com.br/parceria/**. No menu, em *Pessoas*, o item **Parceria ↗** leva até lá — e, como é o mesmo login, você entra direto, sem pedir link de novo.
+
+Lá só aparece o que foi marcado como da parceria, na tela do caso. Não é cópia: é a mesma linha, com um carimbo a mais. O que o parceiro cadastra de lá nasce aqui também, na hora. O contrário também vale, e o resto do escritório — captação, WhatsApp, notas, teses, métricas — não existe daquele lado.
+
+Para convidar ou desligar alguém: *Sistema → Configurações → Parceria com advogado de fora*.
 
 ## 3b. Casa e família — uma porta separada
 
@@ -16060,6 +16071,7 @@ async function rota(){
   /* O financeiro pessoal virou área da família, noutra porta: quem chega pelo
      endereço antigo é levado para lá. */
   if(h.startsWith('#/pessoal'))    return location.replace('familia/');
+  if(h.startsWith('#/parceria'))   return location.replace('parceria/');
   if(h.startsWith('#/inicio'))     return telaInicio();
   if(h.startsWith('#/processo/')) return telaProcesso(h.slice('#/processo/'.length));
   if(h.startsWith('#/caso/'))      return telaCaso(h.slice('#/caso/'.length));
