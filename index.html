@@ -15709,14 +15709,33 @@ window.convidarParceiro = async (ev, parceriaId) => {
     oab: v('oab'), uf_oab: (v('uf_oab')||'').toUpperCase() || null, percentual: pct, papel: 'parceira',
   }).select('id').single();
   if (m.error) { st.style.color = 'var(--crit)'; st.textContent = ' ' + m.error.message; return; }
-  /* Liga à ficha de parceiro já existente, para o rateio do Financeiro continuar
-     valendo: é lancamento.parceiro_id que a tela de lá e a nota fiscal usam. */
+  /* Liga à ficha de parceiro, para o rateio do Financeiro continuar valendo: é
+     lancamento.parceiro_id que a tela de lá e a nota fiscal usam. O escritório
+     quase sempre já tem a ficha de quem vira parceiro — foi assim com a Paula,
+     que estava em Parceiros antes de existir parceria. Procura primeiro, para
+     não criar uma segunda ficha da mesma pessoa, e completa só o que falta: o
+     que já estiver preenchido lá é informação do escritório, não deste convite. */
   const { data: pa } = await sb.from('parceria').select('parceiro_id').eq('id', parceriaId).single();
   if (!pa?.parceiro_id) {
-    const novo = await sb.from('parceiro').insert({ escritorio_id: ESC_ID, nome: v('nome'),
-      oab: v('oab'), uf_oab: (v('uf_oab')||'').toUpperCase() || null, email: v('email'),
-      percentual_padrao: pct }).select('id').single();
-    if (novo.data) await sb.from('parceria').update({ parceiro_id: novo.data.id }).eq('id', parceriaId);
+    const email = (v('email') || '').toLowerCase(), uf = (v('uf_oab')||'').toUpperCase() || null;
+    let achado = null;
+    if (email) achado = (await sb.from('parceiro').select('*').ilike('email', email).limit(1)).data?.[0] || null;
+    if (!achado && v('nome')) achado = (await sb.from('parceiro').select('*').ilike('nome', v('nome')).limit(1)).data?.[0] || null;
+    let pid = achado?.id;
+    if (achado) {
+      const faltando = {};
+      if (!achado.email && email) faltando.email = email;
+      if (!achado.oab && v('oab')) faltando.oab = v('oab');
+      if (!achado.uf_oab && uf) faltando.uf_oab = uf;
+      if (achado.percentual_padrao == null && pct != null) faltando.percentual_padrao = pct;
+      if (Object.keys(faltando).length) await sb.from('parceiro').update(faltando).eq('id', pid);
+    } else {
+      const novo = await sb.from('parceiro').insert({ escritorio_id: ESC_ID, nome: v('nome'),
+        oab: v('oab'), uf_oab: uf, email: email || null, percentual_padrao: pct })
+        .select('id').single();
+      pid = novo.data?.id;
+    }
+    if (pid) await sb.from('parceria').update({ parceiro_id: pid }).eq('id', parceriaId);
   }
   st.style.color = 'var(--good)';
   st.textContent = ' convidada — ela entra em /parceria/ com esse e-mail, por link';
