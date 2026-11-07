@@ -37,11 +37,20 @@ function qualificacao(c: Record<string, unknown>): string {
    pede tem de ser feita aqui dentro. Chamada interna (robô, cron) se identifica
    com a própria chave de serviço e passa. */
 async function doEscritorio(req: Request): Promise<boolean> {
+  const servico = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  const adm = createClient(Deno.env.get('SUPABASE_URL')!, servico, { auth: { persistSession: false } });
+
+  /* A chave dos robôs: o agendador do banco a lê de `escritorio.robo_token` na hora. */
+  const chave = (new URL(req.url).searchParams.get('chave')
+    ?? req.headers.get('x-chave-robo') ?? '').trim();
+  if (chave.length >= 16) {
+    const { data: e } = await adm.from('escritorio').select('id').eq('robo_token', chave).maybeSingle();
+    if (e) return true;
+  }
+
   const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
   if (!jwt) return false;
-  const servico = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
   if (servico && jwt === servico) return true;
-  const adm = createClient(Deno.env.get('SUPABASE_URL')!, servico, { auth: { persistSession: false } });
   const { data: quem } = await adm.auth.getUser(jwt);
   if (!quem?.user) return false;
   const { data: u } = await adm.from('usuario').select('id')
