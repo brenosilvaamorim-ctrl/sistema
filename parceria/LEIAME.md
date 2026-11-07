@@ -78,6 +78,23 @@ em que existe um login que não é.
    **`migrar-08`**, que roda DDL arbitrário e, se ainda estiver implantada, é um buraco
    para qualquer login — era de uso único e o melhor é apagá-la do Supabase.
 
+## Publicações: pelo processo, nunca pela OAB
+
+Decisão de 07/11/2026. A captura do Diário é por OAB (`oab`, com `monitorar`), e monitorar a
+OAB da parceira traria para este banco **todas** as intimações dela, inclusive de causas que
+nada têm com a parceria. Não se faz isso.
+
+O que vale é o outro lado da mecânica: o robô casa cada intimação capturada pelo **número do
+processo** e, achando, a amarra ao processo e ao caso. Cadastrado o processo aqui, a
+publicação dele chega carimbada e aparece nas duas portas — sem que nenhuma OAB nova entre no
+monitoramento. O mesmo serve ao prazo e ao evento que o robô cria junto, e ao andamento, que
+vem do DataJud por processo, e não por advogado.
+
+**O limite disso, que é real:** a intimação só é capturada se algum advogado monitorado
+estiver no processo. Nas causas em que a parceira atua sozinha, sem o escritório na
+procuração, nada chega — e não há como mudar isso sem monitorar a OAB dela, que é justamente
+o que se decidiu não fazer.
+
 ## O que não vem para esta porta
 
 Captação, WhatsApp, notas fiscais, teses, playbook, jurimetria, métricas, auditoria,

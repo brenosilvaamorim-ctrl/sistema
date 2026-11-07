@@ -661,8 +661,9 @@ async function telaPublicacoes(){
   const novas = ints.filter(i => i.situacao === 'nova');
   app.innerHTML = menu('publicacoes') + `<main>
   <h1>Publicações</h1>
-  <p class="meta">As intimações dos processos da parceria, como chegam do Diário. Dar baixa aqui
-    dá baixa no escritório — é o mesmo registro.</p>
+  <p class="meta">As intimações <b>dos processos cadastrados aqui</b>, como chegam do Diário —
+    não há captura pela sua OAB, e por isso nenhuma publicação sua alheia à parceria entra neste
+    banco. Dar baixa aqui dá baixa no escritório: é o mesmo registro.</p>
   <div class="kpis">
     <div class="kpi ${novas.length?'al':''}"><div class="n">${novas.length}</div><div class="l">novas</div></div>
     <div class="kpi"><div class="n">${ints.length}</div><div class="l">no total</div></div>
@@ -678,7 +679,7 @@ async function telaPublicacoes(){
         <td style="width:110px">${i.situacao==='nova'
           ? `<button class="btn" onclick="baixarPublicacao('${i.id}')">Dar baixa</button>`
           : `<span class="pill cin">${esc(i.situacao)}</span>`}</td></tr>`).join('')}
-    </tbody></table>` : vazio('Nenhuma publicação ainda. Elas chegam pelo robô do DJEN, pelos processos da parceria.')}
+    </tbody></table>` : vazio('Nenhuma publicação ainda. Elas chegam pelo robô do Diário e são amarradas pelo número do processo — basta o processo estar cadastrado aqui.')}
   </div></main>` + rodape();
 }
 
