@@ -6,8 +6,12 @@
 -- Resultado: desde aquela hora, essa tarefa levava 403 todo dia útil.
 --
 -- Aqui a reescrita passa a valer para qualquer tarefa que chame uma função de borda e
--- ainda não mande a chave, menos a `backup-diario`, que já se identifica com o próprio
--- `backup_token` no endereço.
+-- ainda não mande a chave, menos as que já se identificam sozinhas: a `backup-diario`, pelo
+-- `backup_token` no endereço, e a `whatsapp-bot`, pelo segredo do webhook.
+--
+-- ATENÇÃO (aprendido no 48): só serve para tarefas cujo endereço é um texto fixo. Onde o
+-- endereço é montado por concatenação, enfiar `&chave=` no fim do pedaço fixo gruda a
+-- chave no que vem depois. Foi o que aconteceu com a `whatsapp-bot`.
 --
 -- Rodar no SQL Editor do Supabase. Pode rodar de novo sem estragar nada.
 
@@ -24,7 +28,9 @@ begin
       from cron.job
      where command ~ 'functions/v1/[a-z0-9-]+'
        and command not like '%robo_token%'
-       and command not like '%backup-diario%'
+       -- já se identificam sozinhas, e não devem ser tocadas:
+       and command not like '%backup-diario%'    -- backup_token no endereço
+       and command not like '%whatsapp-bot%'     -- segredo do webhook, montado por concatenação
   loop
     url := (regexp_match(j.command, '''(https://[^'']*functions/v1/[^'']*)'''))[1];
     if url is null then
