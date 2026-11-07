@@ -162,7 +162,7 @@ async function carregarParceria(){
   const { data:{ user } } = await sb.auth.getUser();
   USER = user;
   /* Gruda o login no convite, se for o primeiro acesso desta pessoa. */
-  await sb.rpc('entrar_na_parceria').catch(()=>{});
+  await sb.rpc('entrar_na_parceria');
   const [p, m, a, c] = await Promise.all([
     sb.from('parceria').select('*').limit(1).maybeSingle(),
     sb.from('parceria_membro').select('*').order('criado_em'),
