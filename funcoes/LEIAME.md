@@ -29,7 +29,7 @@ Quem não passa recebe `403 acesso restrito ao escritório`.
 
 Têm conferência própria, e por isso ficaram como estavam: `backup-diario` (token na URL,
 conferido contra `escritorio.backup_token`), `agenda-ics` e `google-sync` (`agenda_token`),
-`google-oauth` (nonce guardado no banco), `whatsapp-bot` (segredo no endereço do webhook,
+`google-oauth` (nonce guardado no banco), `consulta-meet` (login ativo em `usuario`, e só mexe em evento do escritório de quem pede), `whatsapp-bot` (segredo no endereço do webhook,
 comparado em tempo constante), `convidar-membro` (exige perfil titular) e `nota-fiscal`.
 
 `painel` não precisa: é só a casca HTML, e todo dado dela vem com a sessão de quem abriu.
