@@ -3980,7 +3980,47 @@ function pintarLinha(){
       </div></div>`;
   }).join('') : '<div class="vazio">Nada registrado com esse filtro.</div>';
 }
+/* ------------------------------------------------------------------ parceria
+   Marcar um caso como da parceria não copia nada: põe um carimbo na própria
+   linha, e o segundo endereço (parceria/) passa a enxergá-la. O processo, o
+   dinheiro, a agenda e os prazos do caso vão junto — e o que chegar depois
+   nasce carimbado. Desmarcar tira o carimbo de tudo. Ver banco/44_parceria.sql. */
+let PARCERIAS = [];
+async function carregarParcerias(){
+  const { data } = await sb.from('parceria').select('id,nome,ativa').eq('ativa', true).order('nome');
+  PARCERIAS = data || [];
+  return PARCERIAS;
+}
+
+window.marcarParceria = async (casoId, parceriaId) => {
+  const st = document.getElementById('pc-st');
+  const alvo = PARCERIAS.find(p => p.id === parceriaId);
+  const pergunta = alvo
+    ? `Compartilhar este caso com "${alvo.nome}"?\n\nO caso, o cliente, os processos, os prazos, a agenda `
+      + 'e os lançamentos passam a ser vistos também pelo endereço da parceria. Não é cópia: é a mesma linha.'
+    : 'Tirar este caso da parceria?\n\nEle deixa de aparecer no endereço da parceria. Nada é apagado — '
+      + 'o caso continua aqui, inteiro.';
+  if (!confirm(pergunta)) return;
+  if (st) { st.style.color = 'var(--i2)'; st.textContent = ' marcando…'; }
+  const { error } = await sb.rpc('parceria_marcar_caso', { p_caso: casoId, p_parceria: parceriaId || null });
+  if (error) { if (st) { st.style.color = 'var(--crit)'; st.textContent = ' ' + error.message; } return; }
+  telaCaso(casoId);
+};
+
+function blocoParceria(c){
+  if (!PARCERIAS.length) return '';
+  const atual = PARCERIAS.find(p => p.id === c.parceria_id);
+  return `<p style="margin:-8px 0 16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    ${atual
+      ? `<span class="pill serie" title="o caso é visto também pelo endereço da parceria">em parceria · ${esc(atual.nome)}</span>
+         <button class="btn" onclick="marcarParceria('${c.id}', null)">tirar da parceria</button>`
+      : PARCERIAS.map(p => `<button class="btn" onclick="marcarParceria('${c.id}', '${p.id}')"
+          title="compartilha o caso inteiro com ${esc(p.nome)}">compartilhar com ${esc(p.nome)}</button>`).join(' ')}
+    <span class="sub" id="pc-st" style="display:inline;margin:0"></span></p>`;
+}
+
 async function telaCaso(id){
+  await carregarParcerias().catch(()=>{});
   const [cs, pr, pz, ev, it, hn, dc, mn, cd, cm, tpc, ftx, asg, dlg, og] = await Promise.all([
     sb.from('caso').select('*, cliente:cliente_id(id,nome,telefone,whatsapp,cpf_cnpj,cidade,uf), responsavel:responsavel_id(nome)').eq('id', id).single(),
     sb.from('processo').select('*').eq('caso_id', id).order('criado_em'),
@@ -4084,6 +4124,7 @@ async function telaCaso(id){
     ${c.encerrado_em ? ' · <b>encerrado em '+br(c.encerrado_em)+'</b>' : ''}</p>
   ${ehPrev ? `<p style="margin:-8px 0 16px"><button class="btn ${prevAn ? '' : 'ok'}"
     onclick="${prevAn ? `location.hash='#/prev/${prevAn.id}'` : `prevNova('${c.id}')`}">${prevAn ? 'Abrir a análise previdenciária' : '+ Análise previdenciária'}</button></p>` : ''}
+  ${blocoParceria(c)}
 
   <div class="kpis">
     <div class="kpi"><div class="n">${CASOPROC.length}</div><div class="l">processos</div></div>
@@ -15589,13 +15630,115 @@ window.salvarInvestir = async function(){
   telaInvestir();
 };
 
+/* ---------------------------------------------------------- parcerias (config)
+   A parceria é a segunda porta do sistema: um endereço próprio (parceria/) para
+   o advogado de fora com quem se divide trabalho. Quem entra por lá NÃO é
+   usuário do escritório — não ganha linha em usuario — e por isso todas as
+   regras de acesso de cá o negam. Ele só alcança o que leva o carimbo da
+   parceria, caso a caso, marcado por você na tela do caso. */
+function blocoParcerias(parcerias, membros, erroPc){
+  if (erroPc) return `<div class="card"><h2>Parcerias</h2>
+    <p class="nota">As tabelas da parceria ainda não existem no banco. Aplique
+      <b>banco/44_parceria.sql</b> no Supabase (SQL Editor) e recarregue esta tela.</p></div>`;
+  const p = parcerias[0];
+  return `<div class="card"><h2>Parceria com advogado de fora</h2>
+    <p class="nota">Um endereço separado — <b>${esc(location.origin)}/parceria/</b> — onde o parceiro vê
+      <b>somente</b> os casos que você marcar como da parceria, e mais nada do escritório. Ele entra pelo
+      próprio e-mail, por link, e não vira usuário daqui: a separação é regra do banco, não do menu.
+      O caso marcado não é copiado para lá — é a mesma linha, vista pelas duas portas.</p>
+    ${!p ? `<form onsubmit="criarParceria(event)" style="display:flex;gap:9px;flex-wrap:wrap;padding:0 18px 18px;align-items:flex-end">
+        <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:240px">
+          <span class="sub" style="margin:0">Nome da parceria</span>
+          <input name="nome" required placeholder="como aparece no alto da tela dela"></label>
+        <button class="btn ok" type="submit">Criar a parceria</button>
+        <span class="sub" id="pa-st" style="margin:0"></span>
+      </form>`
+    : `<form onsubmit="convidarParceiro(event,'${p.id}')" style="display:flex;gap:9px;flex-wrap:wrap;padding:0 18px 14px;align-items:flex-end">
+        <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:170px">
+          <span class="sub" style="margin:0">Nome</span><input name="nome" required></label>
+        <label style="display:flex;flex-direction:column;gap:3px;flex:2;min-width:220px">
+          <span class="sub" style="margin:0">E-mail</span>
+          <input name="email" type="email" required placeholder="o mesmo com que ela vai entrar"></label>
+        <label style="display:flex;flex-direction:column;gap:3px;min-width:120px">
+          <span class="sub" style="margin:0">OAB</span><input name="oab" placeholder="00000"></label>
+        <label style="display:flex;flex-direction:column;gap:3px;min-width:70px">
+          <span class="sub" style="margin:0">UF</span><input name="uf_oab" maxlength="2" placeholder="PE"></label>
+        <label style="display:flex;flex-direction:column;gap:3px;min-width:110px">
+          <span class="sub" style="margin:0">% dela</span>
+          <input name="percentual" type="number" min="1" max="99" step="0.01" placeholder="30"></label>
+        <button class="btn ok" type="submit">Convidar</button>
+        <span class="sub" id="pa-st" style="margin:0"></span>
+      </form>
+      <table><thead><tr><th>Pessoa</th><th>E-mail</th><th>OAB</th><th>%</th><th>Entrou</th><th></th></tr></thead>
+      <tbody>${membros.map(m=>`<tr>
+        <td>${esc(m.nome)}${m.papel==='titular'?'<span class="sub">você</span>':''}</td>
+        <td class="proc">${esc(m.email)}</td>
+        <td>${esc([m.oab, m.uf_oab].filter(Boolean).join('/') || '—')}</td>
+        <td>${m.percentual != null ? m.percentual + '%' : '—'}</td>
+        <td>${m.usuario_auth ? '<span class="pill good">sim</span>' : '<span class="pill cin">aguardando</span>'}</td>
+        <td>${m.papel==='titular' ? '' : `<button class="btn" onclick="desligarParceiro('${m.id}',${m.ativo})">${m.ativo?'Desligar':'Religar'}</button>`}</td>
+      </tr>`).join('') || '<tr><td colspan="6" class="vazio">Ninguém convidado ainda.</td></tr>'}</tbody></table>
+      <p class="nota" style="margin-top:12px">Desligar corta o acesso na hora, sem apagar nada: os casos
+        continuam aqui, inteiros, só deixam de ser vistos por ela.</p>`}
+  </div>`;
+}
+
+window.criarParceria = async (ev) => {
+  ev.preventDefault();
+  const st = document.getElementById('pa-st');
+  const nome = ev.target.elements['nome'].value.trim();
+  st.style.color = 'var(--i2)'; st.textContent = ' criando…';
+  const nova = await sb.from('parceria').insert({ escritorio_id: ESC_ID, nome }).select('id').single();
+  if (nova.error) { st.style.color = 'var(--crit)'; st.textContent = ' ' + nova.error.message; return; }
+  /* O titular entra como membro para poder escrever recados com o próprio nome —
+     e sem perder nada: quem tem escritório continua entrando pela porta de cá. */
+  const { data: eu } = await sb.from('usuario').select('nome,email').eq('id', USER.id).maybeSingle();
+  await sb.from('parceria_membro').insert({ parceria_id: nova.data.id, usuario_auth: USER.id,
+    nome: eu?.nome || USER.email, email: eu?.email || USER.email, papel: 'titular' });
+  telaConfig();
+};
+
+window.convidarParceiro = async (ev, parceriaId) => {
+  ev.preventDefault();
+  const f = ev.target, st = document.getElementById('pa-st');
+  const v = n => (f.elements[n]?.value || '').trim() || null;
+  const pct = v('percentual') ? Number(v('percentual')) : null;
+  st.style.color = 'var(--i2)'; st.textContent = ' convidando…';
+  const m = await sb.from('parceria_membro').insert({
+    parceria_id: parceriaId, nome: v('nome'), email: (v('email')||'').toLowerCase(),
+    oab: v('oab'), uf_oab: (v('uf_oab')||'').toUpperCase() || null, percentual: pct, papel: 'parceira',
+  }).select('id').single();
+  if (m.error) { st.style.color = 'var(--crit)'; st.textContent = ' ' + m.error.message; return; }
+  /* Liga à ficha de parceiro já existente, para o rateio do Financeiro continuar
+     valendo: é lancamento.parceiro_id que a tela de lá e a nota fiscal usam. */
+  const { data: pa } = await sb.from('parceria').select('parceiro_id').eq('id', parceriaId).single();
+  if (!pa?.parceiro_id) {
+    const novo = await sb.from('parceiro').insert({ escritorio_id: ESC_ID, nome: v('nome'),
+      oab: v('oab'), uf_oab: (v('uf_oab')||'').toUpperCase() || null, email: v('email'),
+      percentual_padrao: pct }).select('id').single();
+    if (novo.data) await sb.from('parceria').update({ parceiro_id: novo.data.id }).eq('id', parceriaId);
+  }
+  st.style.color = 'var(--good)';
+  st.textContent = ' convidada — ela entra em /parceria/ com esse e-mail, por link';
+  telaConfig();
+};
+
+window.desligarParceiro = async (id, ativo) => {
+  if (ativo && !confirm('Desligar o acesso? Ela deixa de ver os casos da parceria na mesma hora. Nada é apagado.')) return;
+  const { error } = await sb.from('parceria_membro').update({ ativo: !ativo }).eq('id', id);
+  if (error) return alert('Não deu certo: ' + error.message);
+  telaConfig();
+};
+
 async function telaConfig(){
-  const [us, es, ar, og, ct] = await Promise.all([
+  const [us, es, ar, og, ct, pc, pm] = await Promise.all([
     sb.from('usuario').select('*').order('criado_em'),
     sb.from('escritorio').select('*').limit(1).single(),
     sb.from('area_atuacao').select('id,nome').order('ordem'),
     sb.from('origem_captacao').select('id,nome').order('nome'),
     sb.from('categoria_financeira').select('id,nome,tipo').order('nome'),
+    sb.from('parceria').select('*').order('criado_em'),
+    sb.from('parceria_membro').select('*').order('criado_em'),
   ]);
   if (us.error) return erro(us.error.message);
   AREAS = ar.data||[]; ORIGENS = og.data||[]; CATS = ct.data||[];
@@ -15641,6 +15784,8 @@ async function telaConfig(){
       <td><input type="checkbox" id="ua${u.id}" ${u.ativo?'checked':''}></td>
       <td><button class="btn" onclick="salvarUsuario('${u.id}')">Salvar</button><span class="sub" id="us${u.id}"></span></td>
     </tr>`).join('')}</tbody></table></div>
+
+  ${blocoParcerias(pc.data || [], pm.data || [], pc.error)}
 
   <div id="credapi">${blocoCredito()}</div>
   ${blocoGoogle()}

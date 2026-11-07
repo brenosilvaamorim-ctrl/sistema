@@ -1,0 +1,923 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Parceria</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{color-scheme:light;--s0:#f4f3f0;--s1:#fcfcfb;--ln:#e3e1dc;--ink:#0b0b0b;--i2:#52514e;--i3:#78766f;
+--good:#0ca30c;--warn:#fab219;--ser:#ec835a;--crit:#d03b3b;--serie:#2a78d6;--taref:#2f8f7f}
+@media(prefers-color-scheme:dark){:root{color-scheme:dark;--s0:#111110;--s1:#1a1a19;--ln:#33332f;--ink:#fff;
+--i2:#c3c2b7;--i3:#8f8e85;--serie:#3987e5;--taref:#45b39e}}
+*{box-sizing:border-box}body{margin:0;background:var(--s0);color:var(--ink);font:15px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
+a{color:inherit}
+nav{display:flex;gap:2px;align-items:center;padding:0 20px;background:var(--s1);border-bottom:1px solid var(--ln);
+  flex-wrap:wrap;position:sticky;top:0;z-index:9}
+nav a{color:var(--i2);text-decoration:none;font-size:13.6px;cursor:pointer;padding:15px 11px;
+  border-bottom:2px solid transparent;white-space:nowrap}
+nav a.on{color:var(--ink);border-bottom-color:var(--serie);font-weight:600}
+nav a:hover{color:var(--ink)}
+nav .dir{margin-left:auto;font-size:12.3px;color:var(--i3);padding:15px 0}
+.marca{display:flex;align-items:center;gap:9px;padding:11px 18px 11px 0;margin-right:10px;border-right:1px solid var(--ln)}
+.marca .sigla{width:31px;height:31px;border-radius:7px;background:var(--ink);color:var(--s1);display:grid;
+  place-items:center;font:600 12.5px/1 ui-sans-serif,sans-serif;flex:none}
+.marca .nome{font:600 14.2px/1.15 Georgia,'Times New Roman',serif;color:var(--ink)}
+.marca .sub2{display:block;font:400 10.5px/1.3 ui-sans-serif,sans-serif;color:var(--i3);
+  text-transform:uppercase;letter-spacing:.09em;margin-top:2px}
+main{max-width:1180px;margin:0 auto;padding:24px 18px 70px}
+footer{max-width:1180px;margin:0 auto;padding:0 18px 40px;color:var(--i3);font-size:11.6px;line-height:1.7}
+footer b{color:var(--i2);font-weight:600}
+h1{font-family:Georgia,'Times New Roman',serif;font-size:21px;font-weight:600;margin:0 0 3px}
+h2{font-size:14.5px;margin:15px 18px 3px}
+.meta{color:var(--i2);font-size:13.5px;margin-bottom:20px;max-width:80ch}
+.nota{margin:0 18px 12px;color:var(--i2);font-size:12.8px;max-width:80ch}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:11px;margin-bottom:22px}
+.kpi{background:var(--s1);border:1px solid var(--ln);border-radius:12px;padding:14px 16px}
+.kpi .n{font-size:29px;font-weight:650;line-height:1.1;letter-spacing:-.02em}
+.kpi .l{color:var(--i2);font-size:12.5px;margin-top:2px}.kpi.al .n{color:var(--crit)}
+.card{background:var(--s1);border:1px solid var(--ln);border-radius:12px;margin-bottom:18px;overflow:hidden}
+table{width:100%;border-collapse:collapse;font-size:13.4px}
+th{text-align:left;font-weight:600;color:var(--i3);font-size:11.3px;text-transform:uppercase;
+  letter-spacing:.05em;padding:9px 11px;border-bottom:1px solid var(--ln)}
+td{padding:10px 11px;border-bottom:1px solid var(--ln);vertical-align:top}tr:last-child td{border-bottom:0}
+.sub{display:block;color:var(--i3);font-size:11.3px;margin-top:2px}
+.dt{white-space:nowrap;font-variant-numeric:tabular-nums}
+.proc{font-variant-numeric:tabular-nums;font-size:12.3px;color:var(--i2);white-space:nowrap}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;font-size:11.3px;
+  font-weight:600;white-space:nowrap;border:1px solid}
+.crit{color:var(--crit);border-color:var(--crit)}.ser{color:var(--ser);border-color:var(--ser)}
+.warn{color:var(--warn);border-color:var(--warn)}.good{color:var(--good);border-color:var(--good)}
+.cin{color:var(--i3);border-color:var(--ln)}.serie{color:var(--serie);border-color:var(--serie)}
+.taref{color:var(--taref);border-color:var(--taref)}
+button,input,select,textarea{font:inherit}
+.btn{font-size:12.3px;font-weight:600;padding:5px 11px;border-radius:8px;border:1px solid var(--ln);
+  background:var(--s0);color:var(--ink);cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--i3)}.btn.ok{border-color:var(--good);color:var(--good)}
+input[type=date],input[type=email],input[type=search],input[type=text],input[type=number],select,textarea{
+  padding:5px 9px;border-radius:8px;border:1px solid var(--ln);background:var(--s0);color:var(--ink);font-size:12.5px}
+textarea{width:100%;resize:vertical;line-height:1.45}
+.vazio{padding:28px;text-align:center;color:var(--i3)}
+.aviso{background:var(--s1);border:1px solid var(--crit);border-left-width:3px;border-radius:8px;
+  padding:12px 15px;margin-bottom:18px;font-size:13.4px;color:var(--i2)}.aviso b{color:var(--ink)}
+.login{max-width:410px;margin:12vh auto;background:var(--s1);border:1px solid var(--ln);border-radius:14px;padding:28px}
+.login h1{font-size:19px;margin-bottom:6px}.login p{color:var(--i2);font-size:13.5px;margin:0 0 18px}
+.login input{width:100%;margin-bottom:10px;padding:9px 11px}.login .btn{width:100%;padding:9px}
+.filtros{display:flex;gap:8px;align-items:center;margin:0 18px 12px;flex-wrap:wrap}
+.filtros input[type=search]{flex:1;min-width:200px;padding:7px 11px}
+.lnk{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--ln);cursor:pointer}
+.lnk:hover{border-color:var(--i3)}
+.volta{display:inline-block;color:var(--i2);font-size:13px;text-decoration:none;margin-bottom:14px;cursor:pointer}
+.ficha{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:2px 20px;padding:4px 18px 16px;font-size:13.2px}
+.ficha div{padding:6px 0;border-bottom:1px solid var(--ln)}
+.ficha .r{color:var(--i3);font-size:11.3px;display:block}
+.form{display:flex;gap:9px;flex-wrap:wrap;padding:0 18px 18px;align-items:flex-end}
+.form label{display:flex;flex-direction:column;gap:3px;min-width:150px}
+.form label.larga{flex:1;min-width:260px}
+.form label .sub{margin:0}
+.fio{max-height:54vh;overflow:auto;padding:12px 18px;background:var(--s0);border-top:1px solid var(--ln);border-bottom:1px solid var(--ln)}
+.bolha{max-width:74%;padding:8px 11px;border-radius:12px;font-size:13.4px;line-height:1.45;
+  border:1px solid var(--ln);background:var(--s1);white-space:pre-wrap;margin:6px 0}
+.bolha.meu{margin-left:auto;background:var(--serie);color:#fff;border-color:var(--serie)}
+.bolha .quem{display:block;font-size:11px;opacity:.75;margin-top:3px;color:inherit}
+.tl{list-style:none;margin:0;padding:6px 18px 20px}
+.tl li{position:relative;padding:0 0 18px 26px;border-left:2px solid var(--ln)}
+.tl li:last-child{border-left-color:transparent;padding-bottom:4px}
+.tl li::before{content:"";position:absolute;left:-6px;top:5px;width:10px;height:10px;border-radius:99px;
+  background:var(--i3);border:2px solid var(--s1)}
+.tl .d{font-size:11.5px;color:var(--i3);font-variant-numeric:tabular-nums}
+</style></head><body>
+<div id="app"><div class="vazio">Carregando…</div></div>
+<script>
+/* ============================================================ A PARCERIA
+   Segundo endereço do mesmo sistema, para o trabalho dividido com advogado de
+   fora. Quem entra aqui NÃO é usuário do escritório: não tem linha em usuario,
+   e por isso toda regra de acesso de lá — que compara escritorio_id com
+   meu_escritorio() — nega. O que se vê aqui é só o que leva o carimbo da
+   parceria, e o carimbo é a mesma linha que o escritório enxerga do outro lado.
+   Não há cópia nem sincronismo: é o mesmo caso, visto por duas portas.
+   A regra está em banco/44_parceria.sql. */
+
+const SB_URL = "https://wrdfyudabvvpvfcrvvzd.supabase.co";
+const SB_KEY = "sb_publishable_EfdAshQdw1P1-lAXtlO9Hw_O8yoP3y5";
+const sb = window.supabase.createClient(SB_URL, SB_KEY);
+const app = document.getElementById('app');
+
+const esc = s => String(s??'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const br = s => s ? String(s).slice(0,10).split('-').reverse().join('/') : '—';
+const hoje = () => new Date().toISOString().slice(0,10);
+const dias = d => Math.round((Date.parse(String(d).slice(0,10)+'T00:00:00Z') - Date.parse(hoje()+'T00:00:00Z'))/864e5);
+const rs = v => Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const numOuNulo = v => { const t = String(v ?? '').replace(/\./g,'').replace(',', '.').trim();
+  return t === '' || isNaN(Number(t)) ? null : Number(t); };
+const horaBr = t => t ? new Date(t).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+function sit(r){ if(r<0) return ['crit','Vencido']; if(r<=2) return ['crit','Urgente'];
+  if(r<=5) return ['ser','Atenção']; if(r<=10) return ['warn','Próximo']; return ['good','No prazo']; }
+
+let USER = null;
+let PAR = { id:null, nome:'Parceria', parceiro_id:null, membros:[], eu:null, esc:null };
+let AREAS = [], COLUNAS = [];
+
+/* ------------------------------------------------------------------ entrada */
+
+function telaLogin(msg){
+  app.innerHTML = `<div class="login">
+    <h1>Parceria</h1>
+    <p>Os casos que tocamos juntos. Entre com seu e-mail — enviamos um link de acesso,
+      sem senha para decorar.</p>
+    <input id="em" type="email" placeholder="seu@email.com" autocomplete="email">
+    <button class="btn ok" id="go">Receber link de acesso</button>
+    <p id="msg" style="margin-top:12px;font-size:13px;color:var(--i2)">${msg||''}</p></div>`;
+  document.getElementById('go').onclick = async () => {
+    const email = document.getElementById('em').value.trim();
+    if (!email) return;
+    document.getElementById('msg').textContent = 'Enviando…';
+    const { error } = await sb.auth.signInWithOtp({ email,
+      options:{ emailRedirectTo: location.origin + location.pathname }});
+    document.getElementById('msg').textContent = error ? ('Erro: ' + error.message)
+      : 'Link enviado. Confira seu e-mail.';
+  };
+}
+
+const MENU = [['inicio','Início'],['casos','Casos'],['clientes','Clientes'],['processos','Processos'],
+  ['publicacoes','Publicações'],['agenda','Agenda'],['financeiro','Financeiro'],['recados','Recados']];
+
+function menu(atual){
+  return `<nav>
+    <div class="marca"><div class="sigla">BP</div><div><span class="nome">${esc(PAR.nome)}</span>
+      <span class="sub2">casos em parceria</span></div></div>
+    ${MENU.map(([k,r]) => `<a class="${atual===k?'on':''}" href="#/${k}">${r}</a>`).join('')}
+    <span class="dir">${esc(PAR.eu?.nome || USER?.email || '')} ·
+      <a onclick="sb.auth.signOut().then(()=>location.reload())">sair</a></span></nav>`;
+}
+
+function rodape(){
+  return `<footer><b>${esc(PAR.nome)}</b> — área da parceria.
+    Aqui só existe o que foi marcado como nosso: o caso é a mesma linha que o escritório vê do
+    outro lado, e não uma cópia. O que se cadastra aqui aparece lá na hora, e o contrário também.
+    O restante do escritório não é visível desta porta.</footer>`;
+}
+
+const erro = m => app.innerHTML = menu('') + '<main><div class="card"><div class="vazio">Erro ao carregar: '+esc(m)+'</div></div></main>';
+const vazio = t => `<div class="vazio">${esc(t)}</div>`;
+
+async function carregarParceria(){
+  const { data:{ user } } = await sb.auth.getUser();
+  USER = user;
+  /* Gruda o login no convite, se for o primeiro acesso desta pessoa. */
+  await sb.rpc('entrar_na_parceria').catch(()=>{});
+  const [p, m, a, c] = await Promise.all([
+    sb.from('parceria').select('*').limit(1).maybeSingle(),
+    sb.from('parceria_membro').select('*').order('criado_em'),
+    sb.from('area_atuacao').select('id,nome').order('nome'),
+    sb.from('coluna_caso').select('id,nome,ordem').order('ordem'),
+  ]);
+  if (p.data) { PAR.id = p.data.id; PAR.nome = p.data.nome || 'Parceria'; PAR.parceiro_id = p.data.parceiro_id; }
+  PAR.membros = m.data || [];
+  PAR.eu = PAR.membros.find(x => x.usuario_auth === user.id)
+        || PAR.membros.find(x => (x.email||'').toLowerCase() === (user.email||'').toLowerCase()) || null;
+  AREAS = a.data || []; COLUNAS = c.data || [];
+  return PAR;
+}
+
+const nomeArea = id => AREAS.find(a => a.id === id)?.nome || '';
+const quemE = uid => { const m = PAR.membros.find(x => x.usuario_auth === uid); return m ? m.nome : 'alguém'; };
+
+/* ------------------------------------------------------------------ início */
+
+async function telaInicio(){
+  const limite = new Date(Date.now() + 30*864e5).toISOString().slice(0,10);
+  const [cs, pz, ev, it, rc] = await Promise.all([
+    sb.from('caso').select('id,titulo,encerrado_em').eq('parceria_id', PAR.id),
+    sb.from('prazo').select('id,descricao,data_fatal,situacao,caso_id').eq('parceria_id', PAR.id)
+      .in('situacao',['sugerido','confirmado']).lte('data_fatal', limite).order('data_fatal'),
+    sb.from('evento').select('id,titulo,inicio,tipo,caso_id').eq('parceria_id', PAR.id)
+      .eq('situacao','aberta').gte('inicio', hoje()).order('inicio').limit(12),
+    sb.from('intimacao').select('id,data_disponibilizacao,tipo_comunicacao,numero_formatado,situacao')
+      .eq('parceria_id', PAR.id).eq('situacao','nova').order('data_disponibilizacao',{ascending:false}),
+    sb.from('parceria_recado').select('*').eq('parceria_id', PAR.id).order('criado_em',{ascending:false}).limit(5),
+  ]);
+  if (cs.error) return erro(cs.error.message);
+  const casos = cs.data || [], abertos = casos.filter(c => !c.encerrado_em);
+  const prazos = pz.data || [], eventos = ev.data || [], novas = it.data || [], recados = rc.data || [];
+  const tituloCaso = id => casos.find(c => c.id === id)?.titulo || '';
+
+  app.innerHTML = menu('inicio') + `<main>
+  <h1>Início</h1>
+  <p class="meta">O que é nosso e o que vence. Tudo o que está aqui está também no sistema do
+    escritório, na mesma linha — não é cópia.</p>
+  <div class="kpis">
+    <div class="kpi"><div class="n">${abertos.length}</div><div class="l">casos abertos</div></div>
+    <div class="kpi ${prazos.filter(p=>dias(p.data_fatal)<=5).length?'al':''}">
+      <div class="n">${prazos.length}</div><div class="l">prazos em 30 dias</div></div>
+    <div class="kpi ${novas.length?'al':''}"><div class="n">${novas.length}</div><div class="l">publicações novas</div></div>
+    <div class="kpi"><div class="n">${eventos.length}</div><div class="l">compromissos à frente</div></div>
+  </div>
+
+  <div class="card"><h2>Prazos</h2>
+    ${prazos.length ? `<table><thead><tr><th>Fatal</th><th>Providência</th><th>Caso</th><th></th></tr></thead><tbody>
+      ${prazos.map(p => { const d = dias(p.data_fatal), [cor, rot] = sit(d);
+        return `<tr><td class="dt">${br(p.data_fatal)}<span class="sub">${d<0?Math.abs(d)+' dias atrás':d+' dias'}</span></td>
+        <td>${esc(p.descricao)}</td>
+        <td>${p.caso_id ? `<a class="lnk" href="#/caso/${p.caso_id}">${esc(tituloCaso(p.caso_id))}</a>` : '—'}</td>
+        <td><span class="pill ${cor}">${rot}</span></td></tr>`; }).join('')}
+    </tbody></table>` : vazio('Nenhum prazo nos próximos 30 dias.')}
+  </div>
+
+  <div class="card"><h2>Próximos compromissos</h2>
+    ${eventos.length ? `<table><tbody>${eventos.map(e => `<tr>
+      <td class="dt" style="width:150px">${horaBr(e.inicio)}</td>
+      <td>${esc(e.titulo)}<span class="sub">${esc(e.tipo)}${e.caso_id?' · '+esc(tituloCaso(e.caso_id)):''}</span></td>
+    </tr>`).join('')}</tbody></table>` : vazio('Nada marcado.')}
+  </div>
+
+  <div class="card"><h2>Últimos recados</h2>
+    ${recados.length ? `<div style="padding:4px 18px 16px">${recados.map(r => `
+      <div class="bolha ${r.autor_auth===USER.id?'meu':''}">${esc(r.texto)}
+        <span class="quem">${esc(r.autor_nome)} · ${horaBr(r.criado_em)}</span></div>`).join('')}
+      <p style="margin:10px 0 0"><a class="lnk" href="#/recados">abrir os recados</a></p></div>`
+      : vazio('Nenhum recado ainda.')}
+  </div>
+  </main>` + rodape();
+}
+
+/* ------------------------------------------------------------------- casos */
+
+let CASOBUSCA = '';
+
+async function telaCasos(){
+  const [cs, cl] = await Promise.all([
+    sb.from('caso').select('*').eq('parceria_id', PAR.id).order('criado_em',{ascending:false}),
+    sb.from('cliente').select('id,nome').eq('parceria_id', PAR.id).order('nome'),
+  ]);
+  if (cs.error) return erro(cs.error.message);
+  const casos = cs.data || [], clientes = cl.data || [];
+  const nomeCli = id => clientes.find(c => c.id === id)?.nome || '—';
+  const filtro = CASOBUSCA.trim().toLowerCase();
+  const casa = c => !filtro || (c.titulo||'').toLowerCase().includes(filtro) || nomeCli(c.cliente_id).toLowerCase().includes(filtro);
+  const abertos = casos.filter(c => !c.encerrado_em && casa(c));
+  const fechados = casos.filter(c => c.encerrado_em && casa(c));
+
+  app.innerHTML = menu('casos') + `<main>
+  <h1>Casos</h1>
+  <p class="meta">Os casos da parceria. Abrir um caso aqui é abrir no escritório também: ele
+    entra no quadro de lá, na primeira etapa.</p>
+  <div class="card">
+    <div style="padding:12px 18px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button class="btn ok" onclick="document.getElementById('nc').style.display='block'">Abrir um caso</button>
+      <input type="search" id="busca" placeholder="buscar por caso ou cliente" value="${esc(CASOBUSCA)}"
+        oninput="CASOBUSCA=this.value;clearTimeout(window.__b);window.__b=setTimeout(telaCasos,250)"
+        style="flex:1;min-width:200px;padding:6px 11px">
+    </div>
+  </div>
+
+  <div class="card" id="nc" style="display:none"><h2>Abrir um caso</h2>
+    <p class="nota">Digite o nome do cliente. Se ainda não houver cadastro, o sistema cria o
+      cliente junto — caso não nasce sem dono.</p>
+    <form class="form" onsubmit="novoCaso(event)">
+      <label class="larga"><span class="sub">Nome do cliente</span>
+        <input name="cliente" required list="lcli" placeholder="como deve aparecer no quadro">
+        <datalist id="lcli">${clientes.map(c=>`<option value="${esc(c.nome)}">`).join('')}</datalist></label>
+      <label><span class="sub">Telefone</span><input name="telefone" placeholder="com DDD"></label>
+      <label><span class="sub">Área</span>
+        <select name="area_id"><option value="">— sem área —</option>
+          ${AREAS.map(a=>`<option value="${a.id}">${esc(a.nome)}</option>`).join('')}</select></label>
+      <label><span class="sub">Polo</span>
+        <select name="polo"><option value="">— não informado —</option>
+          <option>Reclamante</option><option>Reclamado</option><option>Autor</option><option>Réu</option></select></label>
+      <label class="larga"><span class="sub">O que é o caso</span>
+        <input name="titulo" placeholder="deixe em branco para usar o nome do cliente"></label>
+      <button class="btn ok" type="submit">Abrir</button>
+      <span id="nc-st" class="sub" style="margin:0"></span>
+    </form>
+  </div>
+
+  <div class="card"><h2>Abertos — ${abertos.length}</h2>
+    ${abertos.length ? `<table><thead><tr><th>Caso</th><th>Cliente</th><th>Área</th><th>Aberto em</th></tr></thead><tbody>
+      ${abertos.map(c => `<tr>
+        <td><a class="lnk" href="#/caso/${c.id}">${esc(c.titulo)}</a>
+          ${c.polo?`<span class="sub">${esc(c.polo)}</span>`:''}</td>
+        <td>${esc(nomeCli(c.cliente_id))}</td>
+        <td>${esc(nomeArea(c.area_id) || c.area || '—')}</td>
+        <td class="dt">${br(c.criado_em)}</td></tr>`).join('')}
+    </tbody></table>` : vazio(filtro ? 'Nada encontrado.' : 'Nenhum caso em parceria ainda.')}
+  </div>
+
+  ${fechados.length ? `<div class="card"><h2>Encerrados — ${fechados.length}</h2>
+    <table><tbody>${fechados.map(c => `<tr>
+      <td><a class="lnk" href="#/caso/${c.id}">${esc(c.titulo)}</a></td>
+      <td>${esc(nomeCli(c.cliente_id))}</td>
+      <td>${esc(c.resultado||'—')}</td>
+      <td class="dt">${br(c.encerrado_em)}</td></tr>`).join('')}</tbody></table></div>` : ''}
+  </main>` + rodape();
+}
+
+window.novoCaso = async (ev) => {
+  ev.preventDefault();
+  const f = ev.target, st = document.getElementById('nc-st');
+  const v = n => (f.elements[n]?.value || '').trim();
+  const nome = v('cliente'); if (!nome) return;
+  st.textContent = 'abrindo…'; st.style.color = 'var(--i2)';
+  try {
+    /* O cliente já da parceria é reaproveitado; senão nasce aqui, carimbado. */
+    let { data: cli } = await sb.from('cliente').select('id').eq('parceria_id', PAR.id).ilike('nome', nome).limit(1);
+    let cliente_id = cli?.[0]?.id;
+    if (!cliente_id) {
+      const novo = await sb.from('cliente').insert({
+        parceria_id: PAR.id, nome, telefone: v('telefone') || null, whatsapp: v('telefone') || null,
+      }).select('id').single();
+      if (novo.error) throw novo.error;
+      cliente_id = novo.data.id;
+    }
+    const caso = await sb.from('caso').insert({
+      parceria_id: PAR.id, cliente_id, titulo: v('titulo') || nome,
+      area_id: v('area_id') || null, area: nomeArea(v('area_id')) || null, polo: v('polo') || null,
+    }).select('id').single();
+    if (caso.error) throw caso.error;
+    location.hash = '#/caso/' + caso.data.id;
+  } catch (e) { st.style.color = 'var(--crit)'; st.textContent = 'não deu certo: ' + e.message; }
+};
+
+async function telaCaso(id){
+  const [c, pr, pz, ev, la, rc] = await Promise.all([
+    sb.from('caso').select('*, cliente:cliente_id(id,nome,cpf_cnpj,telefone,whatsapp,email)').eq('id', id).maybeSingle(),
+    sb.from('processo').select('*').eq('caso_id', id).order('criado_em'),
+    sb.from('prazo').select('*').eq('caso_id', id).order('data_fatal'),
+    sb.from('evento').select('*').eq('caso_id', id).order('inicio',{ascending:false}).limit(20),
+    sb.from('lancamento').select('*').eq('caso_id', id).order('vencimento'),
+    sb.from('parceria_recado').select('*').eq('caso_id', id).order('criado_em'),
+  ]);
+  if (c.error) return erro(c.error.message);
+  if (!c.data) return erro('caso não encontrado, ou não é da parceria');
+  const caso = c.data, cli = caso.cliente;
+  const procs = pr.data || [], prazos = pz.data || [], eventos = ev.data || [],
+        lancs = la.data || [], recados = rc.data || [];
+  const aReceber = lancs.filter(l => l.tipo === 'entrada' && l.situacao !== 'pago')
+    .reduce((t,l) => t + Number(l.valor||0), 0);
+
+  app.innerHTML = menu('casos') + `<main>
+  <a class="volta" href="#/casos">← Casos</a>
+  <h1>${esc(caso.titulo)}</h1>
+  <p class="meta">${esc(nomeArea(caso.area_id) || caso.area || 'sem área')}${caso.polo?' · '+esc(caso.polo):''}
+    ${caso.encerrado_em ? `· <span class="pill cin">encerrado em ${br(caso.encerrado_em)}</span>` : ''}</p>
+
+  <div class="card"><h2>Cliente</h2>
+    <div class="ficha">
+      <div><span class="r">nome</span>${cli ? `<a class="lnk" href="#/cliente/${cli.id}">${esc(cli.nome)}</a>` : '—'}</div>
+      <div><span class="r">CPF/CNPJ</span>${esc(cli?.cpf_cnpj || '—')}</div>
+      <div><span class="r">telefone</span>${esc(cli?.whatsapp || cli?.telefone || '—')}</div>
+      <div><span class="r">e-mail</span>${esc(cli?.email || '—')}</div>
+    </div>
+    ${caso.descricao ? `<p class="nota">${esc(caso.descricao)}</p>` : ''}
+  </div>
+
+  <div class="card"><h2>Processos</h2>
+    ${procs.length ? `<table><tbody>${procs.map(p => `<tr>
+      <td><a class="lnk" href="#/processo/${p.id}"><span class="proc">${esc(p.numero_formatado || p.numero_cnj)}</span></a>
+        <span class="sub">${esc([p.tribunal_sigla, p.orgao, p.classe].filter(Boolean).join(' · ') || '—')}</span></td>
+      <td style="width:120px">${esc(p.fase || '—')}</td></tr>`).join('')}</tbody></table>`
+      : vazio('Nenhum processo. Cadastre em Processos e amarre a este caso.')}
+    <div style="padding:0 18px 16px"><a class="lnk" href="#/processos?caso=${caso.id}">cadastrar um processo neste caso</a></div>
+  </div>
+
+  <div class="card"><h2>Prazos</h2>
+    ${prazos.length ? `<table><tbody>${prazos.map(p => { const d = dias(p.data_fatal), [cor, rot] = sit(d);
+      return `<tr><td class="dt" style="width:110px">${br(p.data_fatal)}</td>
+      <td>${esc(p.descricao)}${p.providencia?`<span class="sub">${esc(p.providencia)}</span>`:''}</td>
+      <td style="width:110px">${p.situacao==='cumprido'?'<span class="pill good">cumprido</span>':`<span class="pill ${cor}">${rot}</span>`}</td>
+      </tr>`; }).join('')}</tbody></table>` : vazio('Sem prazos.')}
+  </div>
+
+  <div class="card"><h2>Dinheiro deste caso</h2>
+    ${lancs.length ? `<table><thead><tr><th>Vencimento</th><th>O quê</th><th>Valor</th><th>Situação</th></tr></thead><tbody>
+      ${lancs.map(l => `<tr><td class="dt">${br(l.vencimento)}</td>
+        <td>${esc(l.descricao||'—')}${l.parcela?`<span class="sub">parcela ${l.parcela}/${l.total_parcelas}</span>`:''}</td>
+        <td class="dt">${rs(l.valor)}</td>
+        <td>${l.situacao==='pago'?'<span class="pill good">pago</span>':'<span class="pill cin">'+esc(l.situacao)+'</span>'}</td>
+      </tr>`).join('')}</tbody></table>
+      <p class="nota" style="margin-top:10px">A receber neste caso: <b>${rs(aReceber)}</b>.</p>`
+      : vazio('Nada lançado.')}
+  </div>
+
+  <div class="card"><h2>Agenda deste caso</h2>
+    ${eventos.length ? `<ul class="tl">${eventos.map(e => `<li>
+      <span class="d">${horaBr(e.inicio)}</span><b>${esc(e.titulo)}</b>
+      <span class="sub">${esc(e.tipo)}${e.local?' · '+esc(e.local):''}</span></li>`).join('')}</ul>`
+      : vazio('Nada marcado.')}
+    <div style="padding:0 18px 16px"><a class="lnk" href="#/agenda?caso=${caso.id}">marcar algo neste caso</a></div>
+  </div>
+
+  <div class="card"><h2>Recados sobre este caso</h2>
+    <div class="fio" id="fio">${recados.length ? recados.map(r => `
+      <div class="bolha ${r.autor_auth===USER.id?'meu':''}">${esc(r.texto)}
+        <span class="quem">${esc(r.autor_nome)} · ${horaBr(r.criado_em)}</span></div>`).join('')
+      : '<div class="vazio">Nenhum recado sobre este caso.</div>'}</div>
+    <form class="form" style="padding:14px 18px" onsubmit="novoRecado(event,'${caso.id}')">
+      <label class="larga"><textarea name="texto" rows="2" required placeholder="escreva para a outra parte da parceria"></textarea></label>
+      <button class="btn ok" type="submit">Enviar</button>
+      <span id="rec-st" class="sub" style="margin:0"></span>
+    </form>
+  </div>
+
+  ${caso.encerrado_em ? '' : `<div class="card"><h2>Encerrar</h2>
+    <form class="form" onsubmit="encerrarCaso(event,'${caso.id}')">
+      <label class="larga"><span class="sub">Resultado</span>
+        <input name="resultado" required placeholder="o que aconteceu, em uma linha"></label>
+      <button class="btn" type="submit">Encerrar o caso</button>
+      <span id="enc-st" class="sub" style="margin:0"></span>
+    </form></div>`}
+  </main>` + rodape();
+  const f = document.getElementById('fio'); if (f) f.scrollTop = f.scrollHeight;
+}
+
+window.encerrarCaso = async (ev, id) => {
+  ev.preventDefault();
+  const st = document.getElementById('enc-st');
+  const resultado = ev.target.elements['resultado'].value.trim();
+  if (!confirm('Encerrar o caso? Ele sai dos abertos, aqui e no sistema do escritório.')) return;
+  const { error } = await sb.from('caso').update({ encerrado_em: hoje(), resultado,
+    atualizado_em: new Date().toISOString() }).eq('id', id);
+  if (error) { st.style.color = 'var(--crit)'; st.textContent = error.message; return; }
+  telaCaso(id);
+};
+
+window.novoRecado = async (ev, casoId) => {
+  ev.preventDefault();
+  const st = document.getElementById('rec-st');
+  const t = ev.target.elements['texto'];
+  const texto = t.value.trim(); if (!texto) return;
+  const { error } = await sb.from('parceria_recado').insert({
+    parceria_id: PAR.id, caso_id: casoId || null,
+    autor_nome: PAR.eu?.nome || USER.email, texto,
+  });
+  if (error) { st.style.color = 'var(--crit)'; st.textContent = error.message; return; }
+  t.value = '';
+  casoId ? telaCaso(casoId) : telaRecados();
+};
+
+/* ---------------------------------------------------------------- clientes */
+
+async function telaClientes(){
+  const [cl, cs] = await Promise.all([
+    sb.from('cliente').select('*').eq('parceria_id', PAR.id).order('nome'),
+    sb.from('caso').select('id,titulo,cliente_id,encerrado_em').eq('parceria_id', PAR.id),
+  ]);
+  if (cl.error) return erro(cl.error.message);
+  const clientes = cl.data || [], casos = cs.data || [];
+  app.innerHTML = menu('clientes') + `<main>
+  <h1>Clientes</h1>
+  <p class="meta">Quem é cliente de um caso em parceria. O cadastro é o mesmo do escritório —
+    corrigir aqui corrige lá.</p>
+  <div class="card">
+    <div style="padding:12px 18px"><button class="btn ok"
+      onclick="document.getElementById('ncl').style.display='block'">Cadastrar cliente</button></div>
+  </div>
+  <div class="card" id="ncl" style="display:none"><h2>Cadastrar cliente</h2>
+    <form class="form" onsubmit="novoCliente(event)">
+      <label class="larga"><span class="sub">Nome</span><input name="nome" required></label>
+      <label><span class="sub">CPF/CNPJ</span><input name="cpf_cnpj"></label>
+      <label><span class="sub">Telefone</span><input name="telefone"></label>
+      <label><span class="sub">E-mail</span><input name="email" type="email"></label>
+      <label><span class="sub">Cidade</span><input name="cidade"></label>
+      <button class="btn ok" type="submit">Cadastrar</button>
+      <span id="ncl-st" class="sub" style="margin:0"></span>
+    </form>
+  </div>
+  <div class="card">
+    ${clientes.length ? `<table><thead><tr><th>Nome</th><th>CPF/CNPJ</th><th>Contato</th><th>Casos</th></tr></thead><tbody>
+      ${clientes.map(c => { const meus = casos.filter(x => x.cliente_id === c.id);
+        return `<tr><td><a class="lnk" href="#/cliente/${c.id}">${esc(c.nome)}</a></td>
+        <td>${esc(c.cpf_cnpj||'—')}</td>
+        <td>${esc(c.whatsapp || c.telefone || c.email || '—')}</td>
+        <td>${meus.length ? meus.map(m=>`<a class="lnk" href="#/caso/${m.id}">${esc(m.titulo)}</a>`).join('<br>') : '—'}</td>
+        </tr>`; }).join('')}</tbody></table>` : vazio('Nenhum cliente na parceria ainda.')}
+  </div></main>` + rodape();
+}
+
+window.novoCliente = async (ev) => {
+  ev.preventDefault();
+  const f = ev.target, st = document.getElementById('ncl-st');
+  const v = n => (f.elements[n]?.value || '').trim() || null;
+  const { error } = await sb.from('cliente').insert({
+    parceria_id: PAR.id, nome: v('nome'), cpf_cnpj: v('cpf_cnpj'), telefone: v('telefone'),
+    whatsapp: v('telefone'), email: v('email'), cidade: v('cidade'),
+  });
+  if (error) { st.style.color = 'var(--crit)'; st.textContent = error.message; return; }
+  telaClientes();
+};
+
+async function telaCliente(id){
+  const [c, cs] = await Promise.all([
+    sb.from('cliente').select('*').eq('id', id).maybeSingle(),
+    sb.from('caso').select('id,titulo,encerrado_em,resultado').eq('cliente_id', id).eq('parceria_id', PAR.id),
+  ]);
+  if (c.error) return erro(c.error.message);
+  if (!c.data) return erro('cliente não encontrado, ou não é da parceria');
+  const cl = c.data, casos = cs.data || [];
+  app.innerHTML = menu('clientes') + `<main>
+  <a class="volta" href="#/clientes">← Clientes</a>
+  <h1>${esc(cl.nome)}</h1>
+  <div class="card"><h2>Cadastro</h2>
+    <form class="form" onsubmit="salvarCliente(event,'${cl.id}')">
+      <label class="larga"><span class="sub">Nome</span><input name="nome" value="${esc(cl.nome)}" required></label>
+      <label><span class="sub">CPF/CNPJ</span><input name="cpf_cnpj" value="${esc(cl.cpf_cnpj||'')}"></label>
+      <label><span class="sub">Telefone</span><input name="telefone" value="${esc(cl.whatsapp||cl.telefone||'')}"></label>
+      <label><span class="sub">E-mail</span><input name="email" value="${esc(cl.email||'')}"></label>
+      <label><span class="sub">Cidade</span><input name="cidade" value="${esc(cl.cidade||'')}"></label>
+      <label><span class="sub">Profissão</span><input name="profissao" value="${esc(cl.profissao||'')}"></label>
+      <button class="btn ok" type="submit">Salvar</button>
+      <span id="cl-st" class="sub" style="margin:0"></span>
+    </form>
+  </div>
+  <div class="card"><h2>Casos em parceria</h2>
+    ${casos.length ? `<table><tbody>${casos.map(x=>`<tr>
+      <td><a class="lnk" href="#/caso/${x.id}">${esc(x.titulo)}</a></td>
+      <td>${x.encerrado_em?'<span class="pill cin">encerrado</span>':'<span class="pill good">aberto</span>'}</td>
+      </tr>`).join('')}</tbody></table>` : vazio('Nenhum.')}
+  </div></main>` + rodape();
+}
+
+window.salvarCliente = async (ev, id) => {
+  ev.preventDefault();
+  const f = ev.target, st = document.getElementById('cl-st');
+  const v = n => (f.elements[n]?.value || '').trim() || null;
+  const { error } = await sb.from('cliente').update({
+    nome: v('nome'), cpf_cnpj: v('cpf_cnpj'), telefone: v('telefone'), whatsapp: v('telefone'),
+    email: v('email'), cidade: v('cidade'), profissao: v('profissao'),
+    atualizado_em: new Date().toISOString(),
+  }).eq('id', id);
+  st.style.color = error ? 'var(--crit)' : 'var(--good)';
+  st.textContent = error ? error.message : 'salvo';
+};
+
+/* --------------------------------------------------------------- processos */
+
+async function telaProcessos(casoPre){
+  const [pr, cs] = await Promise.all([
+    sb.from('processo').select('*').eq('parceria_id', PAR.id).order('criado_em',{ascending:false}),
+    sb.from('caso').select('id,titulo').eq('parceria_id', PAR.id).order('titulo'),
+  ]);
+  if (pr.error) return erro(pr.error.message);
+  const procs = pr.data || [], casos = cs.data || [];
+  const tituloCaso = id => casos.find(c => c.id === id)?.titulo || '—';
+  app.innerHTML = menu('processos') + `<main>
+  <h1>Processos</h1>
+  <p class="meta">Processo cadastrado aqui entra no sistema do escritório e no robô que acompanha
+    o andamento — é a mesma linha, com o mesmo acompanhamento.</p>
+  <div class="card">
+    <div style="padding:12px 18px"><button class="btn ok"
+      onclick="document.getElementById('npr').style.display='block'">Cadastrar processo</button></div>
+  </div>
+  <div class="card" id="npr" style="display:${casoPre?'block':'none'}"><h2>Cadastrar processo</h2>
+    <p class="nota">O número vai para o robô do DataJud e do DJEN como qualquer outro: o andamento
+      e as publicações passam a chegar sozinhos.</p>
+    <form class="form" onsubmit="novoProcesso(event)">
+      <label class="larga"><span class="sub">Número (CNJ)</span>
+        <input name="numero" required placeholder="0000000-00.0000.0.00.0000"></label>
+      <label class="larga"><span class="sub">Caso</span>
+        <select name="caso_id"><option value="">— sem caso —</option>
+          ${casos.map(c=>`<option value="${c.id}" ${c.id===casoPre?'selected':''}>${esc(c.titulo)}</option>`).join('')}</select></label>
+      <label><span class="sub">Tribunal</span><input name="tribunal_sigla" placeholder="TRT6, TJPE…"></label>
+      <label><span class="sub">Órgão</span><input name="orgao"></label>
+      <label><span class="sub">Classe</span><input name="classe"></label>
+      <button class="btn ok" type="submit">Cadastrar</button>
+      <span id="npr-st" class="sub" style="margin:0"></span>
+    </form>
+  </div>
+  <div class="card">
+    ${procs.length ? `<table><thead><tr><th>Número</th><th>Caso</th><th>Tribunal</th><th>Fase</th></tr></thead><tbody>
+      ${procs.map(p=>`<tr>
+        <td><a class="lnk" href="#/processo/${p.id}"><span class="proc">${esc(p.numero_formatado||p.numero_cnj)}</span></a></td>
+        <td>${p.caso_id?`<a class="lnk" href="#/caso/${p.caso_id}">${esc(tituloCaso(p.caso_id))}</a>`:'—'}</td>
+        <td>${esc(p.tribunal_sigla||'—')}<span class="sub">${esc(p.orgao||'')}</span></td>
+        <td>${esc(p.fase||'—')}</td></tr>`).join('')}</tbody></table>`
+      : vazio('Nenhum processo na parceria ainda.')}
+  </div></main>` + rodape();
+}
+
+const soDig = s => String(s||'').replace(/\D/g,'');
+const formatarCnj = d => d.length === 20
+  ? `${d.slice(0,7)}-${d.slice(7,9)}.${d.slice(9,13)}.${d.slice(13,14)}.${d.slice(14,16)}.${d.slice(16,20)}` : null;
+
+window.novoProcesso = async (ev) => {
+  ev.preventDefault();
+  const f = ev.target, st = document.getElementById('npr-st');
+  const v = n => (f.elements[n]?.value || '').trim() || null;
+  const d = soDig(v('numero'));
+  if (d.length !== 20) { st.style.color = 'var(--crit)';
+    st.textContent = 'o número CNJ tem 20 dígitos; este tem ' + d.length; return; }
+  const { error } = await sb.from('processo').insert({
+    parceria_id: PAR.id, caso_id: v('caso_id'), numero_cnj: d, numero_formatado: formatarCnj(d),
+    tribunal_sigla: v('tribunal_sigla'), orgao: v('orgao'), classe: v('classe'),
+  });
+  if (error) { st.style.color = 'var(--crit)'; st.textContent = error.message; return; }
+  telaProcessos();
+};
+
+async function telaProcesso(id){
+  const [p, mv, it] = await Promise.all([
+    sb.from('processo').select('*').eq('id', id).maybeSingle(),
+    sb.from('movimentacao').select('*').eq('processo_id', id).order('data',{ascending:false}).limit(60),
+    sb.from('intimacao').select('*').eq('processo_id', id).order('data_disponibilizacao',{ascending:false}).limit(20),
+  ]);
+  if (p.error) return erro(p.error.message);
+  if (!p.data) return erro('processo não encontrado, ou não é da parceria');
+  const proc = p.data, movs = mv.data || [], ints = it.data || [];
+  app.innerHTML = menu('processos') + `<main>
+  <a class="volta" href="#/processos">← Processos</a>
+  <h1><span class="proc" style="font-size:19px;color:var(--ink)">${esc(proc.numero_formatado||proc.numero_cnj)}</span></h1>
+  <p class="meta">${esc([proc.tribunal_sigla, proc.orgao, proc.classe].filter(Boolean).join(' · ') || '—')}</p>
+  <div class="card"><h2>Ficha</h2>
+    <div class="ficha">
+      <div><span class="r">fase</span>${esc(proc.fase||'—')}</div>
+      <div><span class="r">grau</span>${esc(proc.grau||'—')}</div>
+      <div><span class="r">assunto</span>${esc(proc.assunto||'—')}</div>
+      <div><span class="r">ajuizamento</span>${br(proc.data_ajuizamento)}</div>
+      <div><span class="r">valor da causa</span>${proc.valor_causa?rs(proc.valor_causa):'—'}</div>
+      <div><span class="r">caso</span>${proc.caso_id?`<a class="lnk" href="#/caso/${proc.caso_id}">abrir o caso</a>`:'—'}</div>
+    </div>
+  </div>
+  <div class="card"><h2>Publicações deste processo</h2>
+    ${ints.length ? `<table><tbody>${ints.map(i=>`<tr>
+      <td class="dt" style="width:110px">${br(i.data_disponibilizacao)}</td>
+      <td>${esc(i.tipo_comunicacao||'publicação')}<span class="sub">${esc((i.texto||'').slice(0,180))}</span></td>
+      </tr>`).join('')}</tbody></table>` : vazio('Nenhuma.')}
+  </div>
+  <div class="card"><h2>Andamento</h2>
+    ${movs.length ? `<ul class="tl">${movs.map(m=>`<li>
+      <span class="d">${br(m.data)}</span><b>${esc(m.descricao)}</b></li>`).join('')}</ul>`
+      : vazio('Sem movimentações registradas. O robô preenche sozinho, a partir do DataJud.')}
+  </div></main>` + rodape();
+}
+
+/* ------------------------------------------------------------- publicações */
+
+async function telaPublicacoes(){
+  const [it, cs] = await Promise.all([
+    sb.from('intimacao').select('*').eq('parceria_id', PAR.id)
+      .order('data_disponibilizacao',{ascending:false}).limit(120),
+    sb.from('caso').select('id,titulo').eq('parceria_id', PAR.id),
+  ]);
+  if (it.error) return erro(it.error.message);
+  const ints = it.data || [], casos = cs.data || [];
+  const tituloCaso = id => casos.find(c => c.id === id)?.titulo || '';
+  const novas = ints.filter(i => i.situacao === 'nova');
+  app.innerHTML = menu('publicacoes') + `<main>
+  <h1>Publicações</h1>
+  <p class="meta">As intimações dos processos da parceria, como chegam do Diário. Dar baixa aqui
+    dá baixa no escritório — é o mesmo registro.</p>
+  <div class="kpis">
+    <div class="kpi ${novas.length?'al':''}"><div class="n">${novas.length}</div><div class="l">novas</div></div>
+    <div class="kpi"><div class="n">${ints.length}</div><div class="l">no total</div></div>
+  </div>
+  <div class="card">
+    ${ints.length ? `<table><thead><tr><th>Data</th><th>Processo</th><th>Publicação</th><th></th></tr></thead><tbody>
+      ${ints.map(i=>`<tr>
+        <td class="dt">${br(i.data_disponibilizacao)}</td>
+        <td><span class="proc">${esc(i.numero_formatado||i.numero_processo||'—')}</span>
+          ${i.caso_id?`<span class="sub"><a class="lnk" href="#/caso/${i.caso_id}">${esc(tituloCaso(i.caso_id))}</a></span>`:''}</td>
+        <td>${esc(i.tipo_comunicacao||'publicação')}
+          <span class="sub" style="white-space:pre-wrap">${esc((i.texto||'').slice(0,400))}</span></td>
+        <td style="width:110px">${i.situacao==='nova'
+          ? `<button class="btn" onclick="baixarPublicacao('${i.id}')">Dar baixa</button>`
+          : `<span class="pill cin">${esc(i.situacao)}</span>`}</td></tr>`).join('')}
+    </tbody></table>` : vazio('Nenhuma publicação ainda. Elas chegam pelo robô do DJEN, pelos processos da parceria.')}
+  </div></main>` + rodape();
+}
+
+window.baixarPublicacao = async (id) => {
+  /* lida_por aponta para a tabela usuario, onde a parceira não está: fica em
+     branco de propósito. Quem deu baixa está na auditoria, pelo nome. */
+  const { error } = await sb.from('intimacao').update({ situacao: 'lida',
+    lida_em: new Date().toISOString() }).eq('id', id);
+  if (error) return alert('Não deu certo: ' + error.message);
+  telaPublicacoes();
+};
+
+/* ------------------------------------------------------------------ agenda */
+
+async function telaAgenda(casoPre){
+  const [ev, cs] = await Promise.all([
+    sb.from('evento').select('*').eq('parceria_id', PAR.id).order('inicio',{ascending:false}).limit(80),
+    sb.from('caso').select('id,titulo').eq('parceria_id', PAR.id).order('titulo'),
+  ]);
+  if (ev.error) return erro(ev.error.message);
+  const eventos = ev.data || [], casos = cs.data || [];
+  const tituloCaso = id => casos.find(c => c.id === id)?.titulo || '';
+  const agora = new Date().toISOString();
+  const futuros = eventos.filter(e => e.inicio >= agora).sort((a,b)=>a.inicio.localeCompare(b.inicio));
+  const passados = eventos.filter(e => e.inicio < agora);
+  const emails = PAR.membros.filter(m => m.ativo).map(m => m.email);
+
+  app.innerHTML = menu('agenda') + `<main>
+  <h1>Agenda</h1>
+  <p class="meta">Audiências, perícias e reuniões dos casos em parceria. O convite vai por e-mail
+    para quem você marcar — é assim que o compromisso entra na agenda de cada um, sem que um
+    precise abrir a conta do outro.</p>
+  <div class="card"><h2>Marcar</h2>
+    <form class="form" onsubmit="novoEvento(event)">
+      <label class="larga"><span class="sub">O quê</span><input name="titulo" required></label>
+      <label><span class="sub">Quando</span><input name="inicio" type="datetime-local" required></label>
+      <label><span class="sub">Tipo</span>
+        <select name="tipo"><option value="audiencia">Audiência</option><option value="pericia">Perícia</option>
+          <option value="reuniao">Reunião</option><option value="prazo">Prazo</option>
+          <option value="tarefa">Tarefa</option><option value="outro">Outro</option></select></label>
+      <label class="larga"><span class="sub">Caso</span>
+        <select name="caso_id"><option value="">— sem caso —</option>
+          ${casos.map(c=>`<option value="${c.id}" ${c.id===casoPre?'selected':''}>${esc(c.titulo)}</option>`).join('')}</select></label>
+      <label><span class="sub">Onde</span><input name="local"></label>
+      <label><span class="sub">Convidar</span>
+        <select name="convidado_email"><option value="">— ninguém —</option>
+          ${emails.map(e=>`<option value="${esc(e)}">${esc(e)}</option>`).join('')}</select></label>
+      <button class="btn ok" type="submit">Marcar</button>
+      <span id="ev-st" class="sub" style="margin:0"></span>
+    </form>
+  </div>
+  <div class="card"><h2>À frente — ${futuros.length}</h2>
+    ${futuros.length ? `<table><tbody>${futuros.map(e=>`<tr>
+      <td class="dt" style="width:160px">${horaBr(e.inicio)}</td>
+      <td>${esc(e.titulo)}<span class="sub">${esc(e.tipo)}${e.local?' · '+esc(e.local):''}${e.caso_id?' · '+esc(tituloCaso(e.caso_id)):''}</span></td>
+      <td style="width:120px">${e.situacao==='concluida'?'<span class="pill good">concluída</span>'
+        :`<button class="btn" onclick="concluirEvento('${e.id}')">Concluir</button>`}</td>
+      </tr>`).join('')}</tbody></table>` : vazio('Nada marcado.')}
+  </div>
+  ${passados.length ? `<div class="card"><h2>Passados</h2><table><tbody>${passados.slice(0,25).map(e=>`<tr>
+    <td class="dt" style="width:160px">${horaBr(e.inicio)}</td>
+    <td>${esc(e.titulo)}<span class="sub">${esc(e.tipo)}${e.caso_id?' · '+esc(tituloCaso(e.caso_id)):''}</span></td>
+    </tr>`).join('')}</tbody></table></div>` : ''}
+  </main>` + rodape();
+}
+
+window.novoEvento = async (ev) => {
+  ev.preventDefault();
+  const f = ev.target, st = document.getElementById('ev-st');
+  const v = n => (f.elements[n]?.value || '').trim() || null;
+  const quando = v('inicio');
+  const { error } = await sb.from('evento').insert({
+    parceria_id: PAR.id, titulo: v('titulo'), inicio: new Date(quando).toISOString(),
+    tipo: v('tipo') || 'tarefa', caso_id: v('caso_id'), local: v('local'),
+    convidado_email: v('convidado_email'), origem: 'parceria',
+  });
+  if (error) { st.style.color = 'var(--crit)'; st.textContent = error.message; return; }
+  telaAgenda();
+};
+
+window.concluirEvento = async (id) => {
+  const { error } = await sb.from('evento').update({ situacao: 'concluida',
+    concluido_em: new Date().toISOString() }).eq('id', id);
+  if (error) return alert('Não deu certo: ' + error.message);
+  telaAgenda();
+};
+
+/* -------------------------------------------------------------- financeiro */
+
+async function telaFinanceiro(){
+  const [la, cs] = await Promise.all([
+    sb.from('lancamento').select('*').eq('parceria_id', PAR.id).order('vencimento'),
+    sb.from('caso').select('id,titulo').eq('parceria_id', PAR.id).order('titulo'),
+  ]);
+  if (la.error) return erro(la.error.message);
+  const lancs = la.data || [], casos = cs.data || [];
+  const tituloCaso = id => casos.find(c => c.id === id)?.titulo || '—';
+  const entradas = lancs.filter(l => l.tipo === 'entrada');
+  const recebido = entradas.filter(l => l.situacao === 'pago').reduce((t,l)=>t+Number(l.valor||0),0);
+  const aReceber = entradas.filter(l => l.situacao !== 'pago').reduce((t,l)=>t+Number(l.valor||0),0);
+  const vencidos = entradas.filter(l => l.situacao !== 'pago' && dias(l.vencimento) < 0);
+  const quota = l => l.percentual_parceiro != null ? Number(l.valor||0) * Number(l.percentual_parceiro)/100 : null;
+  const cabeAoParceiro = entradas.reduce((t,l)=>t+(quota(l)||0),0);
+  const padrao = PAR.eu?.percentual ?? PAR.membros.find(m=>m.papel==='parceira')?.percentual ?? '';
+
+  app.innerHTML = menu('financeiro') + `<main>
+  <h1>Financeiro</h1>
+  <p class="meta">Só o dinheiro dos casos em parceria. O percentual de cada lançamento é o que cabe
+    ao parceiro (art. 15, § 9º, do Estatuto); o resto fica com o escritório. A baixa é manual, dos dois lados.</p>
+  <div class="kpis">
+    <div class="kpi"><div class="n">${rs(aReceber)}</div><div class="l">a receber</div></div>
+    <div class="kpi"><div class="n">${rs(recebido)}</div><div class="l">já recebido</div></div>
+    <div class="kpi ${vencidos.length?'al':''}"><div class="n">${vencidos.length}</div><div class="l">vencidos sem baixa</div></div>
+    <div class="kpi"><div class="n">${rs(cabeAoParceiro)}</div><div class="l">cabe ao parceiro</div></div>
+  </div>
+  <div class="card"><h2>Lançar</h2>
+    <form class="form" onsubmit="novoLancamento(event)">
+      <label class="larga"><span class="sub">O quê</span><input name="descricao" required></label>
+      <label class="larga"><span class="sub">Caso</span>
+        <select name="caso_id"><option value="">— sem caso —</option>
+          ${casos.map(c=>`<option value="${c.id}">${esc(c.titulo)}</option>`).join('')}</select></label>
+      <label><span class="sub">Valor</span><input name="valor" required placeholder="0,00"></label>
+      <label><span class="sub">Vencimento</span><input name="vencimento" type="date" required value="${hoje()}"></label>
+      <label><span class="sub">Tipo</span>
+        <select name="tipo"><option value="entrada">Entrada</option><option value="saida">Saída</option></select></label>
+      <label><span class="sub">% do parceiro</span>
+        <input name="percentual_parceiro" type="number" min="1" max="99" step="0.01" value="${esc(padrao)}"></label>
+      <button class="btn ok" type="submit">Lançar</button>
+      <span id="fin-st" class="sub" style="margin:0"></span>
+    </form>
+  </div>
+  <div class="card">
+    ${lancs.length ? `<table><thead><tr><th>Vencimento</th><th>O quê</th><th>Caso</th><th>Valor</th>
+      <th>Cabe ao parceiro</th><th></th></tr></thead><tbody>
+      ${lancs.map(l=>{ const q = quota(l); const atrasado = l.situacao!=='pago' && dias(l.vencimento)<0;
+        return `<tr><td class="dt">${br(l.vencimento)}${atrasado?'<span class="sub" style="color:var(--crit)">vencido</span>':''}</td>
+        <td>${esc(l.descricao||'—')}${l.parcela?`<span class="sub">parcela ${l.parcela}/${l.total_parcelas}</span>`:''}</td>
+        <td>${l.caso_id?`<a class="lnk" href="#/caso/${l.caso_id}">${esc(tituloCaso(l.caso_id))}</a>`:'—'}</td>
+        <td class="dt">${l.tipo==='saida'?'− ':''}${rs(l.valor)}</td>
+        <td class="dt">${q!=null?rs(q)+' <span class="sub">'+l.percentual_parceiro+'%</span>':'—'}</td>
+        <td style="width:110px">${l.situacao==='pago'
+          ? `<span class="pill good">pago ${br(l.pagamento)}</span>`
+          : `<button class="btn" onclick="baixarLancamento('${l.id}')">Dar baixa</button>`}</td></tr>`; }).join('')}
+    </tbody></table>` : vazio('Nada lançado ainda.')}
+  </div></main>` + rodape();
+}
+
+window.novoLancamento = async (ev) => {
+  ev.preventDefault();
+  const f = ev.target, st = document.getElementById('fin-st');
+  const v = n => (f.elements[n]?.value || '').trim() || null;
+  const valor = numOuNulo(v('valor'));
+  if (valor == null) { st.style.color = 'var(--crit)'; st.textContent = 'valor inválido'; return; }
+  const pct = numOuNulo(v('percentual_parceiro'));
+  const { error } = await sb.from('lancamento').insert({
+    parceria_id: PAR.id, tipo: v('tipo') || 'entrada', descricao: v('descricao'),
+    caso_id: v('caso_id'), valor, vencimento: v('vencimento'), situacao: 'previsto',
+    parceiro_id: PAR.parceiro_id || null,
+    percentual_parceiro: (pct != null && pct > 0 && pct < 100) ? pct : null,
+  });
+  if (error) { st.style.color = 'var(--crit)'; st.textContent = error.message; return; }
+  telaFinanceiro();
+};
+
+window.baixarLancamento = async (id) => {
+  if (!confirm('Dar baixa neste lançamento? Ele passa a constar como pago, aqui e no escritório.')) return;
+  const { error } = await sb.from('lancamento').update({ situacao: 'pago', pagamento: hoje() }).eq('id', id);
+  if (error) return alert('Não deu certo: ' + error.message);
+  telaFinanceiro();
+};
+
+/* ----------------------------------------------------------------- recados */
+
+async function telaRecados(){
+  const [rc, cs] = await Promise.all([
+    sb.from('parceria_recado').select('*').eq('parceria_id', PAR.id).order('criado_em'),
+    sb.from('caso').select('id,titulo').eq('parceria_id', PAR.id),
+  ]);
+  if (rc.error) return erro(rc.error.message);
+  const recados = rc.data || [], casos = cs.data || [];
+  const tituloCaso = id => casos.find(c => c.id === id)?.titulo || '';
+  app.innerHTML = menu('recados') + `<main>
+  <h1>Recados</h1>
+  <p class="meta">A conversa entre nós dois — não com o cliente. O que é sobre um caso fica
+    guardado dentro dele também.</p>
+  <div class="card">
+    <div class="fio" id="fio">${recados.length ? recados.map(r=>`
+      <div class="bolha ${r.autor_auth===USER.id?'meu':''}">${esc(r.texto)}
+        <span class="quem">${esc(r.autor_nome)} · ${horaBr(r.criado_em)}${
+          r.caso_id?` · <a class="lnk" style="color:inherit" href="#/caso/${r.caso_id}">${esc(tituloCaso(r.caso_id))}</a>`:''}</span>
+      </div>`).join('') : '<div class="vazio">Nenhum recado ainda.</div>'}</div>
+    <form class="form" style="padding:14px 18px" onsubmit="novoRecado(event,null)">
+      <label class="larga"><textarea name="texto" rows="2" required placeholder="escreva um recado"></textarea></label>
+      <button class="btn ok" type="submit">Enviar</button>
+      <span id="rec-st" class="sub" style="margin:0"></span>
+    </form>
+  </div></main>` + rodape();
+  const f = document.getElementById('fio'); if (f) f.scrollTop = f.scrollHeight;
+}
+
+/* ---------------------------------------------------------------- roteador */
+
+async function rota(){
+  const { data:{ user } } = await sb.auth.getUser();
+  if (!user) return telaLogin();
+  if (!PAR.id) {
+    try { await carregarParceria(); }
+    catch (e) { return erro(e.message); }
+    if (!PAR.id) {
+      app.innerHTML = `<div class="login"><h1>Parceria</h1>
+        <p>Você entrou, mas este e-mail ainda não foi convidado para nenhuma parceria.
+          Peça o convite e tente de novo.</p>
+        <button class="btn" onclick="sb.auth.signOut().then(()=>location.reload())">Sair</button></div>`;
+      return;
+    }
+  }
+  const h = location.hash || '#/inicio';
+  const q = new URLSearchParams((h.split('?')[1] || ''));
+  if (h.startsWith('#/caso/'))      return telaCaso(h.slice('#/caso/'.length).split('?')[0]);
+  if (h.startsWith('#/cliente/'))   return telaCliente(h.slice('#/cliente/'.length).split('?')[0]);
+  if (h.startsWith('#/processo/'))  return telaProcesso(h.slice('#/processo/'.length).split('?')[0]);
+  if (h.startsWith('#/casos'))      return telaCasos();
+  if (h.startsWith('#/clientes'))   return telaClientes();
+  if (h.startsWith('#/processos'))  return telaProcessos(q.get('caso'));
+  if (h.startsWith('#/publicacoes'))return telaPublicacoes();
+  if (h.startsWith('#/agenda'))     return telaAgenda(q.get('caso'));
+  if (h.startsWith('#/financeiro')) return telaFinanceiro();
+  if (h.startsWith('#/recados'))    return telaRecados();
+  return telaInicio();
+}
+
+window.addEventListener('hashchange', rota);
+let USER_ATUAL = null;
+sb.auth.onAuthStateChange((evento, sessao) => {
+  if (evento === 'TOKEN_REFRESHED' || evento === 'USER_UPDATED') return;
+  const uid = sessao?.user?.id ?? null;
+  if (uid === USER_ATUAL && evento !== 'SIGNED_OUT') return;
+  USER_ATUAL = uid;
+  rota();
+});
+rota();
+</script></body></html>
