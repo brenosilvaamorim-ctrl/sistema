@@ -69,14 +69,18 @@ em que existe um login que não é.
    inteiro, por fora das regras. **Corrigido em `44_parceria.sql`.**
 
 2. **Funções de borda que respondem com a chave de serviço** (que ignora a RLS) só exigiam
-   um login válido. Ganharam a conferência `doEscritorio(req)`: `gerar-documento`,
-   `minutar-peca`, `absorver-peca`, `custo-api` e `redigir-informativo`. **Essas precisam
-   ser reimplantadas no Supabase** — o arquivo daqui não é o que roda lá.
+   um login válido. Ganharam a conferência `doEscritorio(req)` — `gerar-documento`,
+   `minutar-peca`, `absorver-peca`, `custo-api` e `redigir-informativo` —, **implantadas no
+   Supabase em 07/11/2026**. Conferido nos dois sentidos: chamadas só com a chave pública
+   respondem 403 "acesso restrito ao escritório"; chamadas com o login do escritório passam.
 
-   Ficaram de fora, de propósito, por eu não saber quem as chama hoje:
-   `registrar-achado` (escreve na base de conhecimento; chamada pelas skills) e
-   **`migrar-08`**, que roda DDL arbitrário e, se ainda estiver implantada, é um buraco
-   para qualquer login — era de uso único e o melhor é apagá-la do Supabase.
+   **`migrar-08` foi apagada do Supabase** no mesmo dia. Ela não pedia login nenhum que
+   valesse: com a chave pública, que está na página, qualquer um a executava, e ela abre
+   conexão de dono no banco para rodar DDL. Era de uso único; o código continua aqui, em
+   `funcoes/migrar-08.ts`, idêntico ao que estava implantado, caso um dia volte a ser preciso.
+
+   Ficou de fora, de propósito, `registrar-achado` (escreve na base de conhecimento; chamada
+   pelas skills), por eu não saber ainda quem a chama de fora do escritório.
 
 ## Publicações: pelo processo, nunca pela OAB
 
