@@ -228,11 +228,37 @@ const FONTES: Record<string, (db: any, desde: string) => Promise<Leitura>> = {
 // porque a foto inicial dos temas já cobre o que havia antes.
 const PRIMEIRA_VEZ: Record<string, number> = { dou: 30, cnj: 8, ibge: 0, cjf: 8 };
 
+/* Esta função responde com a chave de serviço, que ignora a RLS: a conferência de
+   quem pede tem de ser feita aqui dentro. Passam três: a própria chave de serviço,
+   um login ativo do escritório, e a chave dos robôs — que o agendador do banco lê de
+   `escritorio.robo_token` e manda na URL (`?chave=`) ou no cabeçalho `x-chave-robo`. */
+async function doEscritorio(req: Request): Promise<boolean> {
+  const servico = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  const adm = createClient(Deno.env.get('SUPABASE_URL')!, servico, { auth: { persistSession: false } });
+
+  const chave = (new URL(req.url).searchParams.get('chave')
+    ?? req.headers.get('x-chave-robo') ?? '').trim();
+  if (chave.length >= 16) {
+    const { data: e } = await adm.from('escritorio').select('id').eq('robo_token', chave).maybeSingle();
+    if (e) return true;
+  }
+
+  const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
+  if (!jwt) return false;
+  if (servico && jwt === servico) return true;
+  const { data: quem } = await adm.auth.getUser(jwt);
+  if (!quem?.user) return false;
+  const { data: u } = await adm.from('usuario').select('id')
+    .eq('id', quem.user.id).eq('ativo', true).maybeSingle();
+  return !!u;
+}
+
 Deno.serve(async (req) => {
   const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
   const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Content-Type': 'application/json' };
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   const responde = (j: unknown, status = 200) => new Response(JSON.stringify(j), { headers: cors, status });
+  if (!await doEscritorio(req)) return responde({ erro: 'acesso restrito ao escritório' }, 403);
 
   let corpo: any = {}; if (req.method === 'POST') { try { corpo = await req.json(); } catch { /* sem corpo */ } }
   const fonte = String(new URL(req.url).searchParams.get('fonte') || corpo.fonte || '');

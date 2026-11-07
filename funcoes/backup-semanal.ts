@@ -25,7 +25,34 @@ const b64 = (txt: string) => {
   return btoa(bin);
 };
 
-Deno.serve(async () => {
+/* Esta função responde com a chave de serviço, que ignora a RLS: a conferência de
+   quem pede tem de ser feita aqui dentro. Passam três: a própria chave de serviço,
+   um login ativo do escritório, e a chave dos robôs — que o agendador do banco lê de
+   `escritorio.robo_token` e manda na URL (`?chave=`) ou no cabeçalho `x-chave-robo`. */
+async function doEscritorio(req: Request): Promise<boolean> {
+  const servico = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  const adm = createClient(Deno.env.get('SUPABASE_URL')!, servico, { auth: { persistSession: false } });
+
+  const chave = (new URL(req.url).searchParams.get('chave')
+    ?? req.headers.get('x-chave-robo') ?? '').trim();
+  if (chave.length >= 16) {
+    const { data: e } = await adm.from('escritorio').select('id').eq('robo_token', chave).maybeSingle();
+    if (e) return true;
+  }
+
+  const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
+  if (!jwt) return false;
+  if (servico && jwt === servico) return true;
+  const { data: quem } = await adm.auth.getUser(jwt);
+  if (!quem?.user) return false;
+  const { data: u } = await adm.from('usuario').select('id')
+    .eq('id', quem.user.id).eq('ativo', true).maybeSingle();
+  return !!u;
+}
+
+Deno.serve(async (req) => {
+  if (!await doEscritorio(req)) return new Response(JSON.stringify({ erro: 'acesso restrito ao escritório' }),
+    { status: 403, headers: { 'Content-Type': 'application/json' } });
   const db = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
