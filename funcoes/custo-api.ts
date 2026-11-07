@@ -3,6 +3,8 @@
 // Precisa da chave administrativa (sk-ant-admin01-...) no Secret ANTHROPIC_ADMIN_KEY.
 // A Anthropic nao expoe saldo; o saldo do painel e a soma das recargas menos este gasto.
 
+import { createClient } from 'jsr:@supabase/supabase-js@2';
+
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, apikey, content-type',
@@ -23,8 +25,29 @@ function somar(no: unknown, achados: number[]) {
   }
 }
 
+/* ---------------------------------------------------------------- quem chama
+   Desde que existe a porta da parceria (banco/44_parceria.sql), há login válido
+   no Supabase que NÃO é do escritório. Autenticar deixou de bastar: esta função
+   responde com a chave de serviço, que ignora a RLS, então a conferência de quem
+   pede tem de ser feita aqui dentro. Chamada interna (robô, cron) se identifica
+   com a própria chave de serviço e passa. */
+async function doEscritorio(req: Request): Promise<boolean> {
+  const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
+  if (!jwt) return false;
+  const servico = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  if (servico && jwt === servico) return true;
+  const adm = createClient(Deno.env.get('SUPABASE_URL')!, servico, { auth: { persistSession: false } });
+  const { data: quem } = await adm.auth.getUser(jwt);
+  if (!quem?.user) return false;
+  const { data: u } = await adm.from('usuario').select('id')
+    .eq('id', quem.user.id).eq('ativo', true).maybeSingle();
+  return !!u;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
+  if (!await doEscritorio(req)) return new Response(JSON.stringify({ erro: 'acesso restrito ao escritório' }),
+    { status: 403, headers: CORS });
 
   const admin = Deno.env.get('ANTHROPIC_ADMIN_KEY');
   if (!admin) return json({ erro: 'Falta a chave administrativa. Crie em platform.claude.com, em Settings, Admin keys, e cole em Supabase, Edge Functions, Secrets, com o nome ANTHROPIC_ADMIN_KEY.' }, 400);

@@ -30,6 +30,25 @@ function qualificacao(c: Record<string, unknown>): string {
   return p.join(', ') + '.';
 }
 
+/* ---------------------------------------------------------------- quem chama
+   Desde que existe a porta da parceria (banco/44_parceria.sql), há login válido
+   no Supabase que NÃO é do escritório. Autenticar deixou de bastar: esta função
+   responde com a chave de serviço, que ignora a RLS, então a conferência de quem
+   pede tem de ser feita aqui dentro. Chamada interna (robô, cron) se identifica
+   com a própria chave de serviço e passa. */
+async function doEscritorio(req: Request): Promise<boolean> {
+  const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
+  if (!jwt) return false;
+  const servico = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  if (servico && jwt === servico) return true;
+  const adm = createClient(Deno.env.get('SUPABASE_URL')!, servico, { auth: { persistSession: false } });
+  const { data: quem } = await adm.auth.getUser(jwt);
+  if (!quem?.user) return false;
+  const { data: u } = await adm.from('usuario').select('id')
+    .eq('id', quem.user.id).eq('ativo', true).maybeSingle();
+  return !!u;
+}
+
 Deno.serve(async (req) => {
   const url = new URL(req.url);
   const casoId = url.searchParams.get('caso_id');
@@ -43,6 +62,8 @@ Deno.serve(async (req) => {
     'Access-Control-Allow-Headers': 'authorization, apikey, content-type',
   };
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
+  if (!await doEscritorio(req)) return new Response(JSON.stringify({ erro: 'acesso restrito ao escritório' }),
+    { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
 
   if (!casoId) {
     return new Response(JSON.stringify({ erro: 'falta caso_id' }),
