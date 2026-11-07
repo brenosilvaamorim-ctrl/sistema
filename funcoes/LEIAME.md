@@ -16,6 +16,21 @@ colando o conteúdo do arquivo. Ou, pela linha de comando, criar
 
 ## Quem pode chamar cada função
 
+*Conferido em 07/11/2026, nas três direções, nas onze funções implantadas.*
+
+- Só com a **chave pública** (a que está escrita na página, ao alcance de qualquer um):
+  **403** nas onze — `robo-djen`, `robo-datajud`, `robo-previdencia`, `aviso-prazos`,
+  `backup-semanal`, `registrar-achado`, `gerar-documento`, `minutar-peca`,
+  `absorver-peca`, `custo-api` e `redigir-informativo`.
+- **Exatamente como o agendador chama** (chave pública no `apikey` e `?chave=` com o
+  `robo_token`): passa, e a função segue para o que ela faz.
+- **Chave errada, do mesmo tamanho**: 403. **Sem chave e sem login**: 403.
+  **Com o login do escritório**: passa.
+
+Antes de trocar cada função, conferi que o código implantado era, byte a byte, o mesmo do
+repositório — tamanho, número de linhas e soma de verificação. Nenhuma tinha edição feita
+direto no painel.
+
 Toda função que responde com a **chave de serviço** (que ignora a RLS) confere quem está
 pedindo, por `doEscritorio(req)`. Passam três:
 
