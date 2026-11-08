@@ -57,6 +57,18 @@ h2{font-size:14.5px;margin:15px 18px 3px}
 .nota{margin:0 18px 12px;color:var(--i2);font-size:12.8px;max-width:80ch}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:11px;margin-bottom:22px}
 .kpi{background:var(--s1);border:1px solid var(--ln);border-radius:12px;padding:14px 16px}
+.quadro{display:flex;gap:12px;overflow-x:auto;padding-bottom:10px;align-items:flex-start}
+.coluna{flex:0 0 268px;background:var(--s1);border:1px solid var(--ln);border-radius:12px;padding:10px}
+.cabcol{font-size:12.4px;font-weight:600;padding:8px 4px 10px;margin:-10px -10px 8px;
+  border-bottom:1px solid var(--ln);padding-left:12px;border-radius:12px 12px 0 0}
+.cartao{background:var(--s0);border:1px solid var(--ln);border-radius:9px;padding:9px 10px;margin-bottom:8px}
+.quadro .cartao{cursor:grab}
+.quadro .cartao:active{cursor:grabbing}
+.cartao.arrastando{opacity:.45;border-style:dashed}
+.coluna.alvo{background:var(--ln)}
+.cartao .pega{float:right;color:var(--i3);font-size:13px;letter-spacing:1px;user-select:none;cursor:grab}
+.cartao .tit{font-size:13px;font-weight:600;line-height:1.25}
+.cartao .pill{margin:0 4px 3px 0}
 .kpi .n{font-size:29px;font-weight:650;line-height:1.1;letter-spacing:-.02em}
 .kpi .l{color:var(--i2);font-size:12.5px;margin-top:2px}.kpi.al .n{color:var(--crit)}
 .card{background:var(--s1);border:1px solid var(--ln);border-radius:12px;margin-bottom:18px;overflow:hidden}
@@ -215,7 +227,7 @@ async function carregarParceria(){
     sb.from('parceria').select('*').limit(1).maybeSingle(),
     sb.from('parceria_membro').select('*').order('criado_em'),
     sb.from('area_atuacao').select('id,nome').order('nome'),
-    sb.from('coluna_caso').select('id,nome,ordem').order('ordem'),
+    sb.from('coluna_caso').select('id,nome,ordem,cor').order('ordem'),
   ]);
   if (p.data) { PAR.id = p.data.id; PAR.nome = p.data.nome || 'Parceria'; PAR.parceiro_id = p.data.parceiro_id; }
   PAR.membros = m.data || [];
@@ -291,25 +303,42 @@ async function telaInicio(){
 let CASOBUSCA = '';
 
 async function telaCasos(){
-  const [cs, cl] = await Promise.all([
-    sb.from('caso').select('*').eq('parceria_id', PAR.id).order('criado_em',{ascending:false}),
+  const [q, od, cl] = await Promise.all([
+    sb.from('caso_quadro').select('*'),
+    sb.from('caso').select('id,ordem').eq('parceria_id', PAR.id),
     sb.from('cliente').select('id,nome').eq('parceria_id', PAR.id).order('nome'),
   ]);
-  if (cs.error) return erro(cs.error.message);
-  const casos = cs.data || [], clientes = cl.data || [];
-  const nomeCli = id => clientes.find(c => c.id === id)?.nome || '—';
+  if (q.error) return erro(q.error.message);
+  QUADRO = q.data || [];
+  const clientes = cl.data || [];
+  CASOORD = {}; (od.data || []).forEach(x => { CASOORD[x.id] = x.ordem; });
+
   const filtro = CASOBUSCA.trim().toLowerCase();
-  const casa = c => !filtro || (c.titulo||'').toLowerCase().includes(filtro) || nomeCli(c.cliente_id).toLowerCase().includes(filtro);
-  const abertos = casos.filter(c => !c.encerrado_em && casa(c));
-  const fechados = casos.filter(c => c.encerrado_em && casa(c));
+  const casa = c => !filtro || `${c.titulo||''} ${c.cliente_nome||''}`.toLowerCase().includes(filtro);
+  let abertos = QUADRO.filter(c => !c.encerrado_em && casa(c)).sort(porOrdemCaso);
+  const encerrados = QUADRO.filter(c => c.encerrado_em && casa(c))
+    .sort((a,b) => String(b.encerrado_em).localeCompare(String(a.encerrado_em)));
+  const comPrazo = abertos.filter(c => c.proximo_prazo && dias(c.proximo_prazo) <= 5).length;
+  const parados = abertos.filter(c => c.ultima_movimentacao &&
+    (Date.now() - Date.parse(c.ultima_movimentacao))/864e5 > 90).length;
 
   app.innerHTML = menu('casos') + `<main>
   <h1>Casos</h1>
-  <p class="meta">Os casos da parceria. Abrir um caso aqui é abrir no escritório também: ele
-    entra no quadro de lá, na primeira etapa.</p>
+  <p class="meta">O mesmo quadro do escritório, com o que é nosso. Cada caso numa etapa; clique
+    no nome para abrir. Para reordenar ou mudar de etapa, arraste pela alça <b>⠿</b> — a ordem
+    fica gravada, e é a mesma que o escritório vê. As setas ▲▼ fazem o mesmo sem arrastar.</p>
+  <div class="kpis">
+    <div class="kpi"><div class="n">${abertos.length}</div><div class="l">casos abertos</div></div>
+    <div class="kpi ${comPrazo?'al':''}"><div class="n">${comPrazo}</div><div class="l">com prazo em até 5 dias</div></div>
+    <div class="kpi ${parados?'al':''}"><div class="n">${parados}</div><div class="l">parados há mais de 90 dias</div></div>
+    <div class="kpi"><div class="n">${encerrados.length}</div><div class="l">encerrados</div></div>
+  </div>
   <div class="card">
     <div style="padding:12px 18px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <button class="btn ok" onclick="document.getElementById('nc').style.display='block'">Abrir um caso</button>
+      <span style="width:1px;height:22px;background:var(--ln)"></span>
+      <button class="btn ${CASOVISTA==='quadro'?'ok':''}" onclick="mudarVistaCasos('quadro')">Quadro</button>
+      <button class="btn ${CASOVISTA==='lista'?'ok':''}" onclick="mudarVistaCasos('lista')">Lista</button>
       <input type="search" id="busca" placeholder="buscar por caso ou cliente" value="${esc(CASOBUSCA)}"
         oninput="CASOBUSCA=this.value;clearTimeout(window.__b);window.__b=setTimeout(telaCasos,250)"
         style="flex:1;min-width:200px;padding:6px 11px">
@@ -337,25 +366,162 @@ async function telaCasos(){
     </form>
   </div>
 
-  <div class="card"><h2>Abertos — ${abertos.length}</h2>
-    ${abertos.length ? `<table><thead><tr><th>Caso</th><th>Cliente</th><th>Área</th><th>Aberto em</th></tr></thead><tbody>
-      ${abertos.map(c => `<tr>
-        <td><a class="lnk" href="#/caso/${c.id}">${esc(c.titulo)}</a>
-          ${c.polo?`<span class="sub">${esc(c.polo)}</span>`:''}</td>
-        <td>${esc(nomeCli(c.cliente_id))}</td>
-        <td>${esc(nomeArea(c.area_id) || c.area || '—')}</td>
-        <td class="dt">${br(c.criado_em)}</td></tr>`).join('')}
-    </tbody></table>` : vazio(filtro ? 'Nada encontrado.' : 'Nenhum caso em parceria ainda.')}
-  </div>
-
-  ${fechados.length ? `<div class="card"><h2>Encerrados — ${fechados.length}</h2>
-    <table><tbody>${fechados.map(c => `<tr>
-      <td><a class="lnk" href="#/caso/${c.id}">${esc(c.titulo)}</a></td>
-      <td>${esc(nomeCli(c.cliente_id))}</td>
-      <td>${esc(c.resultado||'—')}</td>
+  ${CASOVISTA === 'lista' ? `<div class="card"><h2>Abertos — ${abertos.length}</h2>
+    ${abertos.length ? `<table><thead><tr><th>Caso</th><th>Cliente</th><th>Área</th><th>Etapa</th><th>Próximo prazo</th><th>Processos</th></tr></thead>
+    <tbody>${abertos.map(c => { const d = c.proximo_prazo ? dias(c.proximo_prazo) : null; return `<tr>
+      <td><a class="lnk" href="#/caso/${c.id}"><b>${esc(c.titulo || c.cliente_nome || 'sem título')}</b></a>
+        ${c.polo?`<span class="sub">${esc(c.polo)}</span>`:''}</td>
+      <td>${esc(c.cliente_nome || '—')}</td>
+      <td>${esc(c.area_nome || c.area || '—')}</td>
+      <td>${esc(c.coluna_nome || '—')}</td>
+      <td class="dt">${c.proximo_prazo ? br(c.proximo_prazo)+`<span class="sub">${d<0?'vencido':(d===0?'hoje':'em '+d+'d')}</span>` : '—'}</td>
+      <td>${c.processos}</td></tr>`; }).join('')}</tbody></table>` : vazio('Nenhum caso neste filtro.')}
+    </div>` : `
+  <div class="quadro">
+    ${COLUNAS.map(col => { const meus = abertos.filter(c => c.coluna_id === col.id);
+      return `<div class="coluna" data-col="${col.id}">
+        <div class="cabcol" style="border-top:3px solid ${col.cor||'var(--i3)'}">
+          ${esc(col.nome)} <span class="sub" style="display:inline;margin:0">${meus.length}</span></div>
+        ${meus.map(cartao).join('') || '<div class="sub" style="padding:10px 2px">vazio</div>'}
+      </div>`; }).join('')}
+  </div>`}
+  ${encerrados.length ? `<div class="card" style="margin-top:20px"><h2>Encerrados — ${encerrados.length}</h2>
+    <table><thead><tr><th>Caso</th><th>Cliente</th><th>Resultado</th><th>Encerrado em</th></tr></thead>
+    <tbody>${encerrados.slice(0,40).map(c=>`<tr>
+      <td><a class="lnk" href="#/caso/${c.id}">${esc(c.titulo || c.cliente_nome)}</a></td>
+      <td>${esc(c.cliente_nome || '—')}</td><td>${esc(c.resultado||'—')}</td>
       <td class="dt">${br(c.encerrado_em)}</td></tr>`).join('')}</tbody></table></div>` : ''}
   </main>` + rodape();
+  if (CASOVISTA !== 'lista') ligarArrastoCasos();
 }
+
+/* ----------------------------------------- o quadro, igual ao do escritório
+   A ordem manual vive em caso.ordem — a mesma coluna que o escritório usa.
+   Quem arrasta de um lado muda a ordem do outro, porque é a mesma linha. */
+let QUADRO = [], CASOORD = {}, ARRASTA = null;
+let CASOVISTA = localStorage.getItem('casovista_parceria') || 'quadro';
+window.mudarVistaCasos = v => { CASOVISTA = v; localStorage.setItem('casovista_parceria', v); telaCasos(); };
+
+function porOrdemCaso(a, b){
+  const oa = CASOORD[a.id], ob = CASOORD[b.id];
+  const va = (oa === null || oa === undefined) ? Infinity : Number(oa);
+  const vb = (ob === null || ob === undefined) ? Infinity : Number(ob);
+  if (va !== vb) return va - vb;
+  return String(a.criado_em).localeCompare(String(b.criado_em));
+}
+
+function cartao(c){
+  const d = c.proximo_prazo ? dias(c.proximo_prazo) : null;
+  const k = d === null ? '' : (d < 0 ? 'crit' : (d <= 5 ? 'ser' : (d <= 15 ? 'warn' : 'good')));
+  const parado = c.ultima_movimentacao
+    ? Math.round((Date.now() - Date.parse(c.ultima_movimentacao))/864e5) : null;
+  return `<div class="cartao" data-caso="${c.id}" data-col="${c.coluna_id||''}">
+    <span class="pega" title="arraste para reordenar">⠿</span>
+    <div class="tit"><a class="lnk" href="#/caso/${c.id}">${esc(c.titulo || c.cliente_nome || 'sem título')}</a></div>
+    <div class="sub" style="margin:2px 0 7px">${esc(c.cliente_nome || 'sem cliente')} · ${
+      esc(c.area_nome || c.area || 'sem área')}${c.polo ? ' · ' + esc(c.polo) : ''} · ${c.processos} processo(s)</div>
+    ${d !== null ? `<span class="pill ${k}">prazo ${br(c.proximo_prazo)}${d<0?' (vencido)':''}</span>` : ''}
+    ${parado !== null && parado > 90 ? `<span class="pill ser">parado há ${parado} dias</span>` : ''}
+    <div style="margin-top:9px;display:flex;gap:5px;flex-wrap:wrap">
+      <select onchange="moverCaso('${c.id}', this.value)" style="flex:1;min-width:130px;font-size:11.6px">
+        ${COLUNAS.map(x=>`<option value="${x.id}" ${x.id===c.coluna_id?'selected':''}>${esc(x.nome)}</option>`).join('')}
+      </select>
+      <button class="btn" style="font-size:11.4px;padding:4px 7px" title="subir" onclick="subirCaso('${c.id}',-1)">▲</button>
+      <button class="btn" style="font-size:11.4px;padding:4px 7px" title="descer" onclick="subirCaso('${c.id}',1)">▼</button>
+    </div>
+  </div>`;
+}
+
+window.moverCaso = async (id, colunaId) => {
+  const { error } = await sb.from('caso').update({ coluna_id: colunaId }).eq('id', id);
+  if (error) return alert('Não deu certo: ' + error.message);
+  telaCasos();
+};
+
+function cartaoDepoisDe(col, y){
+  const outros = [...col.querySelectorAll('.cartao:not(.arrastando)')];
+  return outros.find(el => { const r = el.getBoundingClientRect(); return y < r.top + r.height/2; }) || null;
+}
+function soltarCartoes(){
+  document.querySelectorAll('.quadro .cartao[draggable="true"]').forEach(c => { c.draggable = false; });
+}
+function ligarArrastoCasos(){
+  /* O cartão só vira arrastável enquanto a alça ⠿ está pressionada: marcado o tempo
+     todo, o navegador engole o clique no nome e o caso nunca abre. */
+  document.addEventListener('mouseup', soltarCartoes);
+  document.addEventListener('dragend', soltarCartoes);
+  document.querySelectorAll('.quadro .cartao').forEach(el => {
+    el.draggable = false;
+    const pega = el.querySelector('.pega');
+    if (pega) {
+      pega.addEventListener('mousedown', () => { el.draggable = true; });
+      pega.addEventListener('touchstart', () => { el.draggable = true; }, { passive: true });
+    }
+    el.addEventListener('dragstart', e => {
+      ARRASTA = el; el.classList.add('arrastando');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', el.dataset.caso);
+    });
+    el.addEventListener('dragend', () => {
+      el.classList.remove('arrastando'); ARRASTA = null; el.draggable = false;
+      document.querySelectorAll('.coluna.alvo').forEach(c=>c.classList.remove('alvo'));
+    });
+  });
+  document.querySelectorAll('.quadro .coluna').forEach(col => {
+    col.addEventListener('dragover', e => {
+      if (!ARRASTA) return;
+      e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+      col.classList.add('alvo');
+      const depois = cartaoDepoisDe(col, e.clientY);
+      if (depois) col.insertBefore(ARRASTA, depois); else col.appendChild(ARRASTA);
+    });
+    col.addEventListener('dragleave', e => {
+      if (!col.contains(e.relatedTarget)) col.classList.remove('alvo');
+    });
+    col.addEventListener('drop', async e => {
+      e.preventDefault(); col.classList.remove('alvo');
+      const el = ARRASTA; ARRASTA = null;
+      if (el) el.classList.remove('arrastando');
+      await gravarOrdemColuna(col);
+    });
+  });
+}
+/* Renumera a coluna de 10 em 10 e grava só o que realmente mudou. */
+async function gravarOrdemColuna(col){
+  const colId = col.dataset.col;
+  const ids = [...col.querySelectorAll('.cartao')].map(el => el.dataset.caso);
+  const mudancas = [];
+  ids.forEach((id, i) => {
+    const nova = (i + 1) * 10;
+    const trocouColuna = (QUADRO.find(c => c.id === id)?.coluna_id || '') !== colId;
+    if (Number(CASOORD[id]) !== nova || trocouColuna) {
+      const campos = { ordem: nova };
+      if (trocouColuna) campos.coluna_id = colId;
+      mudancas.push({ id, campos });
+    }
+  });
+  if (!mudancas.length) return;
+  const res = await Promise.all(mudancas.map(m => sb.from('caso').update(m.campos).eq('id', m.id)));
+  const falha = res.find(r => r.error);
+  if (falha) alert('Não deu para gravar a nova ordem: ' + falha.error.message);
+  telaCasos();
+}
+/* As setas fazem o mesmo caminho, para quem não quer arrastar (ou está no celular). */
+window.subirCaso = async (id, passo) => {
+  const caso = QUADRO.find(c => c.id === id);
+  if (!caso) return;
+  const fila = QUADRO.filter(c => !c.encerrado_em && c.coluna_id === caso.coluna_id).sort(porOrdemCaso);
+  const i = fila.findIndex(c => c.id === id), j = i + passo;
+  if (i < 0 || j < 0 || j >= fila.length) return;
+  const nova = fila.slice(); nova.splice(j, 0, nova.splice(i, 1)[0]);
+  const res = await Promise.all(nova.map((c, k) => {
+    const ord = (k + 1) * 10;
+    return Number(CASOORD[c.id]) === ord ? null : sb.from('caso').update({ ordem: ord }).eq('id', c.id);
+  }).filter(Boolean));
+  const falha = res.find(r => r.error);
+  if (falha) { alert('Não deu para mover: ' + falha.error.message); return; }
+  telaCasos();
+};
 
 window.novoCaso = async (ev) => {
   ev.preventDefault();
