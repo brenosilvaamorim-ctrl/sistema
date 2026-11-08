@@ -172,11 +172,22 @@ O uso sai da assinatura do Claude, não do crédito da API.
    `mcp-escritorio`, colar `mcp-escritorio.ts`. Em Settings da função, **desligar
    "Verify JWT"** (quem confere o acesso é o próprio código, pelo `MCP_TOKEN`).
 3. **Claude** — claude.ai → Configurações → Conectores → Adicionar conector
-   personalizado. URL: `https://wrdfyudabvvpvfcrvvzd.supabase.co/functions/v1/mcp-escritorio`.
-   Autenticação: **sem login**. Em cabeçalhos da requisição: `Authorization` com o valor
-   `Bearer <o token>`.
+   personalizado. URL com o token no fim:
+   `https://wrdfyudabvvpvfcrvvzd.supabase.co/functions/v1/mcp-escritorio/k/<o token>`.
+   Autenticação: **sem login**, sem cabeçalho. (O cabeçalho `Authorization: Bearer <token>`
+   também é aceito pela função, mas o claude.ai recusa cabeçalho fixo em conector sem
+   login — erro `static_headers_probe_rejected`, nov/2026 — sem nem chamar o servidor.)
+   Para montar a URL sem o token aparecer na tela:
+   `printf 'https://wrdfyudabvvpvfcrvvzd.supabase.co/functions/v1/mcp-escritorio/k/%s' "$(pbpaste)" | pbcopy`
+   com o token na área de transferência.
 
 **Cortar o acesso:** troque ou apague o segredo `MCP_TOKEN`. O conector para na hora.
+Depois de trocar, exclua o conector no claude.ai e crie outro com a URL nova.
+
+**Quando não conecta:** cada chamada deixa uma linha `[mcp]` nos logs da função
+(Edge Functions → mcp-escritorio → Logs), com método, caminho (token mascarado), se o
+token veio e bateu, e o programa que chamou. Se nenhuma linha aparece, o problema está
+no cliente, não na função.
 
 **Privacidade:** com dados de clientes, deixe desligada no Claude a opção de usar as
 conversas para melhorar os modelos (Configurações → Privacidade).

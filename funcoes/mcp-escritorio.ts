@@ -9,9 +9,12 @@
 // JSON). Escrito à mão para não depender de biblioteca: initialize, tools/list,
 // tools/call e ping.
 //
-// Acesso: o conector manda "Authorization: Bearer <MCP_TOKEN>" em toda chamada (no
-// claude.ai: Adicionar conector personalizado → Sem login → Cabeçalhos da requisição).
-// Sem o token certo, nada responde. Trocar o segredo MCP_TOKEN corta o acesso na hora.
+// Acesso: o token (segredo MCP_TOKEN) vai no fim do endereço do conector:
+//   https://<projeto>.supabase.co/functions/v1/mcp-escritorio/k/<MCP_TOKEN>
+// (no claude.ai: Adicionar conector personalizado → Sem login, sem cabeçalho). O
+// cabeçalho "Authorization: Bearer <MCP_TOKEN>" também vale, para outros clientes; o
+// claude.ai recusa cabeçalho fixo em conector sem login. Sem o token certo, nada
+// responde. Trocar o segredo MCP_TOKEN corta o acesso na hora.
 // Na função, "Verify JWT" fica DESLIGADO: quem confere o acesso é o próprio código.
 //
 // Segredos: MCP_TOKEN (obrigatório) e MCP_ESCRITORIO_ID (opcional; sem ele, usa o único
@@ -413,20 +416,40 @@ async function atender(m: any): Promise<unknown | null> {
   return erroRpc(id, -32601, 'método não suportado: ' + metodo);
 }
 
+/* Uma linha por chamada nos logs da função (Edge Functions → mcp-escritorio → Logs),
+   para saber o que o cliente mandou quando o conector não liga. O token nunca vai
+   para o log: só se veio, o tamanho e se bateu. */
+function anotar(req: Request, status: number, auth: string, extra: Record<string, unknown> = {}) {
+  const u = new URL(req.url);
+  console.log('[mcp]', JSON.stringify({ metodo: req.method, caminho: u.pathname.replace(/\/k\/[^/]+/, '/k/***'), status, auth,
+    ua: req.headers.get('user-agent'), accept: req.headers.get('accept'), tipo: req.headers.get('content-type'), ...extra }));
+}
+
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
+  if (req.method === 'OPTIONS') { anotar(req, 200, '-'); return new Response('ok', { headers: CORS }); }
   const segredo = Deno.env.get('MCP_TOKEN');
   if (!segredo || segredo.length < 32) return json({ erro: 'MCP_TOKEN não configurado (mínimo 32 caracteres)' }, 500);
-  const tok = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
-  if (!iguais(tok, segredo)) return json({ erro: 'sem acesso' }, 401);
-  if (req.method === 'GET') return new Response('', { status: 405, headers: { ...CORS, allow: 'POST' } });   // sem fluxo SSE: só POST
-  if (req.method === 'DELETE') return new Response('', { status: 200, headers: CORS });
-  if (req.method !== 'POST') return new Response('', { status: 405, headers: CORS });
-  let corpo: any; try { corpo = await req.json(); } catch { return json(erroRpc(null, -32700, 'JSON inválido'), 400); }
+  /* O token vem no cabeçalho Authorization ou no fim do endereço (…/mcp-escritorio/k/<token>).
+     O endereço existe porque o claude.ai recusa o cabeçalho fixo de conector "Sem login"
+     (erro static_headers_probe_rejected, nov/2026) sem nem chamar o servidor. */
+  const cab = req.headers.get('authorization');
+  const naUrl = new URL(req.url).pathname.match(/\/k\/([^/]+)/)?.[1];
+  const tok = naUrl ? decodeURIComponent(naUrl).trim() : (cab || '').replace(/^Bearer\s+/i, '').trim();
+  const ok = iguais(tok, segredo);
+  const origem = naUrl ? 'endereço' : 'cabeçalho';
+  const auth = !naUrl && !cab ? 'sem token' : ok ? `ok (${origem})` : `diferente (${origem}, ${tok.length} caracteres)`;
+  if (!ok) { anotar(req, 401, auth); return json({ erro: 'sem acesso' }, 401); }
+  if (req.method === 'GET') { anotar(req, 405, auth); return new Response('', { status: 405, headers: { ...CORS, allow: 'POST' } }); }   // sem fluxo SSE: só POST
+  if (req.method === 'DELETE') { anotar(req, 200, auth); return new Response('', { status: 200, headers: CORS }); }
+  if (req.method !== 'POST') { anotar(req, 405, auth); return new Response('', { status: 405, headers: CORS }); }
+  let corpo: any; try { corpo = await req.json(); } catch { anotar(req, 400, auth); return json(erroRpc(null, -32700, 'JSON inválido'), 400); }
+  const rpc = Array.isArray(corpo) ? corpo.map((c: any) => c?.method) : corpo?.method;
   if (Array.isArray(corpo)) {
     const rs = (await Promise.all(corpo.map(atender))).filter(Boolean);
+    anotar(req, rs.length ? 200 : 202, auth, { rpc });
     return rs.length ? json(rs) : new Response(null, { status: 202, headers: CORS });
   }
   const r = await atender(corpo);
+  anotar(req, r ? 200 : 202, auth, { rpc, versao: corpo?.params?.protocolVersion });
   return r ? json(r) : new Response(null, { status: 202, headers: CORS });
 });
