@@ -15,6 +15,32 @@ nav a{color:var(--i2);text-decoration:none;font-size:13.6px;cursor:pointer;paddi
   border-bottom:2px solid transparent;white-space:nowrap}
 nav a.on{color:var(--ink);border-bottom-color:var(--serie);font-weight:600}
 nav a:hover{color:var(--ink)}
+.grp{position:relative}
+.grp>.gbt{background:none;border:0;color:var(--i2);font:inherit;font-size:13.6px;cursor:pointer;
+  padding:15px 11px;border-bottom:2px solid transparent;white-space:nowrap}
+.grp>.gbt:hover{color:var(--ink)}
+.grp.tem>.gbt{color:var(--ink);border-bottom-color:var(--serie);font-weight:600}
+.grp>.gbt .seta{font-size:9px;opacity:.5;margin-left:3px}
+.grp .lista{display:none;position:absolute;top:100%;left:0;min-width:190px;z-index:60;
+  background:var(--s1);border:1px solid var(--ln);border-radius:11px;padding:6px;
+  box-shadow:0 10px 28px rgba(0,0,0,.13)}
+.grp:hover .lista,.grp.aberto .lista{display:block}
+.grp .lista a{display:block;padding:8px 11px;border-radius:8px;font-size:13.4px;border:0;color:var(--i2)}
+.grp .lista a:hover{background:var(--s0);color:var(--ink)}
+.grp .lista a.on{color:var(--serie);font-weight:600;background:var(--s0)}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--ln);
+  border:1px solid var(--ln);border-radius:11px;overflow:hidden;margin:0 18px 16px}
+.cal .ds{background:var(--s1);padding:7px 8px;font-size:11px;text-transform:uppercase;
+  letter-spacing:.05em;color:var(--i3);text-align:center}
+.cal .dia{background:var(--s1);min-height:92px;padding:6px 7px;font-size:12px}
+.cal .dia.fora{background:var(--s0);color:var(--i3)}
+.cal .dia.hoje{box-shadow:inset 0 0 0 2px var(--serie)}
+.cal .dia .n{font-weight:600;font-size:12.5px;color:var(--i2);display:block;margin-bottom:3px}
+.cal .dia a{display:block;font-size:11.4px;line-height:1.3;margin-bottom:3px;color:var(--ink);
+  background:var(--s0);border-radius:6px;padding:3px 5px;text-decoration:none}
+.cal .dia a:hover{background:var(--ln)}
+.cal .dia a.pas{color:var(--i3)}
+.calcab{display:flex;align-items:center;gap:10px;padding:0 18px 10px}
 nav .dir{margin-left:auto;font-size:12.3px;color:var(--i3);padding:15px 0}
 .marca{display:flex;align-items:center;gap:9px;padding:11px 18px 11px 0;margin-right:10px;border-right:1px solid var(--ln)}
 .marca .sigla{width:31px;height:31px;border-radius:7px;background:var(--ink);color:var(--s1);display:grid;
@@ -136,14 +162,36 @@ function telaLogin(msg){
   };
 }
 
-const MENU = [['inicio','Início'],['casos','Casos'],['clientes','Clientes'],['processos','Processos'],
-  ['publicacoes','Publicações'],['agenda','Agenda'],['financeiro','Financeiro'],['recados','Recados']];
+/* Os mesmos grupos do sistema do escritório, na mesma ordem de pensamento: o dia,
+   as pessoas, os casos, a conversa e o dinheiro. Quem sabe andar lá sabe andar aqui. */
+const GRUPOS = [
+  ['Meu dia',   [['inicio','Início'],['agenda','Agenda'],['publicacoes','Publicações']]],
+  ['Pessoas',   [['captacao','Captação'],['clientes','Clientes']]],
+  ['Casos',     [['casos','Casos'],['processos','Processos']]],
+  ['Conversas', [['recados','Recados'],['whatsapp','WhatsApp']]],
+  ['Dinheiro',  [['financeiro','Financeiro']]],
+];
+
+window.abrirGrupo = (ev) => {
+  ev.preventDefault();
+  const alvo = ev.currentTarget.parentElement;
+  const jaAberto = alvo.classList.contains('aberto');
+  document.querySelectorAll('.grp').forEach(g => g.classList.remove('aberto'));
+  if (!jaAberto) alvo.classList.add('aberto');
+};
+document.addEventListener('click', e => {
+  if (!e.target.closest('.grp')) document.querySelectorAll('.grp').forEach(g => g.classList.remove('aberto'));
+});
 
 function menu(atual){
   return `<nav>
     <div class="marca"><div class="sigla">BP</div><div><span class="nome">${esc(PAR.nome)}</span>
       <span class="sub2">casos em parceria</span></div></div>
-    ${MENU.map(([k,r]) => `<a class="${atual===k?'on':''}" href="#/${k}">${r}</a>`).join('')}
+    ${GRUPOS.map(([nome, itens]) => `<div class="grp ${itens.some(([k])=>k===atual)?'tem':''}">
+      <button class="gbt" onclick="abrirGrupo(event)">${nome}<span class="seta">▾</span></button>
+      <div class="lista">${itens.map(([k,r]) =>
+        `<a class="${atual===k?'on':''}" href="#/${k}">${r}</a>`).join('')}</div>
+    </div>`).join('')}
     <span class="dir">${esc(PAR.eu?.nome || USER?.email || '')} ·
       <a onclick="sb.auth.signOut().then(()=>location.reload())">sair</a></span></nav>`;
 }
@@ -694,13 +742,58 @@ window.baixarPublicacao = async (id) => {
 
 /* ------------------------------------------------------------------ agenda */
 
-async function telaAgenda(casoPre){
-  const [ev, cs] = await Promise.all([
-    sb.from('evento').select('*').eq('parceria_id', PAR.id).order('inicio',{ascending:false}).limit(80),
+/* O calendário do mês. Mostra compromisso e prazo juntos, porque é assim que o mês
+   pesa de verdade: um prazo fatal numa terça conta tanto quanto uma audiência. */
+function calendario(mes, eventos, prazos){
+  const [ano, m] = mes.split('-').map(Number);
+  const primeiro = new Date(Date.UTC(ano, m-1, 1));
+  const diasNoMes = new Date(Date.UTC(ano, m, 0)).getUTCDate();
+  const comecaEm = primeiro.getUTCDay();                 // 0 = domingo
+  const antes = new Date(Date.UTC(ano, m-1, 0)).getUTCDate();
+  const celulas = [];
+  for (let i = comecaEm - 1; i >= 0; i--) celulas.push({ n: antes - i, fora: true });
+  for (let d = 1; d <= diasNoMes; d++) celulas.push({ n: d, dia: `${mes}-${String(d).padStart(2,'0')}` });
+  while (celulas.length % 7) celulas.push({ n: celulas.length - diasNoMes - comecaEm + 1, fora: true });
+
+  const anterior = m === 1 ? `${ano-1}-12` : `${ano}-${String(m-1).padStart(2,'0')}`;
+  const seguinte = m === 12 ? `${ano+1}-01` : `${ano}-${String(m+1).padStart(2,'0')}`;
+  const nomeMes = primeiro.toLocaleDateString('pt-BR', { month:'long', year:'numeric', timeZone:'UTC' });
+
+  return `<div class="calcab">
+      <a class="btn" href="#/agenda?m=${anterior}">←</a>
+      <b style="font-size:14.5px;text-transform:capitalize">${esc(nomeMes)}</b>
+      <a class="btn" href="#/agenda?m=${seguinte}">→</a>
+      <a class="btn" href="#/agenda">hoje</a>
+    </div>
+    <div class="cal">
+      ${['dom','seg','ter','qua','qui','sex','sáb'].map(d=>`<div class="ds">${d}</div>`).join('')}
+      ${celulas.map(c => {
+        if (c.fora) return `<div class="dia fora"><span class="n">${c.n}</span></div>`;
+        const doDia = eventos.filter(e => String(e.inicio).slice(0,10) === c.dia);
+        const pzDia = prazos.filter(z => String(z.data_fatal).slice(0,10) === c.dia);
+        const passou = c.dia < hoje();
+        return `<div class="dia ${c.dia === hoje() ? 'hoje' : ''}"><span class="n">${c.n}</span>
+          ${doDia.map(e => `<a class="${passou?'pas':''}" href="#/agenda?m=${mes}"
+             title="${esc(e.titulo)}">${String(e.inicio).slice(11,16)} ${esc(e.titulo)}</a>`).join('')}
+          ${pzDia.map(z => `<a class="${passou?'pas':''}" href="#/casos"
+             title="prazo: ${esc(z.descricao||'')}">⏳ ${esc(z.descricao||'prazo')}</a>`).join('')}
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+async function telaAgenda(casoPre, mes){
+  mes = mes || hoje().slice(0,7);
+  const [ano, m] = mes.split('-').map(Number);
+  const de = `${mes}-01`, ate = `${m === 12 ? ano+1 : ano}-${String(m === 12 ? 1 : m+1).padStart(2,'0')}-01`;
+  const [ev, cs, pz] = await Promise.all([
+    sb.from('evento').select('*').eq('parceria_id', PAR.id).order('inicio',{ascending:false}).limit(200),
     sb.from('caso').select('id,titulo').eq('parceria_id', PAR.id).order('titulo'),
+    sb.from('prazo').select('id,descricao,data_fatal,situacao').eq('parceria_id', PAR.id)
+      .gte('data_fatal', de).lt('data_fatal', ate),
   ]);
   if (ev.error) return erro(ev.error.message);
-  const eventos = ev.data || [], casos = cs.data || [];
+  const eventos = ev.data || [], casos = cs.data || [], prazos = pz.data || [];
   const tituloCaso = id => casos.find(c => c.id === id)?.titulo || '';
   const agora = new Date().toISOString();
   const futuros = eventos.filter(e => e.inicio >= agora).sort((a,b)=>a.inicio.localeCompare(b.inicio));
@@ -709,9 +802,10 @@ async function telaAgenda(casoPre){
 
   app.innerHTML = menu('agenda') + `<main>
   <h1>Agenda</h1>
-  <p class="meta">Audiências, perícias e reuniões dos casos em parceria. O convite vai por e-mail
-    para quem você marcar — é assim que o compromisso entra na agenda de cada um, sem que um
-    precise abrir a conta do outro.</p>
+  <p class="meta">Audiências, perícias e reuniões dos casos em parceria, com os prazos do mês no
+    mesmo quadro. O convite vai por e-mail para quem você marcar — é assim que o compromisso entra
+    na agenda de cada um, sem que um precise abrir a conta do outro.</p>
+  <div class="card"><h2>O mês</h2>${calendario(mes, eventos, prazos)}</div>
   <div class="card"><h2>Marcar</h2>
     <form class="form" onsubmit="novoEvento(event)">
       <label class="larga"><span class="sub">O quê</span><input name="titulo" required></label>
@@ -757,14 +851,14 @@ window.novoEvento = async (ev) => {
     convidado_email: v('convidado_email'), origem: 'parceria',
   });
   if (error) { st.style.color = 'var(--crit)'; st.textContent = error.message; return; }
-  telaAgenda();
+  rota();
 };
 
 window.concluirEvento = async (id) => {
   const { error } = await sb.from('evento').update({ situacao: 'concluida',
     concluido_em: new Date().toISOString() }).eq('id', id);
   if (error) return alert('Não deu certo: ' + error.message);
-  telaAgenda();
+  rota();
 };
 
 /* -------------------------------------------------------------- financeiro */
@@ -880,6 +974,130 @@ async function telaRecados(){
   const f = document.getElementById('fio'); if (f) f.scrollTop = f.scrollHeight;
 }
 
+/* ---------------------------------------------------------------- captação */
+
+const ETAPAS = [['novo','Entrou'],['contatado','Primeiro contato feito'],['consulta','Consulta marcada'],
+  ['documentos','Análise de documentação'],['proposta','Proposta enviada']];
+
+async function telaCaptacao(){
+  const { data, error } = await sb.from('lead').select('*')
+    .eq('parceria_id', PAR.id).order('atualizado_em', { ascending: false });
+  if (error) return erro(error.message);
+  const leads = data || [];
+  const abertos = leads.filter(l => !['fechado','perdido'].includes(l.etapa));
+  const porEtapa = k => abertos.filter(l => l.etapa === k);
+  const fechados = leads.filter(l => l.etapa === 'fechado');
+  const perdidos = leads.filter(l => l.etapa === 'perdido');
+
+  const linha = l => `<tr>
+    <td>${esc(l.nome)}<span class="sub">${esc(l.telefone || l.email || 'sem contato')}${
+      l.area ? ' · ' + esc(l.area) : ''}</span></td>
+    <td style="width:210px">
+      <select onchange="moverLead('${l.id}', this.value)">
+        ${ETAPAS.map(([k,r])=>`<option value="${k}" ${l.etapa===k?'selected':''}>${r}</option>`).join('')}
+        <option value="fechado" ${l.etapa==='fechado'?'selected':''}>Virou caso</option>
+        <option value="perdido" ${l.etapa==='perdido'?'selected':''}>Perdido</option>
+      </select></td>
+    <td class="dt" style="width:120px">${l.proximo_contato ? br(l.proximo_contato) : '—'}</td>
+    <td style="width:120px">${l.caso_id ? `<a class="lnk" href="#/caso/${l.caso_id}">ver o caso</a>` : ''}</td>
+  </tr>`;
+
+  app.innerHTML = menu('captacao') + `<main>
+  <h1>Captação</h1>
+  <p class="meta">Quem procurou e ainda não virou caso. Só aparece aqui quem é da parceria —
+    o atendimento que chega pelo escritório entra nesta lista quando é marcado como nosso,
+    ou quando vem por uma origem ligada à parceria.</p>
+  <div class="card"><h2>Anotar quem chegou</h2>
+    <form class="form" onsubmit="novoLead(event)">
+      <label><span class="sub">Nome</span><input name="nome" required></label>
+      <label><span class="sub">Telefone</span><input name="telefone" placeholder="com DDD"></label>
+      <label><span class="sub">E-mail</span><input name="email" type="email"></label>
+      <label><span class="sub">Assunto</span><input name="area" placeholder="do que se trata"></label>
+      <label><span class="sub">Voltar a falar em</span><input name="proximo_contato" type="date"></label>
+      <label class="larga"><span class="sub">O que a pessoa relatou</span>
+        <textarea name="resumo" rows="2"></textarea></label>
+      <button class="btn ok" type="submit">Anotar</button>
+      <span id="lead-st" class="sub" style="margin:0"></span>
+    </form>
+  </div>
+  ${ETAPAS.map(([k,r]) => { const l = porEtapa(k); return l.length ? `
+    <div class="card"><h2>${r} — ${l.length}</h2>
+      <table><tbody>${l.map(linha).join('')}</tbody></table></div>` : ''; }).join('')
+    || (abertos.length ? '' : `<div class="card">${vazio('Ninguém em aberto.')}</div>`)}
+  ${fechados.length ? `<div class="card"><h2>Viraram caso — ${fechados.length}</h2>
+    <table><tbody>${fechados.map(linha).join('')}</tbody></table></div>` : ''}
+  ${perdidos.length ? `<div class="card"><h2>Perdidos — ${perdidos.length}</h2>
+    <table><tbody>${perdidos.slice(0,15).map(linha).join('')}</tbody></table></div>` : ''}
+  </main>` + rodape();
+}
+
+window.novoLead = async (ev) => {
+  ev.preventDefault();
+  const f = ev.target, st = document.getElementById('lead-st');
+  const v = n => (f.elements[n]?.value || '').trim() || null;
+  const { error } = await sb.from('lead').insert({
+    parceria_id: PAR.id, nome: v('nome'), telefone: v('telefone'), email: v('email'),
+    area: v('area'), resumo: v('resumo'), proximo_contato: v('proximo_contato'), etapa: 'novo',
+  });
+  if (error) { st.style.color = 'var(--crit)'; st.textContent = error.message; return; }
+  telaCaptacao();
+};
+
+window.moverLead = async (id, etapa) => {
+  const { error } = await sb.from('lead').update({ etapa, atualizado_em: new Date().toISOString() }).eq('id', id);
+  if (error) return alert('Não deu certo: ' + error.message);
+  telaCaptacao();
+};
+
+/* ---------------------------------------------------------------- whatsapp */
+
+async function telaWhatsapp(){
+  const ld = await sb.from('lead').select('id,nome,telefone,etapa,caso_id').eq('parceria_id', PAR.id);
+  if (ld.error) return erro(ld.error.message);
+  const leads = ld.data || [];
+  const cv = await sb.from('bot_conversa')
+    .select('id,telefone,wa_nome,lead_id,estado,urgencia,criado_em')
+    .order('criado_em', { ascending: false }).limit(60);
+  const conversas = cv.data || [];
+  const lead = id => leads.find(l => l.id === id);
+
+  app.innerHTML = menu('whatsapp') + `<main>
+  <h1>WhatsApp</h1>
+  <p class="meta">A conversa da pessoa com a assistente do escritório, <b>só dos atendimentos
+    que são nossos</b> — a caixa de entrada inteira não vem para cá: quem escreve ainda não sabe
+    que existe parceria, e o que conta ali é dela, não do escritório. Aqui é leitura: responder
+    sai pelo número do escritório, e por isso continua sendo de lá.</p>
+  <div class="card"><h2>Conversas — ${conversas.length}</h2>
+    ${conversas.length ? `<table><thead><tr><th>Quem</th><th>Atendimento</th><th>Estado</th><th></th></tr></thead>
+      <tbody>${conversas.map(c => { const l = lead(c.lead_id); return `<tr>
+        <td>${esc(c.wa_nome || c.telefone)}<span class="sub">${esc(c.telefone)}</span></td>
+        <td>${l ? esc(l.nome) : '—'}${l?.caso_id ? `<span class="sub"><a class="lnk" href="#/caso/${l.caso_id}">ver o caso</a></span>` : ''}</td>
+        <td><span class="pill ${c.urgencia === 'urgente' ? 'crit' : c.urgencia === 'alta' ? 'ser' : 'good'}">${esc(c.estado)}</span></td>
+        <td style="width:120px"><a class="btn" href="#/conversa/${c.id}">Ler</a></td>
+      </tr>`; }).join('')}</tbody></table>`
+      : vazio('Nenhuma conversa de atendimento nosso ainda.')}
+  </div></main>` + rodape();
+}
+
+async function telaConversa(id){
+  const [cv, ms] = await Promise.all([
+    sb.from('bot_conversa').select('*').eq('id', id).maybeSingle(),
+    sb.from('bot_mensagem').select('*').eq('conversa_id', id).order('criado_em'),
+  ]);
+  if (cv.error) return erro(cv.error.message);
+  if (!cv.data) return erro('conversa não encontrada, ou não é de um atendimento da parceria');
+  const c = cv.data, msgs = ms.data || [];
+  app.innerHTML = menu('whatsapp') + `<main>
+  <a class="volta" href="#/whatsapp">← Conversas</a>
+  <h1>${esc(c.wa_nome || c.telefone)}</h1>
+  <p class="meta">${esc(c.telefone)} · ${esc(c.estado)}${c.origem ? ' · veio de ' + esc(c.origem) : ''}</p>
+  <div class="card"><div class="fio">${msgs.length ? msgs.map(m => `
+    <div class="bolha ${m.direcao === 'saida' ? 'meu' : ''}">${esc(m.texto || '(' + m.tipo + ')')}
+      <span class="quem">${m.direcao === 'saida' ? 'escritório' : 'pessoa'} · ${horaBr(m.criado_em)}</span>
+    </div>`).join('') : vazio('Sem mensagens guardadas nesta conversa.')}</div></div>
+  </main>` + rodape();
+}
+
 /* ---------------------------------------------------------------- roteador */
 
 async function rota(){
@@ -905,7 +1123,10 @@ async function rota(){
   if (h.startsWith('#/clientes'))   return telaClientes();
   if (h.startsWith('#/processos'))  return telaProcessos(q.get('caso'));
   if (h.startsWith('#/publicacoes'))return telaPublicacoes();
-  if (h.startsWith('#/agenda'))     return telaAgenda(q.get('caso'));
+  if (h.startsWith('#/conversa/'))  return telaConversa(h.slice('#/conversa/'.length).split('?')[0]);
+  if (h.startsWith('#/agenda'))     return telaAgenda(q.get('caso'), q.get('m'));
+  if (h.startsWith('#/captacao'))   return telaCaptacao();
+  if (h.startsWith('#/whatsapp'))   return telaWhatsapp();
   if (h.startsWith('#/financeiro')) return telaFinanceiro();
   if (h.startsWith('#/recados'))    return telaRecados();
   return telaInicio();
