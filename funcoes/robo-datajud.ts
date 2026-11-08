@@ -21,7 +21,11 @@ const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
    resposta chegava a tempo e o robô voltava com zero consultados. Entre uma resposta
    e outra ele recusa com 429, e isso vem rápido: aí o recuo age. */
 const PRAZO_CHAMADA = 50000;   // por consulta ao DataJud
-const PRAZO_RODADA = 130000;   // da rodada inteira
+/* 105 s, e não mais: quem manda a rodada é o pg_cron, pelo pg_net, e o comando da tarefa
+   desiste de esperar em 120 000 ms. Com 130 s, o robô trabalhava e o chamador desligava
+   antes de ouvir — o relatório se perdia no caminho. O teto não é o da plataforma (uns
+   150 s): é a paciência de quem chamou. */
+const PRAZO_RODADA = 105000;   // da rodada inteira
 
 // O DataJud mistura formatos: dataHora vem ISO ("2026-07-31T04:41:52.000Z"),
 // dataAjuizamento vem compacta ("20260311194838"). Normaliza para AAAA-MM-DD.
