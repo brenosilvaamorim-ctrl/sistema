@@ -303,11 +303,17 @@ async function telaInicio(){
 let CASOBUSCA = '';
 
 async function telaCasos(){
-  const [q, od, cl] = await Promise.all([
-    sb.from('caso_quadro').select('*'),
+  /* A visão caso_quadro não tem parceria_id, e deixar a RLS filtrar sozinha não
+     serve: para um login do escritório ela devolve o escritório inteiro, e esta
+     porta passaria a mostrar o que não é da parceria. Então a lista de casos vem
+     primeiro, carimbada, e a visão é pedida só para esses. */
+  const [od, cl] = await Promise.all([
     sb.from('caso').select('id,ordem').eq('parceria_id', PAR.id),
     sb.from('cliente').select('id,nome').eq('parceria_id', PAR.id).order('nome'),
   ]);
+  if (od.error) return erro(od.error.message);
+  const meus = (od.data || []).map(x => x.id);
+  const q = meus.length ? await sb.from('caso_quadro').select('*').in('id', meus) : { data: [] };
   if (q.error) return erro(q.error.message);
   QUADRO = q.data || [];
   const clientes = cl.data || [];
@@ -1221,9 +1227,13 @@ async function telaWhatsapp(){
   const ld = await sb.from('lead').select('id,nome,telefone,etapa,caso_id').eq('parceria_id', PAR.id);
   if (ld.error) return erro(ld.error.message);
   const leads = ld.data || [];
-  const cv = await sb.from('bot_conversa')
+  /* Mesmo cuidado do quadro: pedir sem filtro traria, para um login do escritório,
+     a caixa de entrada inteira. A conversa só entra aqui pelo lead que é nosso. */
+  const ids = leads.map(l => l.id);
+  const cv = ids.length ? await sb.from('bot_conversa')
     .select('id,telefone,wa_nome,lead_id,estado,urgencia,criado_em')
-    .order('criado_em', { ascending: false }).limit(60);
+    .in('lead_id', ids)
+    .order('criado_em', { ascending: false }).limit(60) : { data: [] };
   const conversas = cv.data || [];
   const lead = id => leads.find(l => l.id === id);
 
@@ -1253,6 +1263,11 @@ async function telaConversa(id){
   if (cv.error) return erro(cv.error.message);
   if (!cv.data) return erro('conversa não encontrada, ou não é de um atendimento da parceria');
   const c = cv.data, msgs = ms.data || [];
+  /* Digitar o endereço de uma conversa não pode abrir o que não é da parceria —
+     a RLS já barra a parceira, mas um login do escritório passaria por aqui. */
+  const dono = c.lead_id ? (await sb.from('lead').select('id')
+    .eq('id', c.lead_id).eq('parceria_id', PAR.id).maybeSingle()).data : null;
+  if (!dono) return erro('esta conversa não é de um atendimento da parceria');
   app.innerHTML = menu('whatsapp') + `<main>
   <a class="volta" href="#/whatsapp">← Conversas</a>
   <h1>${esc(c.wa_nome || c.telefone)}</h1>
