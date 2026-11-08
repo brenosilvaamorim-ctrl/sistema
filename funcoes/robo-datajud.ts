@@ -25,7 +25,7 @@ const PRAZO_CHAMADA = 50000;   // por consulta ao DataJud
    desiste de esperar em 120 000 ms. Com 130 s, o robô trabalhava e o chamador desligava
    antes de ouvir — o relatório se perdia no caminho. O teto não é o da plataforma (uns
    150 s): é a paciência de quem chamou. */
-const PRAZO_RODADA = 105000;   // da rodada inteira
+const PRAZO_RODADA = 115000;   // da rodada inteira, com folga para os 120 s do chamador
 
 // O DataJud mistura formatos: dataHora vem ISO ("2026-07-31T04:41:52.000Z"),
 // dataAjuizamento vem compacta ("20260311194838"). Normaliza para AAAA-MM-DD.
@@ -105,7 +105,11 @@ Deno.serve(async (req) => {
   };
 
   for (const p of processos ?? []) {
-    if (Date.now() - comecou > PRAZO_RODADA) { rel.parou_por_tempo = true; break; }
+    /* Não começa um processo se não couber uma consulta inteira: a conferência é
+       antes de escolher, mas a consulta pode levar os 50 s do prazo. Sem esta
+       reserva, um processo começado em cima da hora estoura o teto do chamador —
+       foi assim que a rodada de 130 s acabou morta pela plataforma, em 546. */
+    if (Date.now() - comecou > PRAZO_RODADA - PRAZO_CHAMADA) { rel.parou_por_tempo = true; break; }
     const idx = alias.get(p.tribunal_sigla);
     if (!idx) {
       rel.erros.push(`${p.numero_cnj}: tribunal ${p.tribunal_sigla} sem índice no DataJud`);
