@@ -14,6 +14,27 @@ Supabase → Edge Functions → **Deploy a new function → Via Editor**, com o 
 colando o conteúdo do arquivo. Ou, pela linha de comando, criar
 `supabase/functions/<nome>/index.ts` com o conteúdo e rodar `supabase functions deploy <nome>`.
 
+## O robô do DataJud e o 429
+
+Medido em 08/11/2026, à 1h da manhã. O robô pede um lote de 60 processos e a API pública do
+CNJ responde **HTTP 429 — requisições demais** em quase todos, ou simplesmente não responde.
+Conferido também por fora, chamando a API direto: 429 na primeira tentativa, e nenhuma
+resposta em 20 segundos nas duas seguintes. O gargalo é do CNJ, não daqui.
+
+Isso vinha acontecendo havia muito tempo, sem aparecer: no Deno o `fetch` não tem prazo
+padrão, então o processo cuja resposta não voltava segurava o laço até a plataforma matar a
+função — e quem é morto não devolve relatório. O sintoma visível era `546` no registro e
+1 ou 2 processos sincronizados por rodada, de 60 pedidos.
+
+O que foi feito: prazo de 8 s por consulta, e a rodada para sozinha aos 110 s e devolve
+`parou_por_tempo`, `segundos` e a lista de erros. Não acelera nada — **mostra**. Sem isso,
+nada disto seria descoberto.
+
+O que ainda dá para fazer: ao levar 429, o robô espera 300 ms e desiste daquele processo.
+O certo é recuar e tentar o mesmo de novo (2 s, 4 s, 8 s), para aproveitar a brecha quando
+a API abrir, em vez de queimar a janela batendo em porta fechada. E pedir menos: 290
+processos por dia é mais do que o escritório precisa olhar.
+
 ## Quem pode chamar cada função
 
 *Conferido em 07/11/2026, nas três direções, nas onze funções implantadas.*
@@ -66,7 +87,10 @@ Supabase → Edge Functions → **Secrets**:
 - `ANTHROPIC_API_KEY`, `ANTHROPIC_ADMIN_KEY`
 - `RESEND_API_KEY`, `ALERTA_EMAIL_DE`, `ALERTA_EMAIL_PARA`
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
-- `DATAJUD_API_KEY`
+- ~~`DATAJUD_API_KEY`~~ — **não existe e não precisa existir.** No DataJud público do CNJ a
+  chave é uma só, divulgada na documentação e igual para todo mundo; ela já está escrita no
+  `robo-datajud.ts`. Não há chave privada para pedir, e por isso a fila é compartilhada com
+  o país inteiro — ver a seção sobre o 429, abaixo.
 - `NFSE_CERT_PFX_B64`, `NFSE_CERT_SENHA` — certificado A1 do escritório para a nota fiscal (ver abaixo)
 - `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_DB_URL`
   (estas quatro o Supabase preenche sozinho)
