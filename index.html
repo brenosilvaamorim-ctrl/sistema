@@ -15705,6 +15705,16 @@ window.salvarInvestir = async function(){
    usuário do escritório — não ganha linha em usuario — e por isso todas as
    regras de acesso de cá o negam. Ele só alcança o que leva o carimbo da
    parceria, caso a caso, marcado por você na tela do caso. */
+/* Ligar uma origem a uma parceria é o que faz a indicação carimbar sozinha: o gatilho
+   `a_parceria_pela_origem` lê isto na hora em que o lead, o cliente ou o caso é gravado.
+   Ver banco/52_origem_da_parceria.sql. */
+window.origemDaParceria = async (id, parceriaId) => {
+  const { error } = await sb.from('origem_captacao')
+    .update({ parceria_id: parceriaId || null }).eq('id', id);
+  if (error) return alert('Não deu certo: ' + error.message);
+  telaConfig();
+};
+
 function blocoParcerias(parcerias, membros, erroPc){
   if (erroPc) return `<div class="card"><h2>Parcerias</h2>
     <p class="nota">As tabelas da parceria ainda não existem no banco. Aplique
@@ -15823,7 +15833,7 @@ async function telaConfig(){
     sb.from('usuario').select('*').order('criado_em'),
     sb.from('escritorio').select('*').limit(1).single(),
     sb.from('area_atuacao').select('id,nome').order('ordem'),
-    sb.from('origem_captacao').select('id,nome').order('nome'),
+    sb.from('origem_captacao').select('id,nome,parceria_id').order('nome'),
     sb.from('categoria_financeira').select('id,nome,tipo').order('nome'),
     sb.from('parceria').select('*').order('criado_em'),
     sb.from('parceria_membro').select('*').order('criado_em'),
@@ -15900,7 +15910,18 @@ async function telaConfig(){
         <form onsubmit="novoItem(event,'origem_captacao')" style="display:flex;gap:8px;flex-wrap:wrap">
           <input name="nome" type="text" placeholder="nova origem" required style="flex:1;min-width:150px">
           <button class="btn ok" type="submit">Acrescentar</button></form>
-        <div class="sub" style="margin-top:10px">${ORIGENS.map(o=>esc(o.nome)).join(' · ')||'nenhuma'}</div></div></div>
+        ${(pc.data||[]).length ? `<p class="nota" style="margin:12px 0 4px;padding:0">Uma origem pode ser
+          <b>de uma parceria</b>. Quando é, o lead, o cliente e o caso que nascerem com ela já nascem
+          compartilhados — você não precisa marcar um a um. Tirar da parceria continua sendo ato seu,
+          no botão da tela do caso: mudar a origem depois não desfaz nada.</p>
+        <table style="margin-top:6px"><tbody>${ORIGENS.map(o=>`<tr>
+          <td>${esc(o.nome)}</td>
+          <td style="width:230px"><select onchange="origemDaParceria('${o.id}', this.value)">
+            <option value="">— do escritório —</option>
+            ${(pc.data||[]).map(x=>`<option value="${x.id}" ${x.id===o.parceria_id?'selected':''}>${esc(x.nome)}</option>`).join('')}
+          </select></td></tr>`).join('')}</tbody></table>`
+        : `<div class="sub" style="margin-top:10px">${ORIGENS.map(o=>esc(o.nome)).join(' · ')||'nenhuma'}</div>`}
+      </div></div>
   </div>
 
   <div class="card" style="margin-top:18px"><h2>Categorias financeiras</h2>
