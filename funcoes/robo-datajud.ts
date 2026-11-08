@@ -11,6 +11,13 @@ const CHAVE_PUBLICA = 'cDZHYzlZa0JadVREZDJCendQbXY6SkJlTzNjLV9TRENyQk1RdnFKZGRQd
 
 const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/* A função é cortada pela plataforma por volta dos 150 segundos, e quem é cortado não
+   devolve relatório nenhum: morre calada. Por isso o robô para sozinho antes disso e
+   conta o que fez. O que não couber nesta rodada entra na próxima — a fila é ordenada
+   pelo mais desatualizado primeiro. */
+const PRAZO_CHAMADA = 8000;    // por consulta ao DataJud
+const PRAZO_RODADA = 110000;   // da rodada inteira
+
 // O DataJud mistura formatos: dataHora vem ISO ("2026-07-31T04:41:52.000Z"),
 // dataAjuizamento vem compacta ("20260311194838"). Normaliza para AAAA-MM-DD.
 function soData(v: unknown): string | null {
@@ -76,25 +83,34 @@ Deno.serve(async (req) => {
     });
   }
 
+  const comecou = Date.now();
   const rel = {
     processos: (processos ?? []).length,
     consultados: 0,
     naoEncontrados: 0,
     movimentacoesNovas: 0,
+    parou_por_tempo: false,
+    segundos: 0,
     erros: [] as string[],
   };
 
   for (const p of processos ?? []) {
+    if (Date.now() - comecou > PRAZO_RODADA) { rel.parou_por_tempo = true; break; }
     const idx = alias.get(p.tribunal_sigla);
     if (!idx) {
       rel.erros.push(`${p.numero_cnj}: tribunal ${p.tribunal_sigla} sem índice no DataJud`);
       continue;
     }
     try {
+      /* Prazo por chamada. Sem isto, um processo cuja resposta não volta trava o
+         laço inteiro: no Deno o fetch não tem prazo padrão, e a plataforma acaba
+         matando a função antes de ela tocar nos outros. Travar não é falhar — o
+         catch não pega. Agora vira erro anotado, e o laço segue. */
       const r = await fetch(`${BASE}/${idx}/_search`, {
         method: 'POST',
         headers: { Authorization: `APIKey ${chave}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ size: 1, query: { match: { numeroProcesso: p.numero_cnj } } }),
+        signal: AbortSignal.timeout(PRAZO_CHAMADA),
       });
       if (!r.ok) {
         rel.erros.push(`${p.numero_cnj}: DataJud HTTP ${r.status}`);
@@ -148,6 +164,7 @@ Deno.serve(async (req) => {
     }
   }
 
+  rel.segundos = Math.round((Date.now() - comecou) / 1000);
   return new Response(JSON.stringify(rel, null, 2), {
     headers: { 'Content-Type': 'application/json' },
   });

@@ -25,7 +25,10 @@ const semTag = (s: unknown) => String(s ?? '').replace(/<[^>]+>/g, ' ').replace(
 const brIso = (s: string) => { const m = String(s || '').match(/(\d{2})\/(\d{2})\/(\d{4})/); return m ? `${m[3]}-${m[2]}-${m[1]}` : null; };
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
-async function comPrazo(url: string, init: RequestInit = {}, ms = 60000): Promise<Response> {
+/* 25 s, e não 60: com três tentativas e as esperas entre elas, 60 s somava 189 s no pior
+   caso — mais do que a plataforma deixa a função viver. Quem é cortado não chega a fechar
+   a linha de prev_robo_execucao, e a rodada fica aberta para sempre. */
+async function comPrazo(url: string, init: RequestInit = {}, ms = 25000): Promise<Response> {
   for (let tentativa = 1; ; tentativa++) {
     const c = new AbortController(); const t = setTimeout(() => c.abort(), ms);
     try {

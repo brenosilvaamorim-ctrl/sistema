@@ -7,6 +7,12 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 const DJEN = 'https://comunicaapi.pje.jus.br/api/v1/comunicacao';
 const LIMIAR = 0.5;
+
+/* No Deno o fetch não tem prazo padrão: uma página do DJEN que não responde trava o laço
+   até a plataforma matar a função — e quem é morto não devolve relatório. Prazo por
+   chamada, e a rodada para sozinha antes do corte, contando o que fez. */
+const PRAZO_CHAMADA = 20000;   // por página do DJEN
+const PRAZO_RODADA = 110000;   // da rodada inteira
 const DIAS_SEM = ['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
 
 const UF_TRIB: Record<string,string> = {
@@ -168,13 +174,17 @@ Deno.serve(async (req) => {
   const { data: oabs } = await db.from('oab').select('numero, uf').eq('monitorar', true);
   const { data: feriados } = await db.from('feriado').select('data, nome, ambito, uf');
 
+  const comecou = Date.now();
   const rel: any = { janela: { inicio, fim }, oabs: [], intimacoesNovas: 0,
-    prazosSugeridos: 0, semPrazo: 0, baixaConfianca: 0, audiencias: 0, erros: [] };
+    prazosSugeridos: 0, semPrazo: 0, baixaConfianca: 0, audiencias: 0,
+    parou_por_tempo: false, segundos: 0, erros: [] };
 
   for (const o of oabs ?? []) {
+    if (Date.now() - comecou > PRAZO_RODADA) { rel.parou_por_tempo = true; break; }
     try {
       const itens: any[] = [];
       for (let p = 1; p <= 30; p++) {
+        if (Date.now() - comecou > PRAZO_RODADA) { rel.parou_por_tempo = true; break; }
         const u = new URL(DJEN);
         u.searchParams.set('numeroOab', o.numero);
         u.searchParams.set('ufOab', o.uf);
@@ -182,7 +192,8 @@ Deno.serve(async (req) => {
         u.searchParams.set('dataDisponibilizacaoFim', fim);
         u.searchParams.set('itensPorPagina', '100');
         u.searchParams.set('pagina', String(p));
-        const r = await fetch(u, { headers: { Accept: 'application/json' } });
+        const r = await fetch(u, { headers: { Accept: 'application/json' },
+          signal: AbortSignal.timeout(PRAZO_CHAMADA) });
         if (!r.ok) throw new Error(`DJEN ${r.status}`);
         const j = await r.json();
         const lote = j.items ?? [];
@@ -265,6 +276,7 @@ Deno.serve(async (req) => {
     }
   }
 
+  rel.segundos = Math.round((Date.now() - comecou) / 1000);
   return new Response(JSON.stringify(rel, null, 2), {
     headers: { 'Content-Type': 'application/json' },
   });
