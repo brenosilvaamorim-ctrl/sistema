@@ -89,6 +89,7 @@ Deno.serve(async (req) => {
     consultados: 0,
     naoEncontrados: 0,
     movimentacoesNovas: 0,
+    recuos: 0,
     parou_por_tempo: false,
     segundos: 0,
     erros: [] as string[],
@@ -102,16 +103,30 @@ Deno.serve(async (req) => {
       continue;
     }
     try {
-      /* Prazo por chamada. Sem isto, um processo cuja resposta não volta trava o
-         laço inteiro: no Deno o fetch não tem prazo padrão, e a plataforma acaba
-         matando a função antes de ela tocar nos outros. Travar não é falhar — o
-         catch não pega. Agora vira erro anotado, e o laço segue. */
-      const r = await fetch(`${BASE}/${idx}/_search`, {
-        method: 'POST',
-        headers: { Authorization: `APIKey ${chave}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ size: 1, query: { match: { numeroProcesso: p.numero_cnj } } }),
-        signal: AbortSignal.timeout(PRAZO_CHAMADA),
-      });
+      /* Duas defesas, e elas resolvem coisas diferentes.
+
+         Prazo por chamada: no Deno o fetch não tem prazo padrão, então um processo
+         cuja resposta nunca volta segura o laço até a plataforma matar a função —
+         e quem é morto não devolve relatório. Travar não é falhar: o catch não pega.
+
+         Recuo no 429: a API pública do CNJ é uma fila compartilhada com o país e
+         vive cheia. Desistir do processo em 300 ms desperdiça a janela — quando a
+         brecha abre, ninguém está lá para usá-la. Então insiste no MESMO processo,
+         esperando 2 s e depois 4 s. Só no 429: repetir uma chamada que travou
+         custaria oito segundos por tentativa, e não vale. */
+      let r!: Response;
+      for (let tentativa = 1; tentativa <= 3; tentativa++) {
+        r = await fetch(`${BASE}/${idx}/_search`, {
+          method: 'POST',
+          headers: { Authorization: `APIKey ${chave}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ size: 1, query: { match: { numeroProcesso: p.numero_cnj } } }),
+          signal: AbortSignal.timeout(PRAZO_CHAMADA),
+        });
+        if (r.status !== 429) break;
+        if (tentativa === 3 || Date.now() - comecou > PRAZO_RODADA - 10000) break;
+        rel.recuos++;
+        await espera(2000 * tentativa);   // 2 s, depois 4 s
+      }
       if (!r.ok) {
         rel.erros.push(`${p.numero_cnj}: DataJud HTTP ${r.status}`);
         await espera(300);
