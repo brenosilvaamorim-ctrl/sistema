@@ -15,8 +15,13 @@ const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
    devolve relatório nenhum: morre calada. Por isso o robô para sozinho antes disso e
    conta o que fez. O que não couber nesta rodada entra na próxima — a fila é ordenada
    pelo mais desatualizado primeiro. */
-const PRAZO_CHAMADA = 8000;    // por consulta ao DataJud
-const PRAZO_RODADA = 110000;   // da rodada inteira
+/* 50 s por consulta não é exagero: medido em 08/11/2026, o DataJud público leva de
+   30 a 42 segundos para responder quando responde — o próprio Elasticsearch deles
+   devolve `took: 30711` e `took: 41257`. Com os 8 s que eu havia posto, nenhuma
+   resposta chegava a tempo e o robô voltava com zero consultados. Entre uma resposta
+   e outra ele recusa com 429, e isso vem rápido: aí o recuo age. */
+const PRAZO_CHAMADA = 50000;   // por consulta ao DataJud
+const PRAZO_RODADA = 130000;   // da rodada inteira
 
 // O DataJud mistura formatos: dataHora vem ISO ("2026-07-31T04:41:52.000Z"),
 // dataAjuizamento vem compacta ("20260311194838"). Normaliza para AAAA-MM-DD.
@@ -123,7 +128,7 @@ Deno.serve(async (req) => {
           signal: AbortSignal.timeout(PRAZO_CHAMADA),
         });
         if (r.status !== 429) break;
-        if (tentativa === 3 || Date.now() - comecou > PRAZO_RODADA - 10000) break;
+        if (tentativa === 3 || Date.now() - comecou > PRAZO_RODADA - PRAZO_CHAMADA) break;
         rel.recuos++;
         await espera(2000 * tentativa);   // 2 s, depois 4 s
       }
