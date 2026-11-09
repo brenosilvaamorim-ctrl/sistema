@@ -15,7 +15,11 @@
 // google-sync. Consulta que passou a ser por vídeo e já estava no Google sem
 // sala: a sala é acrescentada ao evento que já existe.
 //
-// POST { evento_id }  +  login do escritório no Authorization
+// Desde a parceria, duas portas: um login do escritório, ou um membro de parceria —
+// e, neste caso, só para consulta carimbada com a parceria dele. A sala nasce na conta
+// do Google do escritório de todo modo, que é a única que existe.
+//
+// POST { evento_id }  +  login do escritório ou da parceria no Authorization
 // Resposta: { link, google_id }  ou  { erro }
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
@@ -84,28 +88,54 @@ Deno.serve(async (req) => {
   if (!CID || !CSEC) return json({ erro: 'Falta GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET nos Secrets.' }, 400);
   const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
 
-  // quem pede: login ativo do escritório
+  /* Quem pede: um login ativo do escritório, OU um parceiro — e, neste caso, só para
+     uma consulta que já é da parceria dele. A sala do Meet nasce na conta do Google do
+     escritório, porque é a única que existe: a consulta é do escritório, marcada a quatro
+     mãos. O parceiro não ganha acesso à agenda; ganha o direito de pedir a sala de um
+     compromisso que já é dele. */
   const jwt = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '').trim();
   const { data: quem } = await db.auth.getUser(jwt);
   if (!quem?.user) return json({ erro: 'Faça login no sistema.' }, 401);
+
   const { data: u } = await db.from('usuario').select('id, escritorio_id')
     .eq('id', quem.user.id).eq('ativo', true).maybeSingle();
-  if (!u) return json({ erro: 'acesso restrito ao escritório' }, 403);
+
+  let parceria: { id: string; escritorio_id: string } | null = null;
+  if (!u) {
+    /* Duas consultas em vez de um `.or` montado com texto: o e-mail vem de fora, e
+       vírgula ou parêntese nele quebrariam o filtro. Aqui não há o que escapar. */
+    const campos = 'parceria_id, parceria:parceria_id(id, escritorio_id, ativa)';
+    let { data: m } = await db.from('parceria_membro').select(campos)
+      .eq('ativo', true).eq('usuario_auth', quem.user.id).limit(1).maybeSingle();
+    if (!m && quem.user.email) {
+      ({ data: m } = await db.from('parceria_membro').select(campos)
+        .eq('ativo', true).ilike('email', quem.user.email).limit(1).maybeSingle());
+    }
+    const p: any = m?.parceria;
+    if (p?.ativa) parceria = { id: p.id, escritorio_id: p.escritorio_id };
+    if (!parceria) return json({ erro: 'acesso restrito ao escritório' }, 403);
+  }
+  const escritorioId = u?.escritorio_id ?? parceria!.escritorio_id;
 
   let corpo: any = {};
   try { corpo = await req.json(); } catch { /* sem corpo */ }
   if (!corpo.evento_id) return json({ erro: 'falta evento_id' }, 400);
 
-  const { data: ev } = await db.from('evento')
-    .select('id, escritorio_id, tipo, titulo, descricao, inicio, fim, local, link_sala, formato, cliente:cliente_id(nome), caso:caso_id(titulo)')
-    .eq('id', corpo.evento_id).eq('escritorio_id', u.escritorio_id).maybeSingle();
+  let consulta = db.from('evento')
+    .select('id, escritorio_id, parceria_id, tipo, titulo, descricao, inicio, fim, local, link_sala, formato, cliente:cliente_id(nome), caso:caso_id(titulo)')
+    .eq('id', corpo.evento_id).eq('escritorio_id', escritorioId);
+  /* O parceiro só alcança o que está carimbado como dele. */
+  if (parceria) consulta = consulta.eq('parceria_id', parceria.id);
+  const { data: ev } = await consulta.maybeSingle();
   if (!ev) return json({ erro: 'consulta não encontrada' }, 404);
 
-  // a agenda de quem marcou; se essa pessoa não ligou o Google, a do escritório
-  let { data: conta } = await db.from('google_conta').select('*')
-    .eq('dono_id', u.id).eq('ativo', true).not('refresh_token', 'is', null).maybeSingle();
+  /* A agenda de quem marcou; se essa pessoa não ligou o Google, a do escritório.
+     Pela porta da parceria é sempre a do escritório: a parceira não tem conta aqui. */
+  let conta: any = null;
+  if (u) ({ data: conta } = await db.from('google_conta').select('*')
+    .eq('dono_id', u.id).eq('ativo', true).not('refresh_token', 'is', null).maybeSingle());
   if (!conta) ({ data: conta } = await db.from('google_conta').select('*')
-    .eq('escritorio_id', u.escritorio_id).eq('ativo', true).not('refresh_token', 'is', null).limit(1).maybeSingle());
+    .eq('escritorio_id', escritorioId).eq('ativo', true).not('refresh_token', 'is', null).limit(1).maybeSingle());
   if (!conta) return json({ erro: 'Nenhuma conta do Google conectada. Conecte em Configurações para gerar o Meet.' }, 400);
 
   try {

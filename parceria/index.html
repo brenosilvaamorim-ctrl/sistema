@@ -1464,10 +1464,18 @@ const ETAPAS = [['novo','Entrou'],['contatado','Primeiro contato feito'],['consu
   ['documentos','Análise de documentação'],['proposta','Proposta enviada']];
 
 async function telaCaptacao(){
-  const { data, error } = await sb.from('lead').select('*')
-    .eq('parceria_id', PAR.id).order('criado_em', { ascending: false });
-  if (error) return erro(error.message);
-  LEADS = data || [];
+  const [le, cs] = await Promise.all([
+    sb.from('lead').select('*').eq('parceria_id', PAR.id).order('criado_em', { ascending: false }),
+    /* As consultas já marcadas, para o cartão dizer quando é. Filtro explícito pela
+       parceria: a regra do banco protege a parceira, não filtra para quem é do
+       escritório — e esta tela também abre com o login dele. */
+    sb.from('evento').select('id,titulo,inicio,local,link_sala,formato,situacao,lead_id')
+      .eq('parceria_id', PAR.id).not('lead_id', 'is', null)
+      .not('situacao', 'in', '("concluida","cancelada")'),
+  ]);
+  if (le.error) return erro(le.error.message);
+  LEADS = le.data || [];
+  LEADEV = {}; (cs.data || []).forEach(e => { LEADEV[e.lead_id] = e; });
   /* Que lead tem papel anexado — a ficha é quem guarda o arquivo. */
   PAPEL = {};
   if (LEADS.length) {
@@ -1548,7 +1556,121 @@ async function telaCaptacao(){
   </main>` + rodape();
 }
 
-let LEADS = [], PAPEL = {};
+let LEADS = [], PAPEL = {}, LEADEV = {};
+
+const nomeProprio = s => String(s||'').toLowerCase().replace(/(^|\s|')\p{L}/gu, c => c.toUpperCase());
+const linkWa = (fone, texto) => {
+  const f = soDig(fone); if (!f) return null;
+  return 'https://wa.me/' + (f.length <= 11 ? '55' + f : f) + '?text=' + encodeURIComponent(texto);
+};
+
+/* Chamar uma função do servidor com o login de quem está na tela — é o login que
+   diz quem pede, e a função confere se a consulta é desta parceria. */
+async function chamarFuncao(nome, corpo){
+  const { data: ses } = await sb.auth.getSession();
+  const r = await fetch(SB_URL + '/functions/v1/' + nome, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', apikey: SB_KEY,
+               authorization: 'Bearer ' + (ses?.session?.access_token || SB_KEY) },
+    body: JSON.stringify(corpo || {}),
+  });
+  let j = {}; try { j = await r.json(); } catch {}
+  if (!r.ok || j.erro) throw new Error(j.erro || ('a função respondeu ' + r.status));
+  return j;
+}
+
+/* --------------------------------------------------- consulta marcada
+   Igual ao escritório: "consulta marcada" sem dia e hora não chega à agenda, e o
+   que não está na agenda é o que se esquece. Aqui a consulta vira compromisso de
+   verdade, ligado ao lead e carimbado como da parceria — a mesma linha que o
+   escritório vê do outro lado.
+
+   O endereço do escritório não é preenchido sozinho, como lá: a parceira não lê a
+   tabela escritorio (banco/44_parceria.sql), e faz sentido — a consulta em parceria
+   pode ser no escritório de qualquer um dos dois. Quem marca escreve onde é. */
+const rotConsulta = e => br(String(e.inicio).slice(0,10)) + ' às ' + String(e.inicio).slice(11,16);
+const FORMATOS = [['presencial','Presencial'],['video','Videochamada (Meet)'],['telefone','Ligação']];
+const ROT_FORMATO = { presencial:'presencial', video:'por vídeo', telefone:'por ligação' };
+
+window.trocarFormato = (id) => {
+  const f = document.getElementById('cs-formato-'+id)?.value || 'presencial';
+  const l = LEADS.find(x => x.id === id) || {};
+  const loc = document.getElementById('cs-local-'+id);
+  const aviso = document.getElementById('cs-meet-'+id);
+  if (loc) {
+    loc.style.display = f === 'video' ? 'none' : '';
+    /* Só mexe no que a tela mesma escreveu: o que a pessoa digitou fica. */
+    if (!loc.value || loc.dataset.auto === '1') {
+      loc.value = f === 'telefone' ? 'Ligação para ' + (l.telefone || 'a pessoa') : '';
+      loc.dataset.auto = '1';
+    }
+    loc.placeholder = f === 'telefone' ? 'número para a ligação' : 'onde (escritório, endereço)';
+  }
+  if (aviso) aviso.style.display = f === 'video' ? '' : 'none';
+};
+
+window.abrirConsulta = (id) => {
+  const el = document.getElementById('cs'+id); if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  if (el.style.display === 'block') trocarFormato(id);
+};
+
+window.agendarConsulta = async (id) => {
+  const l = LEADS.find(x => x.id === id); if (!l) return;
+  const g = k => (document.getElementById('cs-'+k+'-'+id)?.value || '').trim();
+  const st = document.getElementById('cs-st-'+id);
+  const data = g('data');
+  if (!data) { st.style.color = 'var(--crit)'; return st.textContent = 'escolha o dia'; }
+  const hora = g('hora') || '09:00';
+  st.style.color = 'var(--i3)'; st.textContent = 'marcando…';
+
+  const formato = g('formato') || 'presencial';
+  const antiga = LEADEV[id];
+  /* escritorio_id não vai daqui: o gatilho do banco o deduz da parceria. */
+  const campos = {
+    parceria_id: PAR.id, lead_id: id, tipo: 'reuniao', origem: 'parceria',
+    titulo: 'Consulta — ' + l.nome,
+    descricao: ['Consulta de captação em parceria' +
+                 (ROT_FORMATO[formato] ? ', ' + ROT_FORMATO[formato] : '') + '.',
+                l.resumo, g('obs')].filter(Boolean).join(' '),
+    inicio: data + 'T' + hora + ':00+00:00', formato,
+    /* por vídeo, o lugar é a sala; a sala que já existia continua valendo na remarcação */
+    local: formato === 'video' ? null : (g('local') || null),
+    link_sala: formato === 'video' ? (antiga?.link_sala || null) : null,
+    urgencia: 'normal',
+  };
+  let error, evId = antiga?.id;
+  if (antiga) ({ error } = await sb.from('evento').update(campos).eq('id', antiga.id));
+  else {
+    let r; ({ data: r, error } = await sb.from('evento').insert(campos).select('id').single());
+    evId = r?.id;
+  }
+  if (error) { st.style.color = 'var(--crit)'; return st.textContent = 'erro: ' + error.message; }
+
+  /* A etapa acompanha o fato: marcou a consulta, o lead está em "Consulta
+     marcada". E o retorno passa a ser o dia dela. */
+  await sb.from('lead').update({ etapa: 'consulta', proximo_contato: data,
+    atualizado_em: new Date().toISOString() }).eq('id', id);
+
+  /* Por vídeo sem sala: o Google cria o evento já com o Meet, na hora. A sala
+     nasce na conta do escritório, a única que existe — e é dela que sai o link. */
+  let falhaMeet = null;
+  if (formato === 'video' && !campos.link_sala && evId) {
+    st.textContent = 'gerando a sala do Meet…';
+    try { await chamarFuncao('consulta-meet', { evento_id: evId }); }
+    catch (e) { falhaMeet = e.message; }
+  }
+  await telaCaptacao();
+  if (falhaMeet) alert('A consulta foi marcada, mas o Meet não foi gerado: ' + falhaMeet);
+};
+
+window.desmarcarConsulta = async (id) => {
+  const e = LEADEV[id]; if (!e) return;
+  if (!confirm('Desmarcar a consulta de ' + (LEADS.find(x=>x.id===id)?.nome || '') + '? Ela sai da agenda.')) return;
+  const { error } = await sb.from('evento').update({ situacao: 'cancelada' }).eq('id', e.id);
+  if (error) return alert('Não deu: ' + error.message);
+  telaCaptacao();
+};
 
 function cartaoLead(l){
   const d = l.proximo_contato ? dias(l.proximo_contato) : null;
@@ -1565,14 +1687,59 @@ function cartaoLead(l){
     ${d !== null ? `<span class="pill ${d<0?'crit':(d<=1?'ser':'good')}">contato ${br(l.proximo_contato)}</span>` : ''}
     ${parado > 7 ? `<span class="pill ser">parado há ${parado} dias</span>` : ''}
     ${l.nota != null ? `<span class="pill ${l.nota>=7?'good':(l.nota>=4?'warn':'crit')}">viabilidade ${l.nota}/10</span>` : ''}
+    ${(() => { const e = LEADEV[l.id]; return e
+      ? `<div class="pill serie" title="${esc(e.local || e.link_sala || 'sem local informado')}"
+           >consulta ${rotConsulta(e)}${ROT_FORMATO[e.formato] ? ' · ' + ROT_FORMATO[e.formato] : ''}</div>` : ''; })()}
+    ${(() => { const e = LEADEV[l.id];
+      if (!e?.link_sala || !l.telefone) return '';
+      /* Quem manda se apresenta pelo próprio nome. No escritório a mensagem diz "aqui é
+         do escritório"; aqui não serve: quem manda pode ser a parceira, e ela não fala
+         pelo escritório — fala por si, no caso que é dos dois. */
+      const eu = PAR.eu?.nome ? nomeProprio(PAR.eu.nome) : null;
+      const txt = `Olá, ${nomeProprio((l.nome||'').split(' ')[0])}! ` +
+        (eu ? `Aqui é ${eu}, advocacia. ` : 'Aqui é da advocacia. ') +
+        `Nossa conversa está marcada para ${rotConsulta(e)}, por videochamada. É só entrar por este link no horário: ${e.link_sala}`;
+      return `<a class="btn" style="font-size:11.4px;padding:4px 8px;text-decoration:none;display:inline-block;margin-top:4px"
+        href="${linkWa(l.telefone, txt)}" target="_blank" rel="noreferrer">Mandar o link do Meet</a>`; })()}
     <div style="margin-top:9px;display:flex;gap:5px;flex-wrap:wrap">
       <select onchange="moverLead('${l.id}', this.value)" style="flex:1;min-width:140px;font-size:11.6px">
         ${ETAPAS.map(([k,r])=>`<option value="${k}" ${l.etapa===k?'selected':''}>${r}</option>`).join('')}
         <option value="perdido">Não fechou</option>
       </select>
+      <button class="btn ${LEADEV[l.id] ? '' : 'ok'}" style="font-size:11.4px;padding:4px 8px"
+        title="marca dia e hora e joga a consulta na agenda"
+        onclick="abrirConsulta('${l.id}')">${LEADEV[l.id] ? 'Remarcar' : 'Marcar consulta'}</button>
+      ${LEADEV[l.id] ? `<button class="btn" style="font-size:11.4px;padding:4px 8px"
+        onclick="desmarcarConsulta('${l.id}')">Desmarcar</button>` : ''}
       <button class="btn" style="font-size:11.4px;padding:4px 8px"
         onclick="leadViraCaso('${l.id}')">Virar caso</button>
     </div>
+    ${(() => { const e = LEADEV[l.id] || null; const d = e ? String(e.inicio) : '';
+      return `<div id="cs${l.id}" style="display:none;margin-top:8px;border-top:1px solid var(--ln);padding-top:8px">
+      <div class="sub" style="margin:0 0 5px">A consulta entra na Agenda da parceria como
+        compromisso e vai junto para o Google do escritório. Se a pessoa fechar, ela segue
+        para o caso.</div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
+        <input type="date" id="cs-data-${l.id}" value="${d.slice(0,10)}" style="font-size:11.4px">
+        <input type="time" id="cs-hora-${l.id}" value="${d ? d.slice(11,16) : '09:00'}" style="font-size:11.4px">
+      </div>
+      <select id="cs-formato-${l.id}" onchange="trocarFormato('${l.id}')"
+              style="font-size:11.4px;width:100%;margin-top:4px">
+        ${FORMATOS.map(([v,r]) => `<option value="${v}" ${(e?.formato || (e?.link_sala ? 'video' : 'presencial')) === v ? 'selected' : ''}>${r}</option>`).join('')}
+      </select>
+      <input type="text" id="cs-local-${l.id}" placeholder="onde (escritório, endereço)"
+             value="${esc(e?.local || '')}" oninput="this.dataset.auto='0'"
+             style="font-size:11.4px;width:100%;margin-top:4px">
+      <div class="sub" id="cs-meet-${l.id}" style="display:none;margin:4px 0 0">${e?.link_sala
+        ? 'Sala do Meet: <a href="' + esc(e.link_sala) + '" target="_blank" rel="noreferrer">' + esc(e.link_sala) + '</a>. Remarcar mantém a mesma sala.'
+        : 'O link do Meet é gerado no Google Agenda ao marcar.'}</div>
+      <input type="text" id="cs-obs-${l.id}" placeholder="o que levar, o que pedir para a pessoa trazer"
+             style="font-size:11.4px;width:100%;margin-top:4px">
+      <div style="margin-top:6px;display:flex;gap:6px;align-items:center">
+        <button class="btn ok" style="font-size:11.4px;padding:4px 8px"
+          onclick="agendarConsulta('${l.id}')">${e ? 'Guardar a nova data' : 'Marcar e pôr na agenda'}</button>
+        <span class="sub" id="cs-st-${l.id}" style="margin:0"></span></div>
+    </div>`; })()}
   </div>`;
 }
 

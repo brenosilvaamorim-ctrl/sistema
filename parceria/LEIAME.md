@@ -139,7 +139,7 @@ sabe andar lá saber andar aqui:
 - **Pessoas** — Captação (quadro), Clientes
 - **Casos** — Casos (quadro), Processos, Andamento
 - **Conversas** — Avisar o cliente, Recados, WhatsApp
-- **Dinheiro** — Financeiro
+- **Dinheiro** — Financeiro, Números
 
 **A armadilha que isto escondia, e que custou um susto:** não basta a RLS filtrar. A RLS
 protege a parceira, mas para um login do escritório ela não filtra nada — e a tela passa a
@@ -148,8 +148,33 @@ pediu `caso_quadro` sem filtro: abriu com 213 casos. **O filtro tem de estar na 
 sempre, em toda tela daqui. Vale para `caso_quadro`, `mensageria_painel`, `bot_conversa` e
 qualquer visão ou tabela que não carregue `parceria_id` na própria linha.
 
+## A Captação daqui, e as três coisas que ela precisou
+
+A Paula também anota lead por esta porta, e por isso a Captação não é só o quadro:
+
+- **De onde veio, e "e também".** O lead tem duas origens, porque às vezes são duas perguntas
+  diferentes: o anúncio que trouxe a pessoa e a pessoa que a trouxe. Um lead captado num
+  anúncio feito em parceria é *Google* **e** *Paula*. A lista de origens que aparece aqui é
+  a que o escritório marcou como visível na parceria (Escritório → Configurações → Origens de
+  captação), mais as que nasceram desta porta — não é a lista inteira do escritório.
+- **A ficha em papel.** Atendimento presencial rende papel. O arquivo (PDF ou foto, até 15 MB)
+  não pendura no lead: pendura numa **ficha**, que é onde o relato mora no sistema do
+  escritório — e é por isso que o papel anexado aqui aparece lá, no caso, quando o lead
+  fechar. As regras do balde `fichas` conferem a ficha pela pasta do caminho
+  (`banco/57` e `banco/60`).
+- **A consulta marcada.** Igual ao escritório: dia, hora e formato — presencial, videochamada
+  ou ligação. Por vídeo, a função `consulta-meet` cria o evento no Google já com a sala do
+  Meet e devolve o link, na hora, para mandar à pessoa pelo WhatsApp. A sala nasce na conta
+  do Google do **escritório**, a única que existe: a consulta é do escritório, marcada a
+  quatro mãos. A função confere que o evento é desta parceria antes de tocar nele — ninguém
+  ganha acesso à agenda por isso.
+
+  Uma diferença proposital em relação ao escritório: lá o campo "onde" já vem com o endereço
+  do escritório; aqui, não. A parceira não lê a tabela `escritorio` (e não deve), e a consulta
+  em parceria pode ser no escritório de qualquer um dos dois. Quem marca escreve onde é.
+
 ## O que não vem para esta porta
 
-Captação, WhatsApp, notas fiscais, teses, playbook, jurimetria, métricas, auditoria,
-configurações, previdenciário e a área da casa. Não por omissão da tela: por não existir
-política nenhuma para a parceira nessas tabelas.
+Notas fiscais, teses, playbook, jurimetria, auditoria, configurações, previdenciário e a área
+da casa. Não por omissão da tela: por não existir política nenhuma para a parceira nessas
+tabelas.

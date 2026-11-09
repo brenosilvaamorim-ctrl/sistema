@@ -65,8 +65,15 @@ Quem não passa recebe `403 acesso restrito ao escritório`.
 
 Têm conferência própria, e por isso ficaram como estavam: `backup-diario` (token na URL,
 conferido contra `escritorio.backup_token`), `agenda-ics` e `google-sync` (`agenda_token`),
-`google-oauth` (nonce guardado no banco), `consulta-meet` (login ativo em `usuario`, e só mexe em evento do escritório de quem pede), `whatsapp-bot` (segredo no endereço do webhook,
+`google-oauth` (nonce guardado no banco), `whatsapp-bot` (segredo no endereço do webhook,
 comparado em tempo constante), `convidar-membro` (exige perfil titular) e `nota-fiscal`.
+
+`consulta-meet` também tem conferência própria, e desde a parceria ela tem duas portas: aceita
+um login ativo em `usuario` **ou** um membro ativo de parceria ativa. O do escritório só mexe em
+evento do escritório dele; o da parceria, só em evento carimbado com a parceria dele. A sala
+nasce na conta do Google do escritório, que é a única que existe — a consulta é do escritório,
+marcada a quatro mãos. Ninguém ganha acesso à agenda por isso: ganha o direito de pedir a sala
+de um compromisso que já é seu.
 
 `painel` não precisa: é só a casca HTML, e todo dado dela vem com a sessão de quem abriu.
 
