@@ -1690,6 +1690,11 @@ function lerFicha(){
 
 window.salvarFicha = async (silencioso) => {
   const st = document.getElementById('fi-st');
+  /* Trava: o que se guarda é LIDO do formulário. Chamado fora da tela da ficha — por
+     uma autoguarda que disparou depois de trocar de tela, ou por um botão chamado de
+     outro lugar —, `lerFicha()` devolve vazio e isto apagaria as respostas. Achado
+     testando: o "levar para os fatos" chamado da Captação zerou a ficha. */
+  if (!st || !FICHA) return;
   const respostas = lerFicha();
   if (st && !silencioso) st.textContent = 'guardando…';
   const { error } = await sb.from('ficha')
