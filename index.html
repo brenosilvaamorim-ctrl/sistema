@@ -2287,7 +2287,7 @@ window.novoLead = async (ev, abrirAFicha) => {
 
   const { data, error } = await sb.from('lead').insert({
     escritorio_id: await escritorioId(),
-    nome: v('nome'), telefone: v('telefone'), origem_id: v('origem_id'),
+    nome: v('nome'), telefone: v('telefone'), origem_id: v('origem_id'), origem2_id: v('origem2_id'),
     area_id: v('area_id'), resumo: v('resumo'),
     proximo_contato: v('proximo_contato'), etapa: 'novo',
   }).select('id').maybeSingle();
@@ -2454,14 +2454,14 @@ window.fecharLead = async (id) => {
   if (honorario !== null && !Number.isFinite(honorario)) return alert('Não entendi o valor. Use só números, como 5000 ou 5.000,00.');
   const esc1 = await escritorioId();
   const { data: cli, error: e1 } = await sb.from('cliente')
-    .insert({ escritorio_id: esc1, nome: l.nome, telefone: l.telefone, whatsapp: l.telefone, origem_id: l.origem_id })
+    .insert({ escritorio_id: esc1, nome: l.nome, telefone: l.telefone, whatsapp: l.telefone, origem_id: l.origem_id, origem2_id: l.origem2_id })
     .select('id').single();
   if (e1) return alert('Erro ao criar cliente: ' + e1.message);
   const { data: col } = await sb.from('coluna_caso')
     .select('id').eq('nome','Iniciais/Contestações pendentes').limit(1).single();
   const { data: caso, error: e2 } = await sb.from('caso').insert({
     escritorio_id: esc1, cliente_id: cli.id, titulo: l.nome,
-    area_id: l.area_id, origem_id: l.origem_id, coluna_id: col?.id ?? null,
+    area_id: l.area_id, origem_id: l.origem_id, origem2_id: l.origem2_id, coluna_id: col?.id ?? null,
     descricao: l.resumo, prescricao_em: l.prescricao_em,
   }).select('id').single();
   if (e2) return alert('Erro ao criar caso: ' + e2.message);
@@ -3302,7 +3302,8 @@ async function telaCaptacao(){
   LEADCONV = {}; (bc?.data||[]).forEach(c => { LEADCONV[c.lead_id] = { id: c.id, estado: c.estado, telefone: c.telefone }; });
   AREAS = ar.data||[]; ORIGENS = og.data||[];
   const rotA = new Map(AREAS.map(a=>[a.id,a.nome])), rotO = new Map(ORIGENS.map(o=>[o.id,o.nome]));
-  LEADS = (le.data||[]).map(l => ({ ...l, area_nome: rotA.get(l.area_id), origem_nome: rotO.get(l.origem_id) }));
+  LEADS = (le.data||[]).map(l => ({ ...l, area_nome: rotA.get(l.area_id),
+    origem_nome: [rotO.get(l.origem_id), rotO.get(l.origem2_id)].filter(Boolean).join(' + ') || null }));
 
   const mes = hoje().slice(0,7);
   const doMes = LEADS.filter(l => String(l.criado_em).slice(0,7) === mes);
@@ -3346,6 +3347,7 @@ async function telaCaptacao(){
       <input name="nome" type="text" placeholder="nome" required style="min-width:180px">
       <input name="telefone" type="text" placeholder="telefone" style="width:150px">
       <select name="origem_id">${opt(ORIGENS,'de onde veio')}</select>
+      <select name="origem2_id" title="quando foram dois: o canal e quem indicou">${opt(ORIGENS,'e também…')}</select>
       <select name="area_id">${opt(AREAS,'área')}</select>
       <input name="resumo" type="text" placeholder="o que a pessoa relatou — em uma linha" style="flex:1;min-width:220px">
       <input name="proximo_contato" type="date" title="quando retornar">
@@ -3534,7 +3536,7 @@ window.novoCaso = async (ev) => {
     titulo: v('titulo') || nome,
     area_id: v('area_id'), area: areaNome,
     coluna_id: v('coluna_id'), polo: v('polo'),
-    origem_id: v('origem_id'),
+    origem_id: v('origem_id'), origem2_id: v('origem2_id'),
     descricao: v('descricao'),
   }).select('id').single();
   if (error) { st.style.color='var(--crit)'; return st.textContent = 'erro ao criar o caso: ' + error.message; }
@@ -3619,6 +3621,10 @@ async function telaCasos(){
       <label style="display:flex;flex-direction:column;gap:3px;min-width:200px">
         <span class="sub" style="margin:0">Origem do lead</span>
         <select name="origem_id"><option value="">— não informada —</option>
+          ${ORIGENS.map(o=>`<option value="${o.id}">${esc(o.nome)}</option>`).join('')}</select></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:200px">
+        <span class="sub" style="margin:0">E também — quando foram dois</span>
+        <select name="origem2_id"><option value="">— só uma —</option>
           ${ORIGENS.map(o=>`<option value="${o.id}">${esc(o.nome)}</option>`).join('')}</select></label>
       <label style="display:flex;flex-direction:column;gap:3px;min-width:200px">
         <span class="sub" style="margin:0">Etapa</span>
@@ -4203,9 +4209,15 @@ async function telaCaso(id){
          saber qual canal paga as contas. Grava na hora, sem botão. -->
     <div style="padding:0 18px 12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <span class="sub" style="margin:0">Origem do lead:</span>
-      <select onchange="mudarOrigemCaso('${c.id}', this.value, this)" style="min-width:230px">
+      <select onchange="mudarOrigemCaso('${c.id}', this.value, this, 'origem_id')" style="min-width:230px">
         <option value="">— não informada —</option>
         ${ORIGENS.map(o=>`<option value="${o.id}" ${o.id===c.origem_id?'selected':''}>${esc(o.nome)}</option>`).join('')}
+      </select>
+      <span class="sub" style="margin:0">e também:</span>
+      <select onchange="mudarOrigemCaso('${c.id}', this.value, this, 'origem2_id')" style="min-width:200px"
+        title="quando foram dois: o canal e quem indicou">
+        <option value="">— só uma —</option>
+        ${ORIGENS.map(o=>`<option value="${o.id}" ${o.id===c.origem2_id?'selected':''}>${esc(o.nome)}</option>`).join('')}
       </select>
       <span class="sub" id="og-st" style="margin:0"></span>
       <span class="sub" style="margin:0">A lista sai de Escritório → Origens de captação.</span>
@@ -10050,14 +10062,15 @@ window.salvarCampos = async (casoId) => {
 /* De onde veio o cliente deste caso. Grava direto na troca do seletor, como a
    área na aba Processos: é um campo de um toque, e pedir um botão faria com que
    ficasse para depois — que é como ele ficou vazio em quase todos os casos. */
-window.mudarOrigemCaso = async (casoId, origemId, el) => {
+window.mudarOrigemCaso = async (casoId, origemId, el, campo) => {
+  campo = campo || 'origem_id';
   const st = document.getElementById('og-st');
   const diz = (txt, cor) => { if (st) { st.style.color = cor || 'var(--i3)'; st.textContent = txt; } };
   diz('guardando…');
   const { error } = await sb.from('caso')
-    .update({ origem_id: origemId || null, atualizado_em: new Date().toISOString() }).eq('id', casoId);
+    .update({ [campo]: origemId || null, atualizado_em: new Date().toISOString() }).eq('id', casoId);
   if (error) return diz('não deu: ' + error.message, 'var(--crit)');
-  if (typeof CASO !== 'undefined' && CASO && CASO.id === casoId) CASO.origem_id = origemId || null;
+  if (typeof CASO !== 'undefined' && CASO && CASO.id === casoId) CASO[campo] = origemId || null;
   const nome = ORIGENS.find(o => o.id === origemId)?.nome;
   registrarAcao('definiu', 'caso', 'origem do lead: ' + (nome || 'não informada'));
   diz('guardado ✓', 'var(--good)');
