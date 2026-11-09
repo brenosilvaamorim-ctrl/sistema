@@ -318,9 +318,12 @@ async function telaCasos(){
   QUADRO = q.data || [];
   const clientes = cl.data || [];
   CASOORD = {}; (od.data || []).forEach(x => { CASOORD[x.id] = x.ordem; });
+  await carregarTags(meus).catch(()=>{});
+  if (TAGFILTRO && !TAGS.some(t => t.id === TAGFILTRO)) TAGFILTRO = null;
 
   const filtro = CASOBUSCA.trim().toLowerCase();
-  const casa = c => !filtro || `${c.titulo||''} ${c.cliente_nome||''}`.toLowerCase().includes(filtro);
+  const casa = c => (!filtro || `${c.titulo||''} ${c.cliente_nome||''}`.toLowerCase().includes(filtro))
+    && (!TAGFILTRO || tagsDoCaso(c.id).some(t => t.id === TAGFILTRO));
   let abertos = QUADRO.filter(c => !c.encerrado_em && casa(c)).sort(porOrdemCaso);
   const encerrados = QUADRO.filter(c => c.encerrado_em && casa(c))
     .sort((a,b) => String(b.encerrado_em).localeCompare(String(a.encerrado_em)));
@@ -349,6 +352,12 @@ async function telaCasos(){
         oninput="CASOBUSCA=this.value;clearTimeout(window.__b);window.__b=setTimeout(telaCasos,250)"
         style="flex:1;min-width:200px;padding:6px 11px">
     </div>
+    ${TAGS.length ? `<div style="padding:0 18px 12px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <span class="sub" style="margin:0">etiquetas:</span>
+      ${TAGS.map(t=>`<button class="btn ${TAGFILTRO===t.id?'ok':''}" style="font-size:11.6px;padding:4px 9px"
+        onclick="filtrarTag('${t.id}')">${esc(t.nome)}</button>`).join('')}
+      ${TAGFILTRO?`<button class="btn" style="font-size:11.6px;padding:4px 9px" onclick="filtrarTag('${TAGFILTRO}')">limpar</button>`:''}
+    </div>` : ''}
   </div>
 
   <div class="card" id="nc" style="display:none"><h2>Abrir um caso</h2>
@@ -408,6 +417,38 @@ let QUADRO = [], CASOORD = {}, ARRASTA = null;
 let CASOVISTA = localStorage.getItem('casovista_parceria') || 'quadro';
 window.mudarVistaCasos = v => { CASOVISTA = v; localStorage.setItem('casovista_parceria', v); telaCasos(); };
 
+/* ----------------------------------------------------------------- etiquetas
+   A etiqueta é do escritório: a lista de nomes é a mesma dos dois lados, e o
+   que a parceria faz é pendurar e tirar nos casos que são dela. Criar etiqueta
+   nova continua sendo de lá — é vocabulário do escritório, não da parceria. */
+let TAGS = [], CASOTAGS = {}, TAGFILTRO = null;
+
+async function carregarTags(ids){
+  const [tg, ct] = await Promise.all([
+    sb.from('tag').select('id,nome,cor').order('nome'),
+    ids.length ? sb.from('caso_tag').select('caso_id, tag:tag_id(id,nome,cor)').in('caso_id', ids)
+               : Promise.resolve({ data: [] }),
+  ]);
+  TAGS = tg.data || []; CASOTAGS = {};
+  for (const r of (ct.data || [])) {
+    if (!r.tag) continue;
+    (CASOTAGS[r.caso_id] = CASOTAGS[r.caso_id] || []).push(r.tag);
+  }
+}
+const tagsDoCaso = id => CASOTAGS[id] || [];
+function pillsTag(id){
+  return tagsDoCaso(id).map(t =>
+    `<span class="pill" style="background:${esc(t.cor||'#eceae4')};color:#1b1a17">${esc(t.nome)}</span>`).join('');
+}
+window.filtrarTag = id => { TAGFILTRO = (TAGFILTRO === id ? null : id); telaCasos(); };
+window.porTag = async (casoId, tagId, ligar) => {
+  const r = ligar
+    ? await sb.from('caso_tag').insert({ caso_id: casoId, tag_id: tagId })
+    : await sb.from('caso_tag').delete().eq('caso_id', casoId).eq('tag_id', tagId);
+  if (r.error) return alert('Não deu certo: ' + r.error.message);
+  telaCasos();
+};
+
 function porOrdemCaso(a, b){
   const oa = CASOORD[a.id], ob = CASOORD[b.id];
   const va = (oa === null || oa === undefined) ? Infinity : Number(oa);
@@ -428,6 +469,7 @@ function cartao(c){
       esc(c.area_nome || c.area || 'sem área')}${c.polo ? ' · ' + esc(c.polo) : ''} · ${c.processos} processo(s)</div>
     ${d !== null ? `<span class="pill ${k}">prazo ${br(c.proximo_prazo)}${d<0?' (vencido)':''}</span>` : ''}
     ${parado !== null && parado > 90 ? `<span class="pill ser">parado há ${parado} dias</span>` : ''}
+    ${pillsTag(c.id)}
     <div style="margin-top:9px;display:flex;gap:5px;flex-wrap:wrap">
       <select onchange="moverCaso('${c.id}', this.value)" style="flex:1;min-width:130px;font-size:11.6px">
         ${COLUNAS.map(x=>`<option value="${x.id}" ${x.id===c.coluna_id?'selected':''}>${esc(x.nome)}</option>`).join('')}
@@ -569,6 +611,21 @@ async function telaCaso(id){
   const caso = c.data, cli = caso.cliente;
   const procs = pr.data || [], prazos = pz.data || [], eventos = ev.data || [],
         lancs = la.data || [], recados = rc.data || [];
+
+  /* O que o 53 destravou: tudo isto pendura no caso, e por isso vem junto. */
+  const [ft, pt, mn, ts, dc, tg, ct] = await Promise.all([
+    sb.from('fato').select('*').eq('caso_id', id).order('data'),
+    sb.from('parte').select('*').eq('caso_id', id),
+    sb.from('minuta').select('id,tipo,status,criado_em,corpo').eq('caso_id', id).order('criado_em',{ascending:false}),
+    sb.from('timesheet').select('*').eq('caso_id', id).order('data',{ascending:false}).limit(40),
+    sb.from('caso_documento').select('*').eq('caso_id', id).order('ordem'),
+    sb.from('tag').select('id,nome,cor').order('nome'),
+    sb.from('caso_tag').select('tag_id').eq('caso_id', id),
+  ]);
+  const fatos = ft.data || [], partes = pt.data || [], minutas = mn.data || [],
+        horas = ts.data || [], docs = dc.data || [], etiquetas = tg.data || [];
+  const minhasTags = new Set((ct.data || []).map(x => x.tag_id));
+  const totalMin = horas.reduce((t, h) => t + Number(h.minutos || 0), 0);
   const aReceber = lancs.filter(l => l.tipo === 'entrada' && l.situacao !== 'pago')
     .reduce((t,l) => t + Number(l.valor||0), 0);
 
@@ -636,6 +693,100 @@ async function telaCaso(id){
     </form>
   </div>
 
+  <div class="card"><h2>Etiquetas</h2>
+    <p class="nota">O vocabulário é o do escritório — criar etiqueta nova continua sendo de lá.
+      Aqui se pendura e se tira nos casos que são nossos.</p>
+    <div style="padding:0 18px 16px;display:flex;gap:6px;flex-wrap:wrap">
+      ${etiquetas.length ? etiquetas.map(t => `<button class="btn ${minhasTags.has(t.id)?'ok':''}"
+        style="font-size:11.8px;padding:5px 10px"
+        onclick="porTagNoCaso('${caso.id}','${t.id}',${!minhasTags.has(t.id)})">${esc(t.nome)}</button>`).join('')
+        : '<span class="sub" style="margin:0">nenhuma etiqueta criada no escritório ainda</span>'}
+    </div>
+  </div>
+
+  <div class="card"><h2>Partes do processo — ${partes.length}</h2>
+    <p class="nota">Quem está de cada lado. É daqui que a peça tira a qualificação.</p>
+    ${partes.length ? `<table><thead><tr><th>Nome</th><th>Polo</th><th>CPF/CNPJ</th><th>Advogado</th></tr></thead>
+      <tbody>${partes.map(x=>`<tr>
+        <td>${esc(x.nome)}${x.nosso_cliente?'<span class="sub">nosso cliente</span>':''}</td>
+        <td>${esc(x.polo||'—')}</td><td class="proc">${esc(x.cpf_cnpj||'—')}</td>
+        <td>${esc(x.advogado_nome||'—')}${x.advogado_oab?`<span class="sub">OAB ${esc(x.advogado_oab)}</span>`:''}</td>
+      </tr>`).join('')}</tbody></table>` : vazio('Nenhuma parte cadastrada.')}
+    <form class="form" style="padding:14px 18px" onsubmit="novaParte(event,'${caso.id}')">
+      <label><span class="sub">Nome</span><input name="nome" required></label>
+      <label><span class="sub">Polo</span>
+        <select name="polo"><option value="">— não informado —</option>
+          <option>Reclamante</option><option>Reclamado</option><option>Autor</option><option>Réu</option>
+          <option>Terceiro</option></select></label>
+      <label><span class="sub">CPF/CNPJ</span><input name="cpf_cnpj"></label>
+      <label><span class="sub">Advogado</span><input name="advogado_nome"></label>
+      <button class="btn ok" type="submit">Acrescentar</button>
+      <span id="pt-st" class="sub" style="margin:0"></span>
+    </form>
+  </div>
+
+  <div class="card"><h2>Fatos — ${fatos.length}</h2>
+    <p class="nota">A linha do tempo do caso, com a prova de cada fato ao lado. É esta lista que
+      vira a narrativa da inicial — e é por isso que ela se escreve antes da peça, não depois.</p>
+    ${fatos.length ? `<table><tbody>${fatos.map(f=>`<tr>
+      <td class="dt" style="width:120px">${f.data?br(f.data):'—'}</td>
+      <td>${esc(f.descricao)}${f.prova?`<span class="sub">prova: ${esc(f.prova)}</span>`:''}</td>
+    </tr>`).join('')}</tbody></table>` : vazio('Nenhum fato anotado.')}
+    <form class="form" style="padding:14px 18px" onsubmit="novoFato(event,'${caso.id}')">
+      <label><span class="sub">Quando</span><input name="data" type="date"></label>
+      <label class="larga"><span class="sub">O que aconteceu</span><input name="descricao" required></label>
+      <label class="larga"><span class="sub">Como se prova</span><input name="prova"
+        placeholder="documento, testemunha, perícia…"></label>
+      <button class="btn ok" type="submit">Anotar</button>
+      <span id="ft-st" class="sub" style="margin:0"></span>
+    </form>
+  </div>
+
+  <div class="card"><h2>Documentos pedidos — ${docs.length}</h2>
+    <p class="nota">A lista do que o caso precisa, e o que já chegou. O arquivo em si fica no
+      sistema do escritório; aqui é o controle.</p>
+    ${docs.length ? `<table><tbody>${docs.map(d=>`<tr>
+      <td>${esc(d.descricao)}${d.obs?`<span class="sub">${esc(d.obs)}</span>`:''}</td>
+      <td style="width:170px">${d.recebido_em
+        ? `<span class="pill good">recebido ${br(d.recebido_em)}</span>`
+        : `<button class="btn" style="font-size:11.4px;padding:4px 8px" onclick="marcarRecebido('${d.id}','${caso.id}')">Marcar recebido</button>`}</td>
+    </tr>`).join('')}</tbody></table>` : vazio('Nada pedido ainda.')}
+    <form class="form" style="padding:14px 18px" onsubmit="novoPedido(event,'${caso.id}')">
+      <label class="larga"><span class="sub">O que pedir</span><input name="descricao" required></label>
+      <button class="btn ok" type="submit">Acrescentar</button>
+      <span id="dc-st" class="sub" style="margin:0"></span>
+    </form>
+  </div>
+
+  ${minutas.length ? `<div class="card"><h2>Peças — ${minutas.length}</h2>
+    <p class="nota">As minutas deste caso. Gerar peça nova continua sendo do escritório: a
+      redação passa pela API, e a conta é de lá.</p>
+    <table><tbody>${minutas.map(m=>`<tr>
+      <td style="width:150px">${esc(m.tipo||'peça')}<span class="sub">${br(m.criado_em)}</span></td>
+      <td><span class="pill ${m.status==='aprovada'?'good':'cin'}">${esc(m.status||'rascunho')}</span></td>
+      <td><button class="btn" style="font-size:11.4px;padding:4px 8px"
+        onclick="verMinuta('${m.id}')">Ler</button></td>
+    </tr>`).join('')}</tbody></table>
+    <div id="minuta-corpo" style="display:none;padding:0 18px 16px"></div>
+  </div>` : ''}
+
+  <div class="card"><h2>Horas — ${Math.floor(totalMin/60)}h${String(totalMin%60).padStart(2,'0')}</h2>
+    <p class="nota">O tempo gasto no caso. Serve para a conta do rateio e para saber se o
+      honorário combinado fez sentido.</p>
+    ${horas.length ? `<table><tbody>${horas.map(h=>`<tr>
+      <td class="dt" style="width:120px">${br(h.data)}</td>
+      <td>${esc(h.descricao||'—')}</td>
+      <td style="width:90px">${Math.floor(h.minutos/60)}h${String(h.minutos%60).padStart(2,'0')}</td>
+    </tr>`).join('')}</tbody></table>` : vazio('Nenhuma hora lançada.')}
+    <form class="form" style="padding:14px 18px" onsubmit="novaHora(event,'${caso.id}')">
+      <label><span class="sub">Quando</span><input name="data" type="date" value="${hoje()}" required></label>
+      <label><span class="sub">Minutos</span><input name="minutos" type="number" min="1" required placeholder="90"></label>
+      <label class="larga"><span class="sub">O que foi feito</span><input name="descricao"></label>
+      <button class="btn ok" type="submit">Lançar</button>
+      <span id="ts-st" class="sub" style="margin:0"></span>
+    </form>
+  </div>
+
   ${caso.encerrado_em ? '' : `<div class="card"><h2>Encerrar</h2>
     <form class="form" onsubmit="encerrarCaso(event,'${caso.id}')">
       <label class="larga"><span class="sub">Resultado</span>
@@ -646,6 +797,63 @@ async function telaCaso(id){
   </main>` + rodape();
   const f = document.getElementById('fio'); if (f) f.scrollTop = f.scrollHeight;
 }
+
+/* Nenhuma destas grava escritorio_id: o gatilho do banco/54 o deduz do caso. */
+const sim = (st, e) => { if (e) { st.style.color = 'var(--crit)'; st.textContent = e.message; return false; } return true; };
+
+window.porTagNoCaso = async (casoId, tagId, ligar) => {
+  const r = ligar
+    ? await sb.from('caso_tag').insert({ caso_id: casoId, tag_id: tagId })
+    : await sb.from('caso_tag').delete().eq('caso_id', casoId).eq('tag_id', tagId);
+  if (r.error) return alert('Não deu certo: ' + r.error.message);
+  telaCaso(casoId);
+};
+window.novaParte = async (ev, casoId) => {
+  ev.preventDefault();
+  const f = ev.target, st = document.getElementById('pt-st');
+  const v = n => (f.elements[n]?.value || '').trim() || null;
+  const { error } = await sb.from('parte').insert({ caso_id: casoId, nome: v('nome'),
+    polo: v('polo'), cpf_cnpj: v('cpf_cnpj'), advogado_nome: v('advogado_nome') });
+  if (sim(st, error)) telaCaso(casoId);
+};
+window.novoFato = async (ev, casoId) => {
+  ev.preventDefault();
+  const f = ev.target, st = document.getElementById('ft-st');
+  const v = n => (f.elements[n]?.value || '').trim() || null;
+  const { error } = await sb.from('fato').insert({ caso_id: casoId, data: v('data'),
+    descricao: v('descricao'), prova: v('prova'), origem: 'parceria' });
+  if (sim(st, error)) telaCaso(casoId);
+};
+window.novoPedido = async (ev, casoId) => {
+  ev.preventDefault();
+  const f = ev.target, st = document.getElementById('dc-st');
+  const descricao = (f.elements['descricao'].value || '').trim();
+  const { error } = await sb.from('caso_documento').insert({ caso_id: casoId, descricao });
+  if (sim(st, error)) telaCaso(casoId);
+};
+window.marcarRecebido = async (id, casoId) => {
+  const { error } = await sb.from('caso_documento').update({ recebido_em: hoje() }).eq('id', id);
+  if (error) return alert('Não deu certo: ' + error.message);
+  telaCaso(casoId);
+};
+window.novaHora = async (ev, casoId) => {
+  ev.preventDefault();
+  const f = ev.target, st = document.getElementById('ts-st');
+  const v = n => (f.elements[n]?.value || '').trim() || null;
+  const { error } = await sb.from('timesheet').insert({ caso_id: casoId, data: v('data'),
+    minutos: Number(v('minutos')), descricao: v('descricao') });
+  if (sim(st, error)) telaCaso(casoId);
+};
+window.verMinuta = async (id) => {
+  const alvo = document.getElementById('minuta-corpo');
+  if (!alvo) return;
+  const { data, error } = await sb.from('minuta').select('corpo,tipo').eq('id', id).maybeSingle();
+  if (error) return alert('Não deu certo: ' + error.message);
+  alvo.style.display = 'block';
+  alvo.innerHTML = `<div class="sub" style="margin:0 0 6px">${esc(data?.tipo || 'peça')}</div>
+    <div style="white-space:pre-wrap;font-size:13.4px;line-height:1.6;max-height:60vh;overflow:auto;
+      background:var(--s0);border:1px solid var(--ln);border-radius:9px;padding:12px">${esc(data?.corpo || '(vazia)')}</div>`;
+};
 
 window.encerrarCaso = async (ev, id) => {
   ev.preventDefault();
