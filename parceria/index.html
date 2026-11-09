@@ -630,7 +630,7 @@ async function telaCaso(id){
         lancs = la.data || [], recados = rc.data || [];
 
   /* O que o 53 destravou: tudo isto pendura no caso, e por isso vem junto. */
-  const [ft, pt, mn, ts, dc, tg, ct, fc, fm] = await Promise.all([
+  const [ft, pt, mn, ts, dc, tg, ct, fc, fm, hn] = await Promise.all([
     sb.from('fato').select('*').eq('caso_id', id).order('data'),
     sb.from('parte').select('*').eq('caso_id', id),
     sb.from('minuta').select('id,tipo,status,criado_em,corpo').eq('caso_id', id).order('criado_em',{ascending:false}),
@@ -638,14 +638,15 @@ async function telaCaso(id){
     sb.from('caso_documento').select('*').eq('caso_id', id).order('ordem'),
     sb.from('tag').select('id,nome,cor').order('nome'),
     sb.from('caso_tag').select('tag_id').eq('caso_id', id),
-    sb.from('ficha').select('id,modelo_id,situacao,respostas,criado_em,atualizado_em').eq('caso_id', id)
+    sb.from('ficha').select('id,modelo_id,situacao,respostas,criado_em,atualizado_em,arquivo_path,arquivo_nome').eq('caso_id', id)
       .order('criado_em', { ascending: false }),
     sb.from('ficha_modelo').select('id,nome,estrutura'),
+    sb.from('honorario').select('*').eq('caso_id', id).maybeSingle(),
   ]);
   const fatos = ft.data || [], partes = pt.data || [], minutas = mn.data || [],
         horas = ts.data || [], docs = dc.data || [], etiquetas = tg.data || [];
   const minhasTags = new Set((ct.data || []).map(x => x.tag_id));
-  const fichas = fc.data || [], modelos = fm.data || [];
+  const fichas = fc.data || [], modelos = fm.data || [], hon = hn.data || null;
   window.__fichas = fichas; window.__modelos = modelos;
   const totalMin = horas.reduce((t, h) => t + Number(h.minutos || 0), 0);
   const aReceber = lancs.filter(l => l.tipo === 'entrada' && l.situacao !== 'pago')
@@ -781,6 +782,22 @@ async function telaCaso(id){
     </form>
   </div>
 
+  ${hon ? `<div class="card"><h2>Honorário combinado</h2>
+    <div class="ficha" style="padding:0 18px 16px">
+      <div><span class="sub">Modalidade</span>${esc(hon.modalidade || '—')}</div>
+      <div><span class="sub">Valor fixo</span>${hon.valor_fixo != null ? rs(hon.valor_fixo) : '—'}</div>
+      <div><span class="sub">Êxito</span>${hon.percentual_exito != null ? hon.percentual_exito + '%' : '—'}</div>
+      <div><span class="sub">Assinado em</span>${hon.assinado_em ? br(hon.assinado_em) : '—'}</div>
+    </div>
+    ${hon.observacoes ? `<p class="nota">${esc(hon.observacoes)}</p>` : ''}
+    <div style="padding:0 18px 16px">
+      ${hon.arquivo_path
+        ? `<button class="btn" onclick="verArquivo('contratos','${esc(hon.arquivo_path)}')">Abrir o contrato${
+            hon.arquivo_nome ? ' — ' + esc(hon.arquivo_nome) : ''}</button>`
+        : '<span class="sub" style="margin:0">Sem o arquivo do contrato guardado.</span>'}
+    </div>
+  </div>` : ''}
+
   ${fichas.length ? `<div class="card"><h2>Ficha de atendimento — ${fichas.length}</h2>
     <p class="nota">O relato completo, do jeito que foi colhido. É daqui que saem os fatos da
       inicial. Preencher continua sendo no sistema do escritório, onde o formulário vive;
@@ -790,8 +807,10 @@ async function telaCaso(id){
         <span class="sub">${br(f.atualizado_em || f.criado_em)}</span></td>
       <td><span class="pill ${f.situacao==='concluida'?'good':'cin'}">${esc(f.situacao||'rascunho')}</span>
         <span class="sub">${Object.keys(f.respostas||{}).length} resposta(s)</span></td>
-      <td style="width:90px"><button class="btn" style="font-size:11.4px;padding:4px 8px"
-        onclick="verFicha('${f.id}')">Ler</button></td>
+      <td style="width:150px"><button class="btn" style="font-size:11.4px;padding:4px 8px"
+        onclick="verFicha('${f.id}')">Ler</button>
+        ${f.arquivo_path ? `<button class="btn" style="font-size:11.4px;padding:4px 8px"
+          onclick="verArquivo('fichas','${esc(f.arquivo_path)}')">Papel</button>` : ''}</td>
     </tr>`).join('')}</tbody></table>
     <div id="ficha-corpo" style="display:none;padding:0 18px 16px"></div>
   </div>` : ''}
@@ -885,6 +904,16 @@ window.novaHora = async (ev, casoId) => {
 /* A pergunta de cada resposta mora em `ficha_modelo.estrutura`. Sem o modelo — enquanto
    o banco/56 não rodar — mostra a chave crua, que é feio mas honesto: melhor do que
    esconder a resposta. */
+/* O arquivo não vem pela tabela: vem do Storage, por link temporário de cinco
+   minutos. Quem não tiver direito ao caso recebe erro do próprio Storage — a
+   regra está lá, no banco/57, e não aqui. */
+window.verArquivo = async (balde, caminho) => {
+  const { data, error } = await sb.storage.from(balde).createSignedUrl(caminho, 300);
+  if (error) return alert('Não deu para abrir: ' + error.message
+    + '\n\n(Se disser que não encontrou, pode ser que o banco/57 ainda não tenha rodado.)');
+  window.open(data.signedUrl, '_blank');
+};
+
 window.verFicha = (id) => {
   const alvo = document.getElementById('ficha-corpo');
   const f = (window.__fichas || []).find(x => x.id === id);
