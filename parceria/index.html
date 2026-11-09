@@ -1476,12 +1476,18 @@ async function telaCaptacao(){
   if (le.error) return erro(le.error.message);
   LEADS = le.data || [];
   LEADEV = {}; (cs.data || []).forEach(e => { LEADEV[e.lead_id] = e; });
-  /* Que lead tem papel anexado — a ficha é quem guarda o arquivo. */
-  PAPEL = {};
+  /* Que lead tem papel anexado — a ficha é quem guarda o arquivo —, e quem já tem
+     conversa com a assistente do WhatsApp. As duas consultas dependem da lista de
+     leads, e por isso vêm depois dela; filtradas pelos ids, que é o filtro que vale. */
+  PAPEL = {}; LEADCONV = {};
   if (LEADS.length) {
-    const { data: fs } = await sb.from('ficha').select('lead_id,arquivo_path')
-      .in('lead_id', LEADS.map(l => l.id)).not('arquivo_path', 'is', null);
-    for (const f of (fs || [])) PAPEL[f.lead_id] = f.arquivo_path;
+    const ids = LEADS.map(l => l.id);
+    const [fs, bc] = await Promise.all([
+      sb.from('ficha').select('lead_id,arquivo_path').in('lead_id', ids).not('arquivo_path','is',null),
+      sb.from('bot_conversa').select('id,lead_id,estado,telefone').in('lead_id', ids),
+    ]);
+    for (const f of (fs.data || [])) PAPEL[f.lead_id] = f.arquivo_path;
+    for (const c of (bc.data || [])) LEADCONV[c.lead_id] = c;
   }
   const abertos = LEADS.filter(l => !['fechado','perdido'].includes(l.etapa));
   const perdidos = LEADS.filter(l => l.etapa === 'perdido');
@@ -1524,6 +1530,8 @@ async function telaCaptacao(){
         (PDF ou foto, até 15 MB)</span>
         <input name="arquivo" type="file" accept="application/pdf,image/*"></label>
       <button class="btn ok" type="submit">Anotar</button>
+      <button class="btn" type="button" onclick="novoLead(event, true)"
+        title="anota e abre a ficha de atendimento já com o nome e o telefone">Anotar e abrir a ficha</button>
       <span id="lead-st" class="sub" style="margin:0"></span>
     </form>
   </div>
@@ -1556,7 +1564,7 @@ async function telaCaptacao(){
   </main>` + rodape();
 }
 
-let LEADS = [], PAPEL = {}, LEADEV = {};
+let LEADS = [], PAPEL = {}, LEADEV = {}, LEADCONV = {};
 
 const nomeProprio = s => String(s||'').toLowerCase().replace(/(^|\s|')\p{L}/gu, c => c.toUpperCase());
 const linkWa = (fone, texto) => {
@@ -2091,6 +2099,15 @@ function cartaoLead(l){
     ${l.resumo ? `<div class="sub" style="margin-bottom:6px">${esc(String(l.resumo).slice(0,130))}</div>` : ''}
     ${d !== null ? `<span class="pill ${d<0?'crit':(d<=1?'ser':'good')}">contato ${br(l.proximo_contato)}</span>` : ''}
     ${parado > 7 ? `<span class="pill ser">parado há ${parado} dias</span>` : ''}
+    ${(() => { /* O WhatsApp às vezes entrega um identificador interno no lugar do número.
+         Quem já escreveu antes pelo telefone vira cartão repetido, e sem o carimbo do
+         anúncio — então marca-se para conferir, em vez de a tela adivinhar.
+         Só o telefone da CONVERSA entra na conta: é o que o bot grava, sempre em dígitos
+         e com o código do país. O do lead é campo livre, e marcar isso seria ruído. */
+      const t = LEADCONV[l.id]?.telefone || '';
+      return t && !/^55\d{10,11}$/.test(t)
+        ? `<span class="pill ser" title="O WhatsApp não informou o número (veio ${esc(t)}). Pode ser a mesma pessoa de outro cartão, e a origem pode não ser esta.">origem a conferir</span>`
+        : ''; })()}
     ${l.nota != null ? `<span class="pill ${corNota(l.nota)}">viabilidade ${l.nota}/10</span>` : ''}
     ${(() => { const e = LEADEV[l.id]; return e
       ? `<div class="pill serie" title="${esc(e.local || e.link_sala || 'sem local informado')}"
@@ -2124,6 +2141,9 @@ function cartaoLead(l){
       ${['consulta','documentos'].includes(l.etapa) ? `<button class="btn" style="font-size:11.4px;padding:4px 8px"
         title="monta a lista de documentos e abre o WhatsApp com o texto pronto"
         onclick="abrirDocs('${l.id}')">Pedir documentos</button>` : ''}
+      ${LEADCONV[l.id] ? `<a class="btn" style="font-size:11.4px;padding:4px 8px;text-decoration:none"
+        title="a conversa desta pessoa com a assistente do WhatsApp"
+        href="#/conversa/${LEADCONV[l.id].id}">Ler a conversa</a>` : ''}
       <button class="btn" style="font-size:11.4px;padding:4px 8px"
         onclick="leadViraCaso('${l.id}')">Virar caso</button>
     </div>
@@ -2230,9 +2250,11 @@ async function subirPapelNaFicha(fichaId, arquivo){
   return error ? { erro: error.message } : { caminho };
 }
 
-window.novoLead = async (ev) => {
+window.novoLead = async (ev, abrirAFicha) => {
   ev.preventDefault();
-  const f = ev.target, st = document.getElementById('lead-st');
+  /* Pelo "Anotar e abrir a ficha" o clique vem do botão, não do formulário. */
+  const f = ev.target.closest('form'), st = document.getElementById('lead-st');
+  if (!(f.elements['nome']?.value || '').trim()) { f.elements['nome'].focus(); return; }
   const v = n => (f.elements[n]?.value || '').trim() || null;
   const arq = f.elements['arquivo']?.files?.[0] || null;
   st.style.color = 'var(--i2)'; st.textContent = 'anotando…';
@@ -2249,6 +2271,7 @@ window.novoLead = async (ev) => {
     if (r.erro) { st.style.color = 'var(--crit)';
       st.textContent = 'o lead foi anotado, mas o papel não subiu: ' + r.erro; return; }
   }
+  if (abrirAFicha) return abrirFicha(data.id);
   telaCaptacao();
 };
 
