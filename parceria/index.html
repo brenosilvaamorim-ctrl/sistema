@@ -1878,6 +1878,16 @@ async function telaMetricas(){
   const emAberto = prazos.filter(z => !['cumprido','cancelado'].includes(z.situacao));
   const vencidos = emAberto.filter(z => dias(z.data_fatal) < 0).length;
 
+  /* Vários marcados no mesmo dia, com fatais de dias diferentes, é mutirão de
+     arrumação — não é prazo perdido. Dizer isso é a diferença entre um número
+     que informa e um que assusta à toa. */
+  const porDia = new Map();
+  for (const z of cumpridos) { const d = String(z.cumprido_em).slice(0,10);
+    porDia.set(d, (porDia.get(d)||0)+1); }
+  const maior = [...porDia.entries()].sort((a,b) => b[1]-a[1])[0];
+  const mutirao = maior && maior[1] >= 3 && maior[1] >= cumpridos.length * 0.6
+    ? { dia: maior[0], quantos: maior[1] } : null;
+
   const fechados = leads.filter(l => l.etapa === 'fechado').length;
   const perdidos = leads.filter(l => l.etapa === 'perdido').length;
   const decididos = fechados + perdidos;
@@ -1900,17 +1910,20 @@ async function telaMetricas(){
       <div class="l">dos atendimentos viraram caso</div></div>
   </div>
 
-  <div class="card"><h2>Prazos: como estamos cumprindo</h2>
-    <p class="nota">Prazo cumprido depois do fatal continua sendo prazo perdido, ainda que
-      marcado como cumprido. A conta abaixo diz isso, e não o rótulo.</p>
+  <div class="card"><h2>Prazos: quando foram marcados</h2>
+    <p class="nota">A data que o sistema guarda é a do <b>clique</b>, não a do ato: ela diz
+      quando alguém marcou como cumprido, e não quando a providência foi tomada. Por isso a
+      barra de baixo não acusa ninguém — quem marca uma pilha atrasada num dia só está
+      arrumando o quadro, não perdendo prazo. ${mutirao ? `<b>É o caso aqui:
+      ${mutirao.quantos} marcados no mesmo dia, ${br(mutirao.dia)}.</b>` : ''}</p>
     <div style="padding:0 18px 16px">
-      <div class="barra"><span class="rot">cumpridos no prazo</span>
+      <div class="barra"><span class="rot">marcados até o fatal</span>
         <span class="tr"><i style="width:${cumpridos.length?Math.round(noPrazo/cumpridos.length*100):0}%"></i></span>
         <span class="n">${noPrazo}</span></div>
-      <div class="barra"><span class="rot">cumpridos em atraso</span>
-        <span class="tr"><i style="width:${cumpridos.length?Math.round(atrasados/cumpridos.length*100):0}%;background:var(--crit)"></i></span>
+      <div class="barra"><span class="rot">marcados depois do fatal</span>
+        <span class="tr"><i style="width:${cumpridos.length?Math.round(atrasados/cumpridos.length*100):0}%;background:${mutirao?'var(--warn)':'var(--crit)'}"></i></span>
         <span class="n">${atrasados}</span></div>
-      <div class="sub" style="margin-top:8px">${emAberto.length} em aberto${vencidos?`, dos quais ${vencidos} já vencidos`:''}.</div>
+      <div class="sub" style="margin-top:8px">${emAberto.length} em aberto${vencidos?`, dos quais ${vencidos} já vencidos — <b>esses sim</b> pedem olhada`:''}.</div>
     </div>
   </div>
 
