@@ -1651,81 +1651,86 @@ async function telaPlaybook(){
     sb.from('playbook_trabalhista').select('*').order('ordem'),
     sb.from('tese_trabalhista').select('*').order('codigo'),
   ]);
-  if (pb.error) return erroBiblioteca('playbook_trabalhista', pb.error.message);
-  PBK = pb.data || []; PBTESES = te.data || [];
-  const porId = new Map(PBTESES.map(t => [t.id, t]));
-  const comTexto = new Set(PBK.map(t => t.tese_id).filter(Boolean));
-  const soTese = PBTESES.filter(t => !comTexto.has(t.id));
+  if (te.error) return erroBiblioteca('tese_trabalhista', te.error.message);
+  PBTESES = te.data || []; PBK = pb.data || [];
+  /* Medido em 09/11/2026, e é o que manda na forma desta tela: as 86 teses têm TODAS
+     texto-base, pedido-modelo, provas, gatilho e rubrica; os 40 verbetes do playbook
+     não têm texto nenhum (`texto_padrao` vazio em todos), só tema, tese em uma linha
+     e "quando usar". Então a tese é o conteúdo e o verbete é o complemento — não o
+     contrário, como eu havia montado. */
+  const porTese = new Map(PBK.filter(v => v.tese_id).map(v => [v.tese_id, v]));
+  const soltos = PBK.filter(v => !v.tese_id);
+  const comVerbete = PBTESES.filter(t => porTese.has(t.id)).length;
 
   app.innerHTML = menu('playbook') + `<main>
   <h1>Playbook de teses — trabalhista</h1>
-  <p class="meta">As posições padrão do escritório, já escritas: o parágrafo pronto, o
-    fundamento e a resposta para a defesa mais comum. <b>Só direito do trabalho</b> —
-    reclamante, reclamada e acidente de trabalho. É leitura e cópia: o acervo é alimentado
-    do lado do escritório.</p>
+  <p class="meta">As teses do escritório, com o parágrafo escrito, o pedido como se redige e a
+    prova que sustenta cada uma. <b>Só direito do trabalho</b> — reclamante, reclamada e
+    acidente de trabalho. É leitura e cópia: quem alimenta o acervo é o escritório.</p>
   <div class="kpis">
-    <div class="kpi"><div class="n">${PBK.length}</div><div class="l">textos prontos</div></div>
-    <div class="kpi"><div class="n">${PBTESES.length}</div><div class="l">teses de trabalhista</div></div>
-    <div class="kpi"><div class="n">${soTese.length}</div><div class="l">teses sem texto pronto</div></div>
+    <div class="kpi"><div class="n">${PBTESES.length}</div><div class="l">teses</div></div>
+    <div class="kpi"><div class="n">${PBTESES.length}</div><div class="l">com texto para copiar</div></div>
+    <div class="kpi"><div class="n">${comVerbete}</div><div class="l">com verbete do playbook</div></div>
   </div>
   <div class="card"><div style="padding:12px 18px">
-    <input id="pb-busca" placeholder="procure por tema, tese, fundamento ou código — sem acento serve"
+    <input id="pb-busca" placeholder="procure por tema, código, gatilho ou texto — sem acento serve"
            oninput="filtrarPb(this.value)" value="${esc(FILTRO_PB)}" style="width:100%">
   </div></div>
   <div id="pb-lista"></div>
   </main>` + rodape();
-  window.__pbPorId = porId; window.__pbSoTese = soTese;
+  window.__pbPorTese = porTese; window.__pbSoltos = soltos;
   pintarPb();
 }
 
 function pintarPb(){
   const alvo = document.getElementById('pb-lista'); if (!alvo) return;
-  const porId = window.__pbPorId || new Map(), soTese = window.__pbSoTese || [];
-  const vistos = PBK.filter(t => { const v = porId.get(t.tese_id);
-    return casa(FILTRO_PB, t.tema, t.tese, t.quando_usar, t.texto_padrao, t.contra, t.fundamento, v?.codigo, v?.titulo); });
-  const teses = soTese.filter(t => casa(FILTRO_PB, t.codigo, t.titulo, t.rubrica, t.gatilho, t.texto_base));
+  const porTese = window.__pbPorTese || new Map(), soltos = window.__pbSoltos || [];
+  const vistos = PBTESES.filter(t => { const v = porTese.get(t.id);
+    return casa(FILTRO_PB, t.codigo, t.titulo, t.rubrica, t.gatilho, t.texto_base,
+                t.pedido_modelo, t.provas, v?.tema, v?.tese, v?.quando_usar, v?.fundamento, v?.contra); });
+  const outros = soltos.filter(v => casa(FILTRO_PB, v.tema, v.tese, v.quando_usar, v.fundamento, v.contra));
+
+  const bloco = (rot, texto, idCopia, cor) => !texto ? '' : `
+    <div style="margin-top:9px;padding:11px 13px;border-left:3px solid var(${cor});background:var(--s0);border-radius:0 6px 6px 0">
+      <div class="sub" style="margin:0 0 5px"><b>${rot}</b></div>
+      <div id="${idCopia}" style="font-size:13.1px;line-height:1.65;white-space:pre-wrap">${esc(texto)}</div>
+      <button class="btn" style="font-size:11.4px;padding:4px 8px;margin-top:8px"
+        onclick="copiarDe('${idCopia}', this)">Copiar</button>
+    </div>`;
 
   alvo.innerHTML = `
-  ${FILTRO_PB ? `<p class="nota" style="padding:0 0 8px">${vistos.length} texto(s) e ${teses.length} tese(s) para
-    <b>${esc(FILTRO_PB)}</b>.</p>` : ''}
-  ${vistos.length ? vistos.map(t => { const v = porId.get(t.tese_id); return `<div class="card">
-    <div style="padding:14px 18px">
-      <b style="font-size:14.5px">${esc(t.tema)}</b>
-      ${v ? `<span class="pill good" style="margin-left:7px;font-size:10.5px">${esc(v.codigo)}</span>` : ''}
-      <div class="sub" style="margin-top:4px">${esc(t.tese)}</div>
-      ${t.quando_usar ? `<div class="sub" style="margin-top:6px"><b>Quando usar:</b> ${esc(t.quando_usar)}</div>` : ''}
-      ${t.texto_padrao ? `<div style="margin-top:9px;padding:11px 13px;border-left:3px solid var(--serie);background:var(--s0);border-radius:0 6px 6px 0">
-        <div class="sub" style="margin:0 0 5px"><b>Texto pronto</b></div>
-        <div id="pbt-${t.id}" style="font-size:13.2px;line-height:1.65;white-space:pre-wrap">${esc(t.texto_padrao)}</div>
-        <button class="btn" style="font-size:11.4px;padding:4px 8px;margin-top:8px"
-          onclick="copiarDe('pbt-${t.id}', this)">Copiar o texto</button>
-      </div>` : ''}
-      ${t.contra ? `<div style="margin-top:9px;padding:11px 13px;border-left:3px solid var(--ser);background:var(--s0);border-radius:0 6px 6px 0">
-        <div class="sub" style="margin:0 0 5px"><b>A defesa costuma dizer, e a resposta</b></div>
-        <div style="font-size:13px;line-height:1.6;white-space:pre-wrap">${esc(t.contra)}</div></div>` : ''}
-      ${t.fundamento ? `<div class="sub" style="margin-top:8px"><b>Fundamento:</b> ${esc(t.fundamento)}</div>` : ''}
-      ${v?.provas ? `<div class="sub" style="margin-top:4px"><b>Prova que sustenta:</b> ${esc(v.provas)}</div>` : ''}
-      ${v?.pedido_modelo ? `<div style="margin-top:9px">
-        <div class="sub" style="margin:0 0 4px"><b>Pedido, como se escreve</b></div>
-        <div id="pbp-${t.id}" style="font-size:12.9px;line-height:1.6;white-space:pre-wrap">${esc(v.pedido_modelo)}</div>
-        <button class="btn" style="font-size:11.4px;padding:4px 8px;margin-top:6px"
-          onclick="copiarDe('pbp-${t.id}', this)">Copiar o pedido</button></div>` : ''}
-    </div></div>`; }).join('')
-   : `<div class="card">${vazio(FILTRO_PB ? 'Nenhum texto pronto para essa busca.' : 'Nenhum texto pronto de trabalhista.')}</div>`}
-
-  ${teses.length ? `<div class="card" style="border-left:3px solid var(--warn)">
-    <h2>Teses sem texto pronto — ${teses.length}</h2>
-    <p class="nota">Elas valem e já têm o parágrafo-base, mas ainda não ganharam a versão
-      final na voz do escritório. Dá para usar o texto-base como ponto de partida.</p>
-    ${teses.map(t => `<div style="padding:12px 18px;border-top:1px solid var(--ln)">
-      <span class="pill cin" style="font-size:10.5px">${esc(t.codigo)}</span>
-      <b style="margin-left:6px">${esc(t.titulo || '')}</b>
+  ${FILTRO_PB ? `<p class="nota" style="padding:0 0 8px">${vistos.length} tese(s)${
+    outros.length ? ` e ${outros.length} verbete(s) sem tese` : ''} para <b>${esc(FILTRO_PB)}</b>.</p>` : ''}
+  ${vistos.length ? `<div class="card">${vistos.map(t => { const v = porTese.get(t.id); return `
+    <div style="padding:13px 18px;border-top:1px solid var(--ln)">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <span class="pill cin" style="font-size:10.5px">${esc(t.codigo)}</span>
+        <b style="font-size:14.2px">${esc(v?.tema || t.titulo || '')}</b>
+      </div>
+      ${t.titulo && v?.tema && t.titulo !== v.tema ? `<div class="sub" style="margin-top:3px">${esc(t.titulo)}</div>` : ''}
       ${t.rubrica ? `<div class="sub" style="margin-top:3px">${esc(t.rubrica)}</div>` : ''}
-      ${t.gatilho ? `<div class="sub" style="margin-top:3px"><b>Aplica-se quando:</b> ${esc(t.gatilho)}</div>` : ''}
-      ${t.texto_base ? `<div style="margin-top:7px">
-        <div id="tb-${t.id}" style="font-size:12.9px;line-height:1.6;white-space:pre-wrap">${esc(t.texto_base)}</div>
-        <button class="btn" style="font-size:11.4px;padding:4px 8px;margin-top:6px"
-          onclick="copiarDe('tb-${t.id}', this)">Copiar o texto-base</button></div>` : ''}
+      ${t.gatilho ? `<div class="sub" style="margin-top:4px"><b>Aplica-se quando:</b> ${esc(t.gatilho)}</div>` : ''}
+      ${v?.quando_usar && v.quando_usar !== t.gatilho ? `<div class="sub" style="margin-top:3px"><b>No playbook:</b> ${esc(v.quando_usar)}</div>` : ''}
+      <div style="margin-top:7px"><button class="btn" style="font-size:11.4px;padding:4px 8px"
+        onclick="abrirDobra('pb-${t.id}', this)">Ver o texto</button></div>
+      <div id="pb-${t.id}" style="display:none">
+        ${bloco('Parágrafo da tese', t.texto_base, 'pbt-' + t.id, '--serie')}
+        ${bloco('Pedido, como se redige', t.pedido_modelo, 'pbp-' + t.id, '--good')}
+        ${bloco('A defesa costuma dizer, e a resposta', v?.contra, 'pbc-' + t.id, '--ser')}
+        ${t.provas ? `<div class="sub" style="margin-top:8px"><b>Prova que sustenta:</b> ${esc(t.provas)}</div>` : ''}
+        ${v?.fundamento ? `<div class="sub" style="margin-top:4px"><b>Fundamento:</b> ${esc(v.fundamento)}</div>` : ''}
+      </div>
+    </div>`; }).join('')}</div>`
+   : `<div class="card">${vazio(FILTRO_PB ? 'Nenhuma tese para essa busca.' : 'Nenhuma tese de trabalhista.')}</div>`}
+
+  ${outros.length ? `<div class="card"><h2>Verbetes sem tese no banco — ${outros.length}</h2>
+    <p class="nota">Estes vieram do playbook e não estão amarrados a nenhuma tese, então não têm
+      parágrafo nem pedido para copiar. Ficam aqui porque o tema vale.</p>
+    ${outros.map(v => `<div style="padding:12px 18px;border-top:1px solid var(--ln)">
+      <b>${esc(v.tema)}</b>
+      ${v.tese ? `<div class="sub" style="margin-top:3px">${esc(v.tese)}</div>` : ''}
+      ${v.quando_usar ? `<div class="sub" style="margin-top:3px"><b>Quando usar:</b> ${esc(v.quando_usar)}</div>` : ''}
+      ${v.fundamento ? `<div class="sub" style="margin-top:3px"><b>Fundamento:</b> ${esc(v.fundamento)}</div>` : ''}
     </div>`).join('')}</div>` : ''}`;
 }
 
