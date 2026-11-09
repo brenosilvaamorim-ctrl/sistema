@@ -156,7 +156,7 @@ function sit(r){ if(r<0) return ['crit','Vencido']; if(r<=2) return ['crit','Urg
 
 let USER = null;
 let PAR = { id:null, nome:'Parceria', parceiro_id:null, membros:[], eu:null, esc:null };
-let AREAS = [], COLUNAS = [];
+let AREAS = [], COLUNAS = [], ORIGENS = [];
 
 /* ------------------------------------------------------------------ entrada */
 
@@ -228,11 +228,12 @@ async function carregarParceria(){
   USER = user;
   /* Gruda o login no convite, se for o primeiro acesso desta pessoa. */
   await sb.rpc('entrar_na_parceria');
-  const [p, m, a, c] = await Promise.all([
+  const [p, m, a, c, og] = await Promise.all([
     sb.from('parceria').select('*').eq('ativa', true).order('criado_em'),
     sb.from('parceria_membro').select('*').order('criado_em'),
     sb.from('area_atuacao').select('id,nome').order('nome'),
     sb.from('coluna_caso').select('id,nome,ordem,cor').order('ordem'),
+    sb.from('origem_captacao').select('id,nome').order('nome'),
   ]);
   const parcerias = p.data || [], membros = m.data || [];
 
@@ -250,11 +251,12 @@ async function carregarParceria(){
   PAR.membros = membros.filter(x => x.parceria_id === PAR.id);
   PAR.eu = PAR.membros.find(x => x.usuario_auth === user.id)
         || PAR.membros.find(x => (x.email||'').toLowerCase() === (user.email||'').toLowerCase()) || null;
-  AREAS = a.data || []; COLUNAS = c.data || [];
+  AREAS = a.data || []; COLUNAS = c.data || []; ORIGENS = og.data || [];
   return PAR;
 }
 
 const nomeArea = id => AREAS.find(a => a.id === id)?.nome || '';
+const nomeOrigem = id => ORIGENS.find(o => o.id === id)?.nome || '';
 const quemE = uid => { const m = PAR.membros.find(x => x.usuario_auth === uid); return m ? m.nome : 'alguém'; };
 
 /* ------------------------------------------------------------------ início */
@@ -1466,6 +1468,13 @@ async function telaCaptacao(){
     .eq('parceria_id', PAR.id).order('criado_em', { ascending: false });
   if (error) return erro(error.message);
   LEADS = data || [];
+  /* Que lead tem papel anexado — a ficha é quem guarda o arquivo. */
+  PAPEL = {};
+  if (LEADS.length) {
+    const { data: fs } = await sb.from('ficha').select('lead_id,arquivo_path')
+      .in('lead_id', LEADS.map(l => l.id)).not('arquivo_path', 'is', null);
+    for (const f of (fs || [])) PAPEL[f.lead_id] = f.arquivo_path;
+  }
   const abertos = LEADS.filter(l => !['fechado','perdido'].includes(l.etapa));
   const perdidos = LEADS.filter(l => l.etapa === 'perdido');
   const fechados = LEADS.filter(l => l.etapa === 'fechado');
@@ -1494,9 +1503,18 @@ async function telaCaptacao(){
       <label><span class="sub">Área</span>
         <select name="area_id"><option value="">— sem área —</option>
           ${AREAS.map(a=>`<option value="${a.id}">${esc(a.nome)}</option>`).join('')}</select></label>
+      <label><span class="sub">De onde veio</span>
+        <select name="origem_id"><option value="">— não informada —</option>
+          ${ORIGENS.map(o=>`<option value="${o.id}">${esc(o.nome)}</option>`).join('')}</select></label>
+      <label><span class="sub">E também — quando foram dois</span>
+        <select name="origem2_id"><option value="">— só uma —</option>
+          ${ORIGENS.map(o=>`<option value="${o.id}">${esc(o.nome)}</option>`).join('')}</select></label>
       <label><span class="sub">Voltar a falar em</span><input name="proximo_contato" type="date"></label>
       <label class="larga"><span class="sub">O que a pessoa relatou — em uma linha</span>
         <input name="resumo"></label>
+      <label class="larga"><span class="sub">Ficha em papel, se o atendimento foi presencial
+        (PDF ou foto, até 15 MB)</span>
+        <input name="arquivo" type="file" accept="application/pdf,image/*"></label>
       <button class="btn ok" type="submit">Anotar</button>
       <span id="lead-st" class="sub" style="margin:0"></span>
     </form>
@@ -1530,7 +1548,7 @@ async function telaCaptacao(){
   </main>` + rodape();
 }
 
-let LEADS = [];
+let LEADS = [], PAPEL = {};
 
 function cartaoLead(l){
   const d = l.proximo_contato ? dias(l.proximo_contato) : null;
@@ -1538,7 +1556,10 @@ function cartaoLead(l){
   return `<div class="cartao">
     <div class="tit">${esc(l.nome)}</div>
     <div class="sub" style="margin:2px 0 6px">${esc(nomeArea(l.area_id) || l.area || 'área não definida')}
-      ${l.origem ? ' · ' + esc(l.origem) : ''} · entrou ${br(l.criado_em)}</div>
+      · ${esc([nomeOrigem(l.origem_id), nomeOrigem(l.origem2_id)].filter(Boolean).join(' + ')
+        || l.origem || 'origem não informada')} · entrou ${br(l.criado_em)}</div>
+    ${PAPEL[l.id] ? `<button class="btn" style="font-size:11.4px;padding:3px 8px;margin-bottom:6px"
+      onclick="verArquivo('fichas','${esc(PAPEL[l.id])}')">Ficha em papel</button>` : ''}
     ${l.telefone ? `<div class="sub" style="margin:0 0 6px">${esc(l.telefone)}</div>` : ''}
     ${l.resumo ? `<div class="sub" style="margin-bottom:6px">${esc(String(l.resumo).slice(0,130))}</div>` : ''}
     ${d !== null ? `<span class="pill ${d<0?'crit':(d<=1?'ser':'good')}">contato ${br(l.proximo_contato)}</span>` : ''}
@@ -1585,16 +1606,47 @@ window.leadViraCaso = async (id) => {
   } catch (e) { alert('Não deu certo: ' + e.message); }
 };
 
+const MAX_FICHA = 15 * 1024 * 1024;
+
+/* O papel do atendimento presencial. Ele não pendura no lead direto: pendura numa
+   FICHA, que é onde o relato mora — e a ficha é criada aqui, mesmo vazia, só para
+   ter onde amarrar o arquivo. É o mesmo caminho do escritório, e por isso o papel
+   anexado aqui aparece lá, no caso, quando o lead fechar. */
+async function subirPapel(leadId, arquivo){
+  if (arquivo.size > MAX_FICHA)
+    return { erro: 'O arquivo tem ' + (arquivo.size/1048576).toFixed(1) + ' MB. O limite é 15 MB.' };
+  const nova = await sb.from('ficha')
+    .insert({ lead_id: leadId, situacao: 'rascunho', respostas: {} }).select('id').single();
+  if (nova.error) return { erro: nova.error.message };
+  const limpo = arquivo.name.normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[^A-Za-z0-9._-]/g,'-').slice(-80);
+  const caminho = `${PAR.esc}/${nova.data.id}/${Date.now()}-${limpo}`;
+  const up = await sb.storage.from('fichas').upload(caminho, arquivo, { upsert: false });
+  if (up.error) return { erro: up.error.message };
+  const { error } = await sb.from('ficha').update({ arquivo_path: caminho,
+    arquivo_nome: arquivo.name, arquivo_em: new Date().toISOString() }).eq('id', nova.data.id);
+  return error ? { erro: error.message } : { caminho };
+}
+
 window.novoLead = async (ev) => {
   ev.preventDefault();
   const f = ev.target, st = document.getElementById('lead-st');
   const v = n => (f.elements[n]?.value || '').trim() || null;
-  const { error } = await sb.from('lead').insert({
+  const arq = f.elements['arquivo']?.files?.[0] || null;
+  st.style.color = 'var(--i2)'; st.textContent = 'anotando…';
+  const { data, error } = await sb.from('lead').insert({
     parceria_id: PAR.id, nome: v('nome'), telefone: v('telefone'), email: v('email'),
     area_id: v('area_id'), area: nomeArea(v('area_id')) || null,
+    origem_id: v('origem_id'), origem2_id: v('origem2_id'),
     resumo: v('resumo'), proximo_contato: v('proximo_contato'), etapa: 'novo',
-  });
+  }).select('id').single();
   if (error) { st.style.color = 'var(--crit)'; st.textContent = error.message; return; }
+  if (arq) {
+    st.textContent = 'enviando ' + arq.name + '…';
+    const r = await subirPapel(data.id, arq);
+    if (r.erro) { st.style.color = 'var(--crit)';
+      st.textContent = 'o lead foi anotado, mas o papel não subiu: ' + r.erro; return; }
+  }
   telaCaptacao();
 };
 

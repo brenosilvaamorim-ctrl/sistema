@@ -15782,6 +15782,14 @@ window.salvarInvestir = async function(){
 /* Ligar uma origem a uma parceria é o que faz a indicação carimbar sozinha: o gatilho
    `a_parceria_pela_origem` lê isto na hora em que o lead, o cliente ou o caso é gravado.
    Ver banco/52_origem_da_parceria.sql. */
+/* Quais origens o parceiro vê ao anotar um lead. O padrão do banco/59 deixa de fora
+   os nomes de quem indica trabalho ao escritório — são do escritório, não da parceria. */
+window.origemVisivelNaParceria = async (id, mostrar) => {
+  const { error } = await sb.from('origem_captacao').update({ na_parceria: !!mostrar }).eq('id', id);
+  if (error) return alert('Não deu certo: ' + error.message);
+  telaConfig();
+};
+
 window.origemDaParceria = async (id, parceriaId) => {
   const { error } = await sb.from('origem_captacao')
     .update({ parceria_id: parceriaId || null }).eq('id', id);
@@ -15907,7 +15915,7 @@ async function telaConfig(){
     sb.from('usuario').select('*').order('criado_em'),
     sb.from('escritorio').select('*').limit(1).single(),
     sb.from('area_atuacao').select('id,nome').order('ordem'),
-    sb.from('origem_captacao').select('id,nome,parceria_id').order('nome'),
+    sb.from('origem_captacao').select('id,nome,tipo,parceria_id,na_parceria').order('nome'),
     sb.from('categoria_financeira').select('id,nome,tipo').order('nome'),
     sb.from('parceria').select('*').order('criado_em'),
     sb.from('parceria_membro').select('*').order('criado_em'),
@@ -15988,12 +15996,21 @@ async function telaConfig(){
           <b>de uma parceria</b>. Quando é, o lead, o cliente e o caso que nascerem com ela já nascem
           compartilhados — você não precisa marcar um a um. Tirar da parceria continua sendo ato seu,
           no botão da tela do caso: mudar a origem depois não desfaz nada.</p>
-        <table style="margin-top:6px"><tbody>${ORIGENS.map(o=>`<tr>
-          <td>${esc(o.nome)}</td>
+        <p class="nota" style="margin:0 0 4px;padding:0">A coluna <b>aparece na parceria</b> diz quais
+          origens o parceiro vê quando anota um lead por lá. Os nomes de quem indica trabalho para o
+          escritório nascem desmarcados de propósito: são seus, não da parceria.</p>
+        <table style="margin-top:6px"><thead><tr><th>Origem</th><th>É de uma parceria</th>
+          <th>Aparece na parceria</th></tr></thead><tbody>${ORIGENS.map(o=>`<tr>
+          <td>${esc(o.nome)}<span class="sub">${esc(o.tipo||'')}</span></td>
           <td style="width:230px"><select onchange="origemDaParceria('${o.id}', this.value)">
             <option value="">— do escritório —</option>
             ${(pc.data||[]).map(x=>`<option value="${x.id}" ${x.id===o.parceria_id?'selected':''}>${esc(x.nome)}</option>`).join('')}
-          </select></td></tr>`).join('')}</tbody></table>`
+          </select></td>
+          <td style="width:160px"><label class="sub" style="margin:0;display:flex;align-items:center;gap:6px">
+            <input type="checkbox" ${o.na_parceria?'checked':''}
+              onchange="origemVisivelNaParceria('${o.id}', this.checked)">
+            ${o.parceria_id ? 'sempre, é dela' : 'mostrar'}</label></td>
+          </tr>`).join('')}</tbody></table>`
         : `<div class="sub" style="margin-top:10px">${ORIGENS.map(o=>esc(o.nome)).join(' · ')||'nenhuma'}</div>`}
       </div></div>
   </div>
