@@ -177,7 +177,7 @@ function telaLogin(msg){
 /* Os mesmos grupos do sistema do escritório, na mesma ordem de pensamento: o dia,
    as pessoas, os casos, a conversa e o dinheiro. Quem sabe andar lá sabe andar aqui. */
 const GRUPOS = [
-  ['Meu dia',   [['inicio','Início'],['agenda','Agenda'],['publicacoes','Publicações']]],
+  ['Meu dia',   [['inicio','Início'],['prazos','Prazos'],['agenda','Agenda'],['publicacoes','Publicações']]],
   ['Pessoas',   [['captacao','Captação'],['clientes','Clientes']]],
   ['Casos',     [['casos','Casos'],['processos','Processos']]],
   ['Conversas', [['recados','Recados'],['whatsapp','WhatsApp']]],
@@ -1294,6 +1294,101 @@ window.moverLead = async (id, etapa) => {
   telaCaptacao();
 };
 
+/* ------------------------------------------------------------------ prazos */
+
+/* O prazo nasce SUGERIDO: quem o leu foi o robô, lendo a publicação do Diário.
+   Confirmar é ato de advogado, e é o que o torna um compromisso do escritório —
+   por isso a tela separa o que ainda não foi conferido do que já foi. */
+async function telaPrazos(){
+  const [pz, cs, pr] = await Promise.all([
+    sb.from('prazo').select('*').eq('parceria_id', PAR.id).order('data_fatal'),
+    sb.from('caso').select('id,titulo').eq('parceria_id', PAR.id),
+    sb.from('processo').select('id,numero_cnj').eq('parceria_id', PAR.id),
+  ]);
+  if (pz.error) return erro(pz.error.message);
+  const todos = pz.data || [], casos = cs.data || [], procs = pr.data || [];
+  const tituloCaso = id => casos.find(c => c.id === id)?.titulo || '';
+  const numero = id => procs.find(p => p.id === id)?.numero_cnj || '';
+
+  const vivos = todos.filter(z => !['cumprido','cancelado'].includes(z.situacao));
+  const cumpridos = todos.filter(z => z.situacao === 'cumprido');
+  const sugeridos = vivos.filter(z => z.situacao === 'sugerido');
+  const vencidos = vivos.filter(z => dias(z.data_fatal) < 0);
+  const emCinco = vivos.filter(z => { const d = dias(z.data_fatal); return d >= 0 && d <= 5; });
+
+  const linha = z => { const d = dias(z.data_fatal), [cor, rot] = sit(d);
+    return `<tr>
+    <td class="dt" style="width:150px"><b>${br(z.data_fatal)}</b>
+      <span class="sub">${d < 0 ? Math.abs(d) + ' dias atrás' : (d === 0 ? 'hoje' : 'em ' + d + ' dias')}</span></td>
+    <td>${esc(z.descricao)}
+      <span class="sub">${z.dias ? z.dias + (z.dias_uteis ? ' dias úteis' : ' dias corridos') : ''}${
+        z.caso_id ? ' · ' + esc(tituloCaso(z.caso_id)) : ''}${
+        z.processo_id ? ' · ' + esc(numero(z.processo_id)) : ''}</span></td>
+    <td style="width:120px"><span class="pill ${cor}">${rot}</span></td>
+    <td style="width:150px">${z.situacao === 'sugerido'
+      ? '<span class="pill warn">a conferir</span>'
+      : '<span class="pill good">confirmado</span>'}
+      ${z.confianca != null ? `<span class="sub">leitura ${Math.round(z.confianca*100)}%</span>` : ''}</td>
+    <td style="width:230px;white-space:nowrap">
+      <input type="date" value="${String(z.data_fatal).slice(0,10)}" style="font-size:11.6px"
+        onchange="mudarFatal('${z.id}', this.value)" title="corrigir a data">
+      ${z.situacao === 'sugerido'
+        ? `<button class="btn ok" style="font-size:11.4px;padding:4px 8px" onclick="confirmarPrazo('${z.id}')">Confirmar</button>`
+        : ''}
+      <button class="btn" style="font-size:11.4px;padding:4px 8px" onclick="cumprirPrazo('${z.id}')">Cumprido</button>
+    </td></tr>`; };
+
+  const bloco = (titulo, lista, nota) => lista.length ? `<div class="card"><h2>${titulo} — ${lista.length}</h2>
+    ${nota ? `<p class="nota">${nota}</p>` : ''}
+    <table><tbody>${lista.map(linha).join('')}</tbody></table></div>` : '';
+
+  const adiante = vivos.filter(z => dias(z.data_fatal) > 5);
+
+  app.innerHTML = menu('prazos') + `<main>
+  <h1>Prazos</h1>
+  <p class="meta">Os prazos dos casos em parceria. O robô lê a publicação do Diário e sugere a
+    data; <b>conferir é ato de advogado</b> — enquanto não for confirmado, o prazo fica marcado
+    como a conferir. A data pode ser corrigida aqui, e a correção vale nos dois lados.</p>
+  <div class="kpis">
+    <div class="kpi ${vencidos.length?'al':''}"><div class="n">${vencidos.length}</div><div class="l">vencidos</div></div>
+    <div class="kpi ${emCinco.length?'al':''}"><div class="n">${emCinco.length}</div><div class="l">vencem em até 5 dias</div></div>
+    <div class="kpi ${sugeridos.length?'al':''}"><div class="n">${sugeridos.length}</div><div class="l">esperando conferência</div></div>
+    <div class="kpi"><div class="n">${cumpridos.length}</div><div class="l">cumpridos</div></div>
+  </div>
+  ${bloco('Vencidos', vencidos, 'Vencido não some sozinho: ou foi cumprido e falta marcar, ou precisa de providência hoje.')}
+  ${bloco('Até cinco dias', emCinco)}
+  ${bloco('Mais à frente', adiante)}
+  ${vivos.length ? '' : `<div class="card">${vazio('Nenhum prazo em aberto.')}</div>`}
+  ${cumpridos.length ? `<div class="card"><h2>Cumpridos — ${cumpridos.length}</h2>
+    <table><tbody>${cumpridos.slice(0,25).map(z=>`<tr>
+      <td class="dt" style="width:150px">${br(z.data_fatal)}</td>
+      <td>${esc(z.descricao)}<span class="sub">${z.caso_id ? esc(tituloCaso(z.caso_id)) : ''}</span></td>
+      <td style="width:150px"><span class="pill good">cumprido ${br(z.cumprido_em)}</span></td>
+    </tr>`).join('')}</tbody></table></div>` : ''}
+  </main>` + rodape();
+}
+
+/* Confirmar não grava quem confirmou: `confirmado_por` aponta para `usuario`, e a
+   parceira não está nessa tabela. Quem fez o quê fica na auditoria, pelo nome. */
+window.confirmarPrazo = async (id) => {
+  const { error } = await sb.from('prazo')
+    .update({ situacao: 'confirmado', confirmado_em: new Date().toISOString() }).eq('id', id);
+  if (error) return alert('Não deu certo: ' + error.message);
+  telaPrazos();
+};
+window.cumprirPrazo = async (id) => {
+  const { error } = await sb.from('prazo')
+    .update({ situacao: 'cumprido', cumprido_em: new Date().toISOString() }).eq('id', id);
+  if (error) return alert('Não deu certo: ' + error.message);
+  telaPrazos();
+};
+window.mudarFatal = async (id, data) => {
+  if (!data) return;
+  const { error } = await sb.from('prazo').update({ data_fatal: data }).eq('id', id);
+  if (error) return alert('Não deu certo: ' + error.message);
+  telaPrazos();
+};
+
 /* ---------------------------------------------------------------- whatsapp */
 
 async function telaWhatsapp(){
@@ -1380,6 +1475,7 @@ async function rota(){
   if (h.startsWith('#/conversa/'))  return telaConversa(h.slice('#/conversa/'.length).split('?')[0]);
   if (h.startsWith('#/agenda'))     return telaAgenda(q.get('caso'), q.get('m'));
   if (h.startsWith('#/captacao'))   return telaCaptacao();
+  if (h.startsWith('#/prazos'))     return telaPrazos();
   if (h.startsWith('#/whatsapp'))   return telaWhatsapp();
   if (h.startsWith('#/financeiro')) return telaFinanceiro();
   if (h.startsWith('#/recados'))    return telaRecados();
