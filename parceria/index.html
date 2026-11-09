@@ -2092,27 +2092,49 @@ async function telaFicha(id){
 /* ------------------------------------------------ pedido de documentos
    Depois da consulta vem a parte que trava mais caso: a pessoa some porque não sabe
    o que mandar. O painel monta a lista, deixa editar e abre o WhatsApp com o texto
-   pronto — a mesma lista do escritório, para o cliente receber o mesmo pedido venha
-   ele por qual porta vier.
+   pronto.
+
+   A lista NÃO é escrita aqui. Ela é o bloco "Documentos" da ficha de atendimento
+   trabalhista (`ficha_modelo`, que o banco/56 abriu para leitura) — assim nunca
+   descola do que a ficha pergunta, e o escritório muda nos dois lugares mexendo num
+   só. A cópia do escritório que eu havia trazido antes era a de PAD e servidores
+   (portaria de instauração, relatório da comissão), que nesta porta não serve: aqui
+   é trabalhista.
+
+   E o que vem marcado é **o que a pessoa ainda não entregou**, lido da ficha dela —
+   não um palpite por assunto. É a mesma pergunta que "cobrar os documentos que
+   faltam" faz dentro da ficha, só que daqui dá para mandar na hora.
 
    Uma diferença que é de propósito, e não falta: no escritório o pedido pode sair
    pela assistente do WhatsApp, no número do escritório. Aqui não sai — a função
    `whatsapp-bot` só atende quem tem linha em `usuario`, e falar pelo número do
    escritório não é coisa que se dê a quem é de fora sem o Breno decidir. Então o
    texto abre no WhatsApp de quem está pedindo, que é quem assina o pedido. */
-const DOCS = {
-  comuns: ['RG e CPF', 'Comprovante de residência', 'Contracheques dos últimos três meses',
-           'Ficha funcional (ou histórico funcional)'],
-  procedimento: ['Portaria de instauração', 'Citação ou termo de indiciação',
-                 'Relatório final da comissão', 'Decisão ou publicação da penalidade',
-                 'Defesa já apresentada, se houver'],
-  direito: ['Requerimento protocolado, com o número do protocolo',
-            'Despacho ou ofício que negou o pedido',
-            'Publicação no diário oficial, se houve',
-            'Laudo da perícia, quando o caso envolver saúde'],
-};
-const ASSUNTO_PROCEDIMENTO_DOCS = ['PAD ou sindicância', 'Acúmulo de cargos', 'Reintegração ao cargo'];
-let DOCSASSUNTO = {};   // lead_id -> assunto da ficha, buscado só quando o painel abre
+
+/* Rede de segurança: se o modelo não vier (sem banco/56, ou modelo renomeado), vale
+   esta lista curta de trabalhista, para o painel nunca abrir vazio. */
+const DOCS_MINIMO = ['Documento de identidade e CPF', 'Carteira de trabalho',
+  'Contracheques (últimos 12 meses)', 'Contrato de trabalho e aditivos',
+  'Termo de rescisão', 'Extrato do FGTS', 'Cartões de ponto ou espelhos'];
+
+let DOCSLISTA = null;    // as opções do bloco "Documentos" da ficha trabalhista
+let DOCSFICHA = {};      // lead_id -> { entregues:[], temFicha:bool }
+
+/* Acha o campo de múltipla escolha cuja pergunta fala de documento, no modelo de
+   trabalhista — o mesmo critério que `fichaCobrarDocs` usa dentro da ficha. */
+async function listaDocumentos(){
+  if (DOCSLISTA) return DOCSLISTA;
+  const mods = await modelosDeFicha();
+  const trab = mods.find(m => /trabalhista/i.test(m.nome || '')) || mods[0];
+  for (const sec of (trab?.estrutura || []))
+    for (const c of (sec.c || []))
+      if (c.t === 'multi' && /document/i.test(c.r || '')) {
+        DOCSLISTA = { opcoes: c.op || [], chave: c.k, modelo: trab.nome };
+        return DOCSLISTA;
+      }
+  DOCSLISTA = { opcoes: DOCS_MINIMO, chave: null, modelo: null };
+  return DOCSLISTA;
+}
 
 window.abrirDocs = async (id) => {
   const cx = document.getElementById('dc' + id); if (!cx) return;
@@ -2120,30 +2142,33 @@ window.abrirDocs = async (id) => {
   cx.style.display = 'block';
   cx.innerHTML = '<div class="sub" style="margin:0">carregando…</div>';
 
-  /* O assunto fica na ficha da triagem e decide o que vem marcado. Buscado só agora:
-     carregar a ficha de todos os leads encheria a tela à toa. */
-  if (DOCSASSUNTO[id] === undefined) {
+  const lista = await listaDocumentos();
+  /* A ficha é buscada só agora: carregar a de todos os leads encheria a tela à toa. */
+  if (DOCSFICHA[id] === undefined) {
     const { data } = await sb.from('ficha').select('respostas').eq('lead_id', id)
       .order('criado_em', { ascending: false }).limit(1).maybeSingle();
-    DOCSASSUNTO[id] = data?.respostas?.assunto ?? null;
+    const r = data?.respostas || null;
+    const ent = lista.chave && Array.isArray(r?.[lista.chave]) ? r[lista.chave] : [];
+    DOCSFICHA[id] = { temFicha: !!data, entregues: ent };
   }
-  const assunto = DOCSASSUNTO[id];
-  /* Sem assunto na ficha, marca só os comuns: pedir documento que não serve cansa a
-     pessoa e atrasa o que importa. */
-  const grupo = assunto == null ? null
-    : (ASSUNTO_PROCEDIMENTO_DOCS.includes(assunto) ? 'procedimento' : 'direito');
+  const { temFicha, entregues } = DOCSFICHA[id];
+  const trouxe = new Set(entregues);
+  const faltam = lista.opcoes.filter(o => !trouxe.has(o));
 
-  const linha = (txt, marcado) => `<label style="display:flex;gap:6px;align-items:flex-start;margin-bottom:4px">
+  const linha = (txt, marcado, jaEntregue) => `<label style="display:flex;gap:6px;align-items:flex-start;margin-bottom:4px">
     <input type="checkbox" class="dc-item-${id}" value="${esc(txt)}" ${marcado ? 'checked' : ''}>
-    <span class="sub" style="margin:0">${esc(txt)}</span></label>`;
+    <span class="sub" style="margin:0${jaEntregue ? ';opacity:.55' : ''}">${esc(txt)}${
+      jaEntregue ? ' <span class="pill good" style="font-size:10px;padding:0 5px">entregue</span>' : ''}</span></label>`;
 
   cx.innerHTML = `
-    <div class="sub" style="margin:0 0 6px">${assunto
-      ? 'Assunto na ficha: <b>' + esc(assunto) + '</b>. Marquei o que costuma valer para esse caso.'
-      : 'A ficha não diz o assunto, então marquei só os documentos comuns.'}</div>
-    ${DOCS.comuns.map(t => linha(t, true)).join('')}
-    ${DOCS.procedimento.map(t => linha(t, grupo === 'procedimento')).join('')}
-    ${DOCS.direito.map(t => linha(t, grupo === 'direito')).join('')}
+    <div class="sub" style="margin:0 0 6px">${
+      !temFicha ? 'Sem ficha de atendimento ainda, então marquei a lista toda — desmarque o que não servir.'
+      : entregues.length ? `A ficha diz que <b>${entregues.length}</b> documento(s) já vieram.
+          Marquei os <b>${faltam.length}</b> que faltam.`
+      : 'A ficha ainda não registra documento entregue nenhum, então marquei a lista toda.'}
+      ${lista.modelo ? `<span class="sub" style="display:block;margin:2px 0 0">Lista do bloco
+        "Documentos" da ${esc(lista.modelo).toLowerCase()}.</span>` : ''}</div>
+    ${lista.opcoes.map(o => linha(o, !trouxe.has(o), trouxe.has(o))).join('')}
     <input type="text" id="dc-extra-${id}" placeholder="outro documento (separe por vírgula)"
            style="font-size:11.4px;width:100%;margin-top:4px">
     <div class="sub" style="margin:6px 0 0">O texto abre no seu WhatsApp, para você enviar.</div>
