@@ -4949,7 +4949,7 @@ async function telaClientes(){
   const [cl, ar, og] = await Promise.all([
     sb.from('cliente_painel').select('*').order('nome'),
     sb.from('area_atuacao').select('id,nome').eq('ativo',true).order('ordem'),
-    sb.from('origem_captacao').select('id,nome').eq('ativo',true).order('nome'),
+    sb.from('origem_captacao').select('id,nome,parceria_id').eq('ativo',true).order('nome'),
   ]);
   if (cl.error) return erro(cl.error.message);
   CLI = cl.data||[]; AREAS = ar.data||[]; ORIGENS = og.data||[];
@@ -4988,12 +4988,16 @@ async function telaClientes(){
           <button class="btn ok" type="submit">Acrescentar</button></form>
         <div class="sub" style="margin-top:10px">${AREAS.map(a=>esc(a.nome)).join(' · ')}</div></div></div>
     <div class="card"><h2>Origens de captação</h2>
-      <p class="nota">De onde o cliente veio: anúncio, indicação, parceiro, o que existir.</p>
+      <p class="nota">De onde o cliente veio: anúncio, indicação, parceiro, o que existir.
+        Dizer que uma origem é <b>de uma parceria</b> — para o que chegar por ela já nascer
+        compartilhado — é em <a class="lnk" href="#/config">Sistema → Configurações</a>, que é
+        onde essa lista tem o campo.</p>
       <div style="padding:0 18px 16px">
         <form onsubmit="novoItem(event,'origem_captacao')" style="display:flex;gap:8px;flex-wrap:wrap">
           <input name="nome" type="text" placeholder="nova origem" required style="flex:1;min-width:160px">
           <button class="btn ok" type="submit">Acrescentar</button></form>
-        <div class="sub" style="margin-top:10px">${ORIGENS.map(o=>esc(o.nome)).join(' · ')}</div></div></div>
+        <div class="sub" style="margin-top:10px">${ORIGENS.map(o=>esc(o.nome)
+          + (o.parceria_id ? ' (parceria)' : '')).join(' · ')}</div></div></div>
   </div></main>`;
 }
 
