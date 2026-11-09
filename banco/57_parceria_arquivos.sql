@@ -54,11 +54,20 @@ create policy fichas_parceria_gravar on storage.objects for insert to authentica
             where f.caso_id in (select id from public.caso where parceria_id = public.minha_parceria())));
 
 -- ------------------------------------------------------------ conferência
-select bucket_id,
-       count(*)                                   as arquivos,
-       count(*) filter (where (storage.foldername(name))[2] in (
-         select id::text from public.caso where parceria_id is not null)) as de_caso_em_parceria
-  from storage.objects
- where bucket_id in ('contratos','fichas')
- group by bucket_id
- order by bucket_id;
+-- Cada balde tem a SUA chave: em `contratos` a segunda pasta é o caso, em `fichas` é a
+-- ficha. Conferir os dois com a lista de casos — como eu fiz na primeira versão deste
+-- arquivo — dá zero em `fichas` sempre, porque compara id de ficha com id de caso.
+select 'contratos' as balde,
+       (select count(*) from storage.objects where bucket_id = 'contratos') as arquivos,
+       (select count(*) from storage.objects o
+         where o.bucket_id = 'contratos'
+           and (storage.foldername(o.name))[2] in
+               (select id::text from public.caso where parceria_id is not null)) as em_parceria
+union all
+select 'fichas',
+       (select count(*) from storage.objects where bucket_id = 'fichas'),
+       (select count(*) from storage.objects o
+         where o.bucket_id = 'fichas'
+           and (storage.foldername(o.name))[2] in
+               (select f.id::text from public.ficha f
+                 where f.caso_id in (select id from public.caso where parceria_id is not null)));
