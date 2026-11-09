@@ -157,11 +157,23 @@ A Paula também anota lead por esta porta, e por isso a Captação não é só o
   anúncio feito em parceria é *Google* **e** *Paula*. A lista de origens que aparece aqui é
   a que o escritório marcou como visível na parceria (Escritório → Configurações → Origens de
   captação), mais as que nasceram desta porta — não é a lista inteira do escritório.
+- **A ficha de atendimento, para preencher.** O coração da triagem: é a ficha que vira os
+  fatos do caso e a lista de documentos, e é ela que a peça lê depois. É a mesma `ficha` e o
+  mesmo `ficha_modelo` do escritório — a mesma linha, pela outra porta —, com autoguarda a
+  cada campo, concluir/reabrir, "levar respostas para os fatos" e "cobrar os documentos que
+  faltam". Duas coisas ficaram de fora, de propósito:
+  - **plantar modelo de ficha.** O escritório semeia `ficha_modelo` na primeira abertura; o
+    `banco/56` abriu só a **leitura** para a parceria, e está certo — o questionário é decisão
+    do escritório. Sem modelo ativo, a tela diz isso em vez de inventar um.
+  - **imprimir para assinar.** O papel sai com o timbre do escritório, e o timbre mora na
+    tabela `escritorio`, que a parceira não lê. Como é a **mesma** ficha, o Breno imprime do
+    lado dele; não há nada a duplicar aqui.
 - **A ficha em papel.** Atendimento presencial rende papel. O arquivo (PDF ou foto, até 15 MB)
-  não pendura no lead: pendura numa **ficha**, que é onde o relato mora no sistema do
-  escritório — e é por isso que o papel anexado aqui aparece lá, no caso, quando o lead
-  fechar. As regras do balde `fichas` conferem a ficha pela pasta do caminho
-  (`banco/57` e `banco/60`).
+  não pendura no lead: pendura na **mesma ficha** — se já houver uma do atendimento, o papel
+  entra nela (antes a Captação criava uma ficha vazia só para o arquivo, e um atendimento com
+  papel e questionário acabava com duas). As regras do balde `fichas` conferem a ficha pela
+  **segunda** pasta do caminho (`banco/57` e `banco/60`), e é por isso que o papel anexado aqui
+  aparece lá, no caso, quando o lead fechar.
 - **A consulta marcada.** Igual ao escritório: dia, hora e formato — presencial, videochamada
   ou ligação. Por vídeo, a função `consulta-meet` cria o evento no Google já com a sala do
   Meet e devolve o link, na hora, para mandar à pessoa pelo WhatsApp. A sala nasce na conta

@@ -1579,6 +1579,277 @@ async function chamarFuncao(nome, corpo){
   return j;
 }
 
+/* ------------------------------------------ ficha de atendimento (preencher)
+   Até aqui a parceria só VIA ficha, e anexava o papel. Mas a ficha é o coração da
+   triagem: é ela que vira os fatos do caso e a lista de documentos, e é ela que a
+   minuta lê depois. Quem atende tem de poder preenchê-la, senão o atendimento da
+   parceira chega ao caso pela metade.
+
+   É a mesma `ficha` e o mesmo `ficha_modelo` do escritório — a mesma linha, vista
+   pela outra porta. Duas coisas ficaram de fora, e de propósito:
+
+   - **plantar modelo.** O escritório semeia `ficha_modelo` na primeira abertura; o
+     banco/56 abriu só a LEITURA para a parceria, e está certo: o questionário é
+     decisão do escritório, não de quem é de fora. Sem modelo ativo, a tela diz isso
+     em vez de inventar um.
+   - **imprimir para assinar.** O papel sai com o timbre do escritório, e o timbre
+     mora na tabela `escritorio`, que a parceira não lê. Como é a MESMA ficha, o
+     Breno imprime do lado dele — não há nada a duplicar aqui. */
+let FICHA = null, FICHAMOD = [];
+
+async function modelosDeFicha(){
+  if (FICHAMOD.length) return FICHAMOD;
+  const { data } = await sb.from('ficha_modelo').select('*').eq('ativo', true).order('ordem');
+  FICHAMOD = data || [];
+  return FICHAMOD;
+}
+
+/* Devolve o id da ficha do lead, criando-a se ainda não existir — e é a mesma função
+   que o anexo do papel usa, para não nascerem duas fichas do mesmo atendimento. */
+async function garantirFicha(leadId){
+  const ja = (await sb.from('ficha').select('id').eq('lead_id', leadId).limit(1).maybeSingle()).data;
+  if (ja) return ja.id;
+  const mods = await modelosDeFicha();
+  if (!mods.length) {
+    alert('Nenhum modelo de ficha disponível.\n\nO questionário é cadastrado pelo escritório; '
+        + 'peça ao Dr. Breno para abrir a Captação lá uma vez, que os modelos nascem sozinhos.');
+    return null;
+  }
+  let m = mods[0];
+  if (mods.length > 1) {
+    const nomes = mods.map((x,i) => `${i+1}) ${x.nome}`).join('\n');
+    const esc1 = Number(prompt('Qual ficha?\n\n' + nomes + '\n\nDigite o número:', '1'));
+    m = mods[esc1 - 1];
+    if (!m) return null;
+  }
+  const l = (await sb.from('lead').select('nome,telefone,email,caso_id').eq('id', leadId).maybeSingle()).data;
+  const resp = {};
+  if (l?.nome)     resp.nome  = l.nome;
+  if (l?.telefone) resp.fone  = l.telefone;
+  if (l?.email)    resp.email = l.email;
+  /* escritorio_id não vai daqui: o gatilho o deduz do caso ou, não havendo, do lead. */
+  const { data, error } = await sb.from('ficha').insert({
+    modelo_id: m.id, lead_id: leadId, caso_id: l?.caso_id || null, respostas: resp,
+  }).select('id').maybeSingle();
+  if (error) { alert('Não deu para criar a ficha: ' + error.message); return null; }
+  return data.id;
+}
+
+window.abrirFicha = async (leadId) => {
+  const id = await garantirFicha(leadId);
+  if (id) location.hash = '#/ficha/' + id;
+};
+
+const pctF = (a,b) => b > 0 ? Math.min(100, Math.round(a/b*100)) : 0;
+const moduloA = (est, r) => {
+  for (const sec of est) for (const c of sec.c)
+    if (c.g === 'A' && Array.isArray(r[c.k]) && r[c.k].length) return true;
+  return false;
+};
+
+const campoFicha = (c, v) => {
+  const id = 'fc-' + c.k, val = v == null ? '' : v;
+  const rot = `<div style="font-size:12.6px;color:var(--i2);margin-bottom:3px">${esc(c.r)}${
+    c.d ? `<span class="sub" style="display:block;margin:1px 0 0">${esc(c.d)}</span>` : ''}</div>`;
+  if (c.t === 'info')  return `<div class="sub" style="margin:0;padding:8px 11px;border-left:2px solid var(--ser);background:var(--s0);border-radius:0 5px 5px 0;font-size:12.4px;line-height:1.5">${esc(c.r)}</div>`;
+  if (c.t === 'long')  return rot + `<textarea id="${id}" rows="3" style="width:100%">${esc(val)}</textarea>`;
+  if (c.t === 'sn')    return rot + `<div style="display:flex;gap:14px;flex-wrap:wrap">${
+    ['sim','não','não sei'].map(o => `<label style="display:flex;gap:5px;align-items:center;font-size:13px">
+      <input type="radio" name="${id}" value="${o}" ${val===o?'checked':''}> ${o}</label>`).join('')}</div>`;
+  if (c.t === 'esc')   return rot + `<select id="${id}"><option value=""></option>${
+    (c.op||[]).map(o => `<option ${val===o?'selected':''}>${esc(o)}</option>`).join('')}</select>`;
+  if (c.t === 'multi') { const m = Array.isArray(val) ? val : [];
+    return rot + `<div style="display:flex;gap:6px 16px;flex-wrap:wrap">${
+      (c.op||[]).map(o => `<label style="display:flex;gap:5px;align-items:center;font-size:13px">
+        <input type="checkbox" name="${id}" value="${esc(o)}" ${m.includes(o)?'checked':''}> ${esc(o)}</label>`).join('')}</div>`; }
+  const tipo = c.t==='data' ? 'date' : c.t==='hora' ? 'time' : c.t==='num' ? 'number' : 'text';
+  return rot + `<input id="${id}" type="${tipo}" value="${esc(val)}" style="width:100%">`;
+};
+
+function lerFicha(){
+  const est = FICHA.modelo?.estrutura || [], r = {};
+  for (const sec of est) for (const c of sec.c) {
+    if (c.t === 'info') continue;
+    const id = 'fc-' + c.k;
+    if (c.t === 'sn') { const m = document.querySelector(`input[name="${id}"]:checked`); if (m) r[c.k] = m.value; }
+    else if (c.t === 'multi') {
+      const m = [...document.querySelectorAll(`input[name="${id}"]:checked`)].map(x => x.value);
+      if (m.length) r[c.k] = m;
+    } else { const el = document.getElementById(id); if (el && el.value !== '') r[c.k] = el.value; }
+  }
+  return r;
+}
+
+window.salvarFicha = async (silencioso) => {
+  const st = document.getElementById('fi-st');
+  const respostas = lerFicha();
+  if (st && !silencioso) st.textContent = 'guardando…';
+  const { error } = await sb.from('ficha')
+    .update({ respostas, atualizado_em: new Date().toISOString() }).eq('id', FICHA.id);
+  if (st) { st.style.color = error ? 'var(--crit)' : 'var(--i3)';
+            st.textContent = error ? error.message : 'guardado ' + new Date().toTimeString().slice(0,5); }
+  FICHA.respostas = respostas;
+};
+
+window.concluirFicha = async () => {
+  await salvarFicha(true);
+  const nova = FICHA.situacao === 'concluida' ? 'rascunho' : 'concluida';
+  const { error } = await sb.from('ficha')
+    .update({ situacao: nova, assinada_em: nova === 'concluida' ? hoje() : null }).eq('id', FICHA.id);
+  if (error) return alert('Não deu certo: ' + error.message);
+  telaFicha(FICHA.id);
+};
+
+/* Cada resposta longa vira um fato do caso — é isso que a minuta lê depois. */
+window.fichaVirarFatos = async () => {
+  await salvarFicha(true);
+  if (!FICHA.caso_id) return alert('Esta ficha ainda não está ligada a um caso. '
+    + 'Use "Virar caso" na Captação primeiro — o caso nasce ali.');
+  const est = FICHA.modelo?.estrutura || [], r = FICHA.respostas || {};
+  const jaTem = new Set(((await sb.from('fato').select('descricao').eq('caso_id', FICHA.caso_id)).data||[]).map(x => x.descricao));
+  const temA = moduloA(est, r);
+  const novos = [];
+  for (const sec of est) {
+    if (sec.i) continue;
+    if (sec.m === 'A' && !temA) continue;
+    for (const c of sec.c) {
+      if (c.t === 'info') continue;
+      const v = r[c.k];
+      if (v == null || v === '' || (Array.isArray(v) && !v.length)) continue;
+      if (c.t !== 'long' && String(v).length < 12) continue;   // dado curto não é fato
+      const d = `${c.r} — ${Array.isArray(v) ? v.join('; ') : v}`;
+      if (!jaTem.has(d)) novos.push(d);
+    }
+  }
+  if (!novos.length) return alert('Nada novo para levar: ou a ficha está vazia, ou os fatos já estão no caso.');
+  const base = ((await sb.from('fato').select('id').eq('caso_id', FICHA.caso_id)).data||[]).length;
+  const { error } = await sb.from('fato').insert(novos.map((d,i) => ({
+    caso_id: FICHA.caso_id, descricao: d, ordem: base + i, origem: 'ficha de atendimento' })));
+  alert(error ? 'Erro: ' + error.message
+    : `${novos.length} fato(s) levados para o caso. Abra o caso e confira antes de gerar a peça.`);
+};
+
+/* O checklist do fim da ficha vira pendência no caso, com o que NÃO foi marcado. */
+window.fichaCobrarDocs = async () => {
+  await salvarFicha(true);
+  if (!FICHA.caso_id) return alert('Ligue a ficha a um caso antes — o pedido de documento mora no caso.');
+  const est = FICHA.modelo?.estrutura || [], r = FICHA.respostas || {};
+  let campo = null;
+  for (const sec of est) for (const c of sec.c) if (c.t === 'multi' && /document/i.test(c.r)) campo = c;
+  if (!campo) return alert('Este modelo não tem checklist de documentos.');
+  const trouxe = new Set(Array.isArray(r[campo.k]) ? r[campo.k] : []);
+  const faltam = (campo.op||[]).filter(o => !trouxe.has(o));
+  if (!faltam.length) return alert('O cliente trouxe tudo o que a ficha pede.');
+  const jaTem = new Set(((await sb.from('caso_documento').select('descricao').eq('caso_id', FICHA.caso_id)).data||[]).map(x => x.descricao));
+  const novos = faltam.filter(d => !jaTem.has(d));
+  if (!novos.length) return alert('Esses documentos já estão na lista do caso.');
+  const base = ((await sb.from('caso_documento').select('id').eq('caso_id', FICHA.caso_id)).data||[]).length;
+  const { error } = await sb.from('caso_documento').insert(novos.map((d,i) => ({
+    caso_id: FICHA.caso_id, descricao: d, ordem: base + i, obs: 'pedido na ficha de atendimento' })));
+  alert(error ? 'Erro: ' + error.message : `${novos.length} documento(s) entraram na lista do caso.`);
+};
+
+window.anexarFichaPapel = async (fichaId, el) => {
+  const arq = el.files?.[0]; if (!arq) return;
+  const st = document.getElementById('fp-st');
+  if (st) { st.style.color = 'var(--i3)'; st.textContent = 'enviando ' + arq.name + '…'; }
+  const r = await subirPapelNaFicha(fichaId, arq);
+  if (r.erro) { if (st) { st.style.color = 'var(--crit)'; st.textContent = 'erro: ' + r.erro; } return; }
+  telaFicha(fichaId);
+};
+
+window.tirarFichaPapel = async (fichaId, caminho) => {
+  if (!confirm('Tirar o arquivo desta ficha?\n\nO arquivo é apagado do armazenamento.')) return;
+  await sb.storage.from('fichas').remove([caminho]);
+  await sb.from('ficha').update({ arquivo_path: null, arquivo_nome: null, arquivo_em: null }).eq('id', fichaId);
+  telaFicha(fichaId);
+};
+
+async function telaFicha(id){
+  const f = (await sb.from('ficha')
+    .select('*, modelo:modelo_id(*), lead:lead_id(nome,telefone), caso:caso_id(id,titulo)')
+    .eq('id', id).maybeSingle()).data;
+  if (!f) return erro('Ficha não encontrada — ou ela não é desta parceria.');
+  FICHA = f;
+  const r = f.respostas || {}, est = f.modelo?.estrutura || [];
+  const vale = c => c.t !== 'info';
+  const total = est.reduce((a,s) => a + s.c.filter(vale).length, 0);
+  const feitos = est.reduce((a,s) => a + s.c.filter(c => vale(c) && r[c.k] != null && r[c.k] !== '').length, 0);
+
+  app.innerHTML = menu('captacao') + `<main>
+  <h1>Ficha de atendimento</h1>
+  <p class="meta">${esc(f.modelo?.nome || '')}${f.lead?.nome ? ' · ' + esc(f.lead.nome) : ''} ·
+    aberta em ${br(String(f.criado_em).slice(0,10))}. O que você escreve é guardado sozinho ao
+    sair de cada campo. É a mesma ficha que o escritório vê.</p>
+  <div class="kpis">
+    <div class="kpi"><div class="n">${feitos}/${total}</div><div class="l">respondido</div></div>
+    <div class="kpi"><div class="n">${pctF(feitos,total)}%</div><div class="l">da ficha</div></div>
+    <div class="kpi"><div class="n">${f.situacao === 'concluida' ? 'concluída' : 'rascunho'}</div><div class="l">situação</div></div>
+    <div class="kpi"><div class="n">${f.caso ? 'sim' : 'não'}</div><div class="l">virou caso</div></div>
+  </div>
+  ${est.length ? '' : `<div class="card"><p class="nota">Esta ficha não tem questionário ligado —
+    ela nasceu só para guardar o papel. As respostas abaixo, se houver, aparecem como vieram.</p></div>`}
+  <div class="card"><div style="padding:12px 18px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <button class="btn ok" onclick="salvarFicha()">Guardar agora</button>
+    <button class="btn" onclick="fichaVirarFatos()">Levar respostas para os fatos do caso</button>
+    <button class="btn" onclick="fichaCobrarDocs()">Cobrar os documentos que faltam</button>
+    <button class="btn" onclick="concluirFicha()">${f.situacao === 'concluida' ? 'Reabrir' : 'Concluir'}</button>
+    ${f.caso ? `<a class="btn" style="text-decoration:none" href="#/caso/${f.caso.id}">Abrir o caso</a>` : ''}
+    <a class="btn" style="text-decoration:none" href="#/captacao">Voltar à Captação</a>
+    <span class="sub" id="fi-st" style="margin:0"></span>
+  </div>
+  <p class="nota" style="padding-top:0">Para imprimir a ficha e colher a assinatura, peça ao
+    Dr. Breno: o papel sai com o timbre do escritório, que mora no lado dele. É esta mesma ficha.</p>
+  </div>
+
+  <div class="card"><h2>Ficha em papel</h2>
+    ${f.arquivo_path ? `
+    <div style="padding:10px 18px 16px;display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+      <span class="pill good">anexada</span>
+      <b>${esc(f.arquivo_nome || 'arquivo')}</b>
+      ${f.arquivo_em ? `<span class="sub" style="margin:0">enviada em ${br(String(f.arquivo_em).slice(0,10))}</span>` : ''}
+      <button class="btn" onclick="verArquivo('fichas','${esc(f.arquivo_path)}')">Abrir</button>
+      <button class="btn" onclick="tirarFichaPapel('${f.id}','${esc(f.arquivo_path)}')">Tirar</button>
+    </div>` : `
+    <p class="nota">Se a pessoa preencheu e assinou a ficha no papel, anexe aqui o PDF ou a foto —
+      fica guardado junto das respostas, e vai com o caso quando o lead fechar. Até 15 MB.</p>
+    <div style="padding:0 18px 16px;display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+      <input type="file" accept="application/pdf,image/*" onchange="anexarFichaPapel('${f.id}', this)">
+      <span class="sub" id="fp-st" style="margin:0"></span>
+    </div>`}</div>
+
+  <div id="fi-avisoA" class="card" style="border-left:3px solid var(--warn);display:none">
+    <div style="padding:12px 18px" class="sub">
+      O <b>módulo A</b> — acidente de trabalho e doença ocupacional — está escondido. Ele aparece
+      sozinho assim que você marcar algum item da linha <i>&ldquo;Acidente e saúde&rdquo;</i>, no
+      primeiro bloco.
+    </div></div>
+  ${est.map(sec => `<div class="card"${sec.m ? ` data-mod="${sec.m}"` : ''}${
+      sec.i ? ' style="border-left:3px solid var(--warn)"' : sec.m ? ' style="border-left:3px solid var(--crit)"' : ''}>
+    <h2>${esc(sec.s)}</h2>
+    ${sec.d ? `<p class="sub" style="margin:-4px 18px 0">${esc(sec.d)}</p>` : ''}
+    <div style="padding:6px 18px 16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px 16px">
+      ${sec.c.map(c => `<div${['long','multi','info'].includes(c.t) ? ' style="grid-column:1/-1"' : ''}>${campoFicha(c, r[c.k])}</div>`).join('')}
+    </div></div>`).join('')}
+  </main>` + rodape();
+
+  app.querySelectorAll('input,textarea,select').forEach(el =>
+    el.addEventListener('change', () => salvarFicha(true)));
+  /* O módulo A só existe quando o atendimento é de acidente ou doença. Fica escondido
+     até alguém marcar a linha que o dispara, e some se desmarcarem. */
+  const gatilho = [];
+  for (const sec of est) for (const c of sec.c) if (c.g === 'A') gatilho.push('fc-' + c.k);
+  const olharA = () => {
+    const liga = gatilho.some(id => [...document.querySelectorAll(`input[name="${id}"]:checked`)].length > 0);
+    app.querySelectorAll('[data-mod="A"]').forEach(el => el.style.display = liga ? '' : 'none');
+    const av = document.getElementById('fi-avisoA');
+    if (av) av.style.display = gatilho.length ? (liga ? 'none' : '') : 'none';
+  };
+  gatilho.forEach(id => document.querySelectorAll(`input[name="${id}"]`)
+    .forEach(el => el.addEventListener('change', olharA)));
+  olharA();
+}
+
 /* ------------------------------------------------ pedido de documentos
    Depois da consulta vem a parte que trava mais caso: a pessoa some porque não sabe
    o que mandar. O painel monta a lista, deixa editar e abre o WhatsApp com o texto
@@ -1842,6 +2113,9 @@ function cartaoLead(l){
       </select>
       <button class="btn" style="font-size:11.4px;padding:4px 8px"
         onclick="abrirViab('${l.id}')">Viabilidade</button>
+      <button class="btn" style="font-size:11.4px;padding:4px 8px"
+        title="abre a ficha de atendimento para preencher"
+        onclick="abrirFicha('${l.id}')">Ficha</button>
       <button class="btn ${LEADEV[l.id] ? '' : 'ok'}" style="font-size:11.4px;padding:4px 8px"
         title="marca dia e hora e joga a consulta na agenda"
         onclick="abrirConsulta('${l.id}')">${LEADEV[l.id] ? 'Remarcar' : 'Marcar consulta'}</button>
@@ -1928,22 +2202,31 @@ window.leadViraCaso = async (id) => {
 const MAX_FICHA = 15 * 1024 * 1024;
 
 /* O papel do atendimento presencial. Ele não pendura no lead direto: pendura numa
-   FICHA, que é onde o relato mora — e a ficha é criada aqui, mesmo vazia, só para
-   ter onde amarrar o arquivo. É o mesmo caminho do escritório, e por isso o papel
-   anexado aqui aparece lá, no caso, quando o lead fechar. */
+   FICHA, que é onde o relato mora. É o mesmo caminho do escritório, e por isso o
+   papel anexado aqui aparece lá, no caso, quando o lead fechar.
+
+   A ficha vem do `garantirFicha`, a mesma que o botão "Ficha" usa — se já houver
+   uma do atendimento, o papel entra NELA. Antes esta função criava uma ficha vazia
+   própria, e um atendimento com papel e questionário acabava com duas. */
 async function subirPapel(leadId, arquivo){
+  const fichaId = await garantirFicha(leadId);
+  if (!fichaId) return { erro: 'não foi possível abrir a ficha deste atendimento' };
+  return await subirPapelNaFicha(fichaId, arquivo);
+}
+
+async function subirPapelNaFicha(fichaId, arquivo){
   if (arquivo.size > MAX_FICHA)
     return { erro: 'O arquivo tem ' + (arquivo.size/1048576).toFixed(1) + ' MB. O limite é 15 MB.' };
-  const nova = await sb.from('ficha')
-    .insert({ lead_id: leadId, situacao: 'rascunho', respostas: {} }).select('id').single();
-  if (nova.error) return { erro: nova.error.message };
   const limpo = arquivo.name.normalize('NFD').replace(/[\u0300-\u036f]/g,'')
     .replace(/[^A-Za-z0-9._-]/g,'-').slice(-80);
-  const caminho = `${PAR.esc}/${nova.data.id}/${Date.now()}-${limpo}`;
+  /* A pasta é o escritório; a segunda, a ficha — é a segunda que a regra do banco/57
+     confere. Mudar a ordem aqui tranca o arquivo lá. */
+  const caminho = `${PAR.esc}/${fichaId}/${Date.now()}-${limpo}`;
   const up = await sb.storage.from('fichas').upload(caminho, arquivo, { upsert: false });
   if (up.error) return { erro: up.error.message };
   const { error } = await sb.from('ficha').update({ arquivo_path: caminho,
-    arquivo_nome: arquivo.name, arquivo_em: new Date().toISOString() }).eq('id', nova.data.id);
+    arquivo_nome: arquivo.name, arquivo_em: new Date().toISOString(),
+    atualizado_em: new Date().toISOString() }).eq('id', fichaId);
   return error ? { erro: error.message } : { caminho };
 }
 
@@ -2486,6 +2769,7 @@ async function rota(){
   if (h.startsWith('#/publicacoes'))return telaPublicacoes();
   if (h.startsWith('#/conversa/'))  return telaConversa(h.slice('#/conversa/'.length).split('?')[0]);
   if (h.startsWith('#/agenda'))     return telaAgenda(q.get('caso'), q.get('m'));
+  if (h.startsWith('#/ficha/'))     return telaFicha(h.slice('#/ficha/'.length).split('?')[0]);
   if (h.startsWith('#/captacao'))   return telaCaptacao();
   if (h.startsWith('#/prazos'))     return telaPrazos();
   if (h.startsWith('#/andamento'))  return telaAndamento();
