@@ -224,13 +224,25 @@ async function carregarParceria(){
   /* Gruda o login no convite, se for o primeiro acesso desta pessoa. */
   await sb.rpc('entrar_na_parceria');
   const [p, m, a, c] = await Promise.all([
-    sb.from('parceria').select('*').limit(1).maybeSingle(),
+    sb.from('parceria').select('*').eq('ativa', true).order('criado_em'),
     sb.from('parceria_membro').select('*').order('criado_em'),
     sb.from('area_atuacao').select('id,nome').order('nome'),
     sb.from('coluna_caso').select('id,nome,ordem,cor').order('ordem'),
   ]);
-  if (p.data) { PAR.id = p.data.id; PAR.nome = p.data.nome || 'Parceria'; PAR.parceiro_id = p.data.parceiro_id; }
-  PAR.membros = m.data || [];
+  const parcerias = p.data || [], membros = m.data || [];
+
+  /* Qual parceria é esta. Para quem vem de fora, a RLS já devolve uma só — a dela.
+     Para um login do escritório, devolve TODAS as parcerias do escritório, e pegar
+     "a primeira" acertaria hoje, com uma, e erraria calado no dia em que houver duas.
+     Então a escolha é pela presença: a parceria em que o login é membro. */
+  const meu = (x) => x.usuario_auth === user.id
+    || (x.email || '').toLowerCase() === (user.email || '').toLowerCase();
+  const minhas = new Set(membros.filter(meu).map(x => x.parceria_id));
+  const escolhida = parcerias.find(x => minhas.has(x.id)) || parcerias[0] || null;
+
+  if (escolhida) { PAR.id = escolhida.id; PAR.nome = escolhida.nome || 'Parceria';
+    PAR.parceiro_id = escolhida.parceiro_id; PAR.esc = escolhida.escritorio_id; }
+  PAR.membros = membros.filter(x => x.parceria_id === PAR.id);
   PAR.eu = PAR.membros.find(x => x.usuario_auth === user.id)
         || PAR.membros.find(x => (x.email||'').toLowerCase() === (user.email||'').toLowerCase()) || null;
   AREAS = a.data || []; COLUNAS = c.data || [];
@@ -613,7 +625,7 @@ async function telaCaso(id){
         lancs = la.data || [], recados = rc.data || [];
 
   /* O que o 53 destravou: tudo isto pendura no caso, e por isso vem junto. */
-  const [ft, pt, mn, ts, dc, tg, ct] = await Promise.all([
+  const [ft, pt, mn, ts, dc, tg, ct, fc, fm] = await Promise.all([
     sb.from('fato').select('*').eq('caso_id', id).order('data'),
     sb.from('parte').select('*').eq('caso_id', id),
     sb.from('minuta').select('id,tipo,status,criado_em,corpo').eq('caso_id', id).order('criado_em',{ascending:false}),
@@ -621,10 +633,15 @@ async function telaCaso(id){
     sb.from('caso_documento').select('*').eq('caso_id', id).order('ordem'),
     sb.from('tag').select('id,nome,cor').order('nome'),
     sb.from('caso_tag').select('tag_id').eq('caso_id', id),
+    sb.from('ficha').select('id,modelo_id,situacao,respostas,criado_em,atualizado_em').eq('caso_id', id)
+      .order('criado_em', { ascending: false }),
+    sb.from('ficha_modelo').select('id,nome,estrutura'),
   ]);
   const fatos = ft.data || [], partes = pt.data || [], minutas = mn.data || [],
         horas = ts.data || [], docs = dc.data || [], etiquetas = tg.data || [];
   const minhasTags = new Set((ct.data || []).map(x => x.tag_id));
+  const fichas = fc.data || [], modelos = fm.data || [];
+  window.__fichas = fichas; window.__modelos = modelos;
   const totalMin = horas.reduce((t, h) => t + Number(h.minutos || 0), 0);
   const aReceber = lancs.filter(l => l.tipo === 'entrada' && l.situacao !== 'pago')
     .reduce((t,l) => t + Number(l.valor||0), 0);
@@ -759,6 +776,21 @@ async function telaCaso(id){
     </form>
   </div>
 
+  ${fichas.length ? `<div class="card"><h2>Ficha de atendimento — ${fichas.length}</h2>
+    <p class="nota">O relato completo, do jeito que foi colhido. É daqui que saem os fatos da
+      inicial. Preencher continua sendo no sistema do escritório, onde o formulário vive;
+      aqui é leitura.</p>
+    <table><tbody>${fichas.map(f=>`<tr>
+      <td style="width:190px">${esc(modelos.find(m=>m.id===f.modelo_id)?.nome || 'ficha')}
+        <span class="sub">${br(f.atualizado_em || f.criado_em)}</span></td>
+      <td><span class="pill ${f.situacao==='concluida'?'good':'cin'}">${esc(f.situacao||'rascunho')}</span>
+        <span class="sub">${Object.keys(f.respostas||{}).length} resposta(s)</span></td>
+      <td style="width:90px"><button class="btn" style="font-size:11.4px;padding:4px 8px"
+        onclick="verFicha('${f.id}')">Ler</button></td>
+    </tr>`).join('')}</tbody></table>
+    <div id="ficha-corpo" style="display:none;padding:0 18px 16px"></div>
+  </div>` : ''}
+
   ${minutas.length ? `<div class="card"><h2>Peças — ${minutas.length}</h2>
     <p class="nota">As minutas deste caso. Gerar peça nova continua sendo do escritório: a
       redação passa pela API, e a conta é de lá.</p>
@@ -845,6 +877,41 @@ window.novaHora = async (ev, casoId) => {
     minutos: Number(v('minutos')), descricao: v('descricao') });
   if (sim(st, error)) telaCaso(casoId);
 };
+/* A pergunta de cada resposta mora em `ficha_modelo.estrutura`. Sem o modelo — enquanto
+   o banco/56 não rodar — mostra a chave crua, que é feio mas honesto: melhor do que
+   esconder a resposta. */
+window.verFicha = (id) => {
+  const alvo = document.getElementById('ficha-corpo');
+  const f = (window.__fichas || []).find(x => x.id === id);
+  if (!alvo || !f) return;
+  const modelo = (window.__modelos || []).find(m => m.id === f.modelo_id);
+  const r = f.respostas || {};
+  let html = '';
+  if (modelo && Array.isArray(modelo.estrutura)) {
+    for (const bloco of modelo.estrutura) {
+      const campos = (bloco.c || []).filter(x => x.t !== 'info' && r[x.k] !== undefined
+        && r[x.k] !== '' && r[x.k] !== null);
+      if (!campos.length) continue;
+      html += `${bloco.t ? `<h3 style="font-size:13.5px;margin:14px 0 6px">${esc(bloco.t)}</h3>` : ''}
+        <table><tbody>${campos.map(x=>`<tr>
+          <td style="width:40%;vertical-align:top"><span class="sub" style="margin:0">${esc(x.r)}</span></td>
+          <td>${esc(Array.isArray(r[x.k]) ? r[x.k].join(', ') : String(r[x.k]))}</td>
+        </tr>`).join('')}</tbody></table>`;
+    }
+  }
+  if (!html) {
+    const chaves = Object.keys(r).filter(k => r[k] !== '' && r[k] !== null);
+    html = chaves.length
+      ? `<p class="nota" style="padding:0">O questionário não veio — aplique <b>banco/56</b> para
+           ver a pergunta de cada resposta.</p>
+         <table><tbody>${chaves.map(k=>`<tr><td style="width:40%"><span class="sub" style="margin:0">${esc(k)}</span></td>
+           <td>${esc(Array.isArray(r[k]) ? r[k].join(', ') : String(r[k]))}</td></tr>`).join('')}</tbody></table>`
+      : '<div class="vazio">Ficha ainda sem respostas.</div>';
+  }
+  alvo.style.display = 'block';
+  alvo.innerHTML = html;
+};
+
 window.verMinuta = async (id) => {
   const alvo = document.getElementById('minuta-corpo');
   if (!alvo) return;
