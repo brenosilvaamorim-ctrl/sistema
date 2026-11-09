@@ -1153,55 +1153,127 @@ const ETAPAS = [['novo','Entrou'],['contatado','Primeiro contato feito'],['consu
 
 async function telaCaptacao(){
   const { data, error } = await sb.from('lead').select('*')
-    .eq('parceria_id', PAR.id).order('atualizado_em', { ascending: false });
+    .eq('parceria_id', PAR.id).order('criado_em', { ascending: false });
   if (error) return erro(error.message);
-  const leads = data || [];
-  const abertos = leads.filter(l => !['fechado','perdido'].includes(l.etapa));
-  const porEtapa = k => abertos.filter(l => l.etapa === k);
-  const fechados = leads.filter(l => l.etapa === 'fechado');
-  const perdidos = leads.filter(l => l.etapa === 'perdido');
-
-  const linha = l => `<tr>
-    <td>${esc(l.nome)}<span class="sub">${esc(l.telefone || l.email || 'sem contato')}${
-      l.area ? ' · ' + esc(l.area) : ''}</span></td>
-    <td style="width:210px">
-      <select onchange="moverLead('${l.id}', this.value)">
-        ${ETAPAS.map(([k,r])=>`<option value="${k}" ${l.etapa===k?'selected':''}>${r}</option>`).join('')}
-        <option value="fechado" ${l.etapa==='fechado'?'selected':''}>Virou caso</option>
-        <option value="perdido" ${l.etapa==='perdido'?'selected':''}>Perdido</option>
-      </select></td>
-    <td class="dt" style="width:120px">${l.proximo_contato ? br(l.proximo_contato) : '—'}</td>
-    <td style="width:120px">${l.caso_id ? `<a class="lnk" href="#/caso/${l.caso_id}">ver o caso</a>` : ''}</td>
-  </tr>`;
+  LEADS = data || [];
+  const abertos = LEADS.filter(l => !['fechado','perdido'].includes(l.etapa));
+  const perdidos = LEADS.filter(l => l.etapa === 'perdido');
+  const fechados = LEADS.filter(l => l.etapa === 'fechado');
+  const mes = hoje().slice(0,7);
+  const doMes = LEADS.filter(l => String(l.criado_em).slice(0,7) === mes);
+  const atrasados = abertos.filter(l => l.proximo_contato && dias(l.proximo_contato) < 0).length;
 
   app.innerHTML = menu('captacao') + `<main>
   <h1>Captação</h1>
-  <p class="meta">Quem procurou e ainda não virou caso. Só aparece aqui quem é da parceria —
-    o atendimento que chega pelo escritório entra nesta lista quando é marcado como nosso,
-    ou quando vem por uma origem ligada à parceria.</p>
+  <p class="meta">De quem chegou até virar caso, no mesmo quadro do escritório — só com quem é
+    nosso. Entra aqui quem for anotado nesta porta, quem o escritório marcar como da parceria,
+    e quem chegar por uma origem ligada a ela.</p>
+  <div class="kpis">
+    <div class="kpi"><div class="n">${abertos.length}</div><div class="l">em andamento</div></div>
+    <div class="kpi"><div class="n">${doMes.length}</div><div class="l">entraram neste mês</div></div>
+    <div class="kpi ${atrasados?'al':''}"><div class="n">${atrasados}</div><div class="l">com retorno atrasado</div></div>
+    <div class="kpi"><div class="n">${fechados.length}</div><div class="l">viraram caso</div></div>
+  </div>
+
   <div class="card"><h2>Anotar quem chegou</h2>
+    <p class="nota">Registre na hora em que a pessoa chama — depois ninguém lembra de onde ela veio.</p>
     <form class="form" onsubmit="novoLead(event)">
       <label><span class="sub">Nome</span><input name="nome" required></label>
       <label><span class="sub">Telefone</span><input name="telefone" placeholder="com DDD"></label>
       <label><span class="sub">E-mail</span><input name="email" type="email"></label>
-      <label><span class="sub">Assunto</span><input name="area" placeholder="do que se trata"></label>
+      <label><span class="sub">Área</span>
+        <select name="area_id"><option value="">— sem área —</option>
+          ${AREAS.map(a=>`<option value="${a.id}">${esc(a.nome)}</option>`).join('')}</select></label>
       <label><span class="sub">Voltar a falar em</span><input name="proximo_contato" type="date"></label>
-      <label class="larga"><span class="sub">O que a pessoa relatou</span>
-        <textarea name="resumo" rows="2"></textarea></label>
+      <label class="larga"><span class="sub">O que a pessoa relatou — em uma linha</span>
+        <input name="resumo"></label>
       <button class="btn ok" type="submit">Anotar</button>
       <span id="lead-st" class="sub" style="margin:0"></span>
     </form>
   </div>
-  ${ETAPAS.map(([k,r]) => { const l = porEtapa(k); return l.length ? `
-    <div class="card"><h2>${r} — ${l.length}</h2>
-      <table><tbody>${l.map(linha).join('')}</tbody></table></div>` : ''; }).join('')
-    || (abertos.length ? '' : `<div class="card">${vazio('Ninguém em aberto.')}</div>`)}
-  ${fechados.length ? `<div class="card"><h2>Viraram caso — ${fechados.length}</h2>
-    <table><tbody>${fechados.map(linha).join('')}</tbody></table></div>` : ''}
-  ${perdidos.length ? `<div class="card"><h2>Perdidos — ${perdidos.length}</h2>
-    <table><tbody>${perdidos.slice(0,15).map(linha).join('')}</tbody></table></div>` : ''}
+
+  <div class="quadro">
+    ${ETAPAS.map(([k, rot]) => { const meus = abertos.filter(l => l.etapa === k);
+      return `<div class="coluna">
+        <div class="cabcol" style="border-top:3px solid var(--serie)">${rot}
+          <span class="sub" style="display:inline;margin:0">${meus.length}</span></div>
+        ${meus.map(cartaoLead).join('') || '<div class="sub" style="padding:10px 2px">vazio</div>'}
+      </div>`; }).join('')}
+  </div>
+
+  ${fechados.length ? `<div class="card" style="margin-top:20px"><h2>Viraram caso — ${fechados.length}</h2>
+    <table><thead><tr><th>Nome</th><th>Área</th><th>Quando</th><th></th></tr></thead>
+    <tbody>${fechados.slice(0,30).map(l=>`<tr>
+      <td>${esc(l.nome)}</td><td>${esc(nomeArea(l.area_id) || l.area || '—')}</td>
+      <td class="dt">${br(l.atualizado_em)}</td>
+      <td>${l.caso_id ? `<a class="lnk" href="#/caso/${l.caso_id}">ver o caso</a>` : '—'}</td>
+    </tr>`).join('')}</tbody></table></div>` : ''}
+
+  ${perdidos.length ? `<div class="card" style="margin-top:20px"><h2>Não fecharam — ${perdidos.length}</h2>
+    <p class="nota">Vale reler de vez em quando: é aqui que aparece se o problema é preço,
+      triagem ou demora.</p>
+    <table><thead><tr><th>Nome</th><th>Área</th><th>O que ficou dito</th><th>Quando</th></tr></thead>
+    <tbody>${perdidos.slice(0,30).map(l=>`<tr>
+      <td>${esc(l.nome)}</td><td>${esc(nomeArea(l.area_id) || l.area || '—')}</td>
+      <td class="sub" style="margin:0">${esc(l.resumo || '—')}</td>
+      <td class="dt">${br(l.atualizado_em)}</td></tr>`).join('')}</tbody></table></div>` : ''}
   </main>` + rodape();
 }
+
+let LEADS = [];
+
+function cartaoLead(l){
+  const d = l.proximo_contato ? dias(l.proximo_contato) : null;
+  const parado = Math.round((Date.now() - Date.parse(l.atualizado_em || l.criado_em))/864e5);
+  return `<div class="cartao">
+    <div class="tit">${esc(l.nome)}</div>
+    <div class="sub" style="margin:2px 0 6px">${esc(nomeArea(l.area_id) || l.area || 'área não definida')}
+      ${l.origem ? ' · ' + esc(l.origem) : ''} · entrou ${br(l.criado_em)}</div>
+    ${l.telefone ? `<div class="sub" style="margin:0 0 6px">${esc(l.telefone)}</div>` : ''}
+    ${l.resumo ? `<div class="sub" style="margin-bottom:6px">${esc(String(l.resumo).slice(0,130))}</div>` : ''}
+    ${d !== null ? `<span class="pill ${d<0?'crit':(d<=1?'ser':'good')}">contato ${br(l.proximo_contato)}</span>` : ''}
+    ${parado > 7 ? `<span class="pill ser">parado há ${parado} dias</span>` : ''}
+    ${l.nota != null ? `<span class="pill ${l.nota>=7?'good':(l.nota>=4?'warn':'crit')}">viabilidade ${l.nota}/10</span>` : ''}
+    <div style="margin-top:9px;display:flex;gap:5px;flex-wrap:wrap">
+      <select onchange="moverLead('${l.id}', this.value)" style="flex:1;min-width:140px;font-size:11.6px">
+        ${ETAPAS.map(([k,r])=>`<option value="${k}" ${l.etapa===k?'selected':''}>${r}</option>`).join('')}
+        <option value="perdido">Não fechou</option>
+      </select>
+      <button class="btn" style="font-size:11.4px;padding:4px 8px"
+        onclick="leadViraCaso('${l.id}')">Virar caso</button>
+    </div>
+  </div>`;
+}
+
+/* Fechar o lead é criar cliente e caso — os mesmos que o escritório vê, já carimbados.
+   O lead guarda o caso_id, para a Captação e o quadro contarem a mesma história. */
+window.leadViraCaso = async (id) => {
+  const l = LEADS.find(x => x.id === id);
+  if (!l) return;
+  if (!confirm(`Abrir um caso para ${l.nome}? O cliente é criado junto, se ainda não existir.`)) return;
+  try {
+    let cliente_id = null;
+    const achado = await sb.from('cliente').select('id').eq('parceria_id', PAR.id)
+      .ilike('nome', l.nome).limit(1);
+    if (achado.data?.length) cliente_id = achado.data[0].id;
+    else {
+      const novo = await sb.from('cliente').insert({
+        parceria_id: PAR.id, nome: l.nome, telefone: l.telefone, email: l.email,
+      }).select('id').single();
+      if (novo.error) throw novo.error;
+      cliente_id = novo.data.id;
+    }
+    const caso = await sb.from('caso').insert({
+      parceria_id: PAR.id, cliente_id, titulo: l.nome,
+      area_id: l.area_id || null, area: nomeArea(l.area_id) || l.area || null,
+    }).select('id').single();
+    if (caso.error) throw caso.error;
+    const up = await sb.from('lead').update({ etapa: 'fechado', caso_id: caso.data.id,
+      atualizado_em: new Date().toISOString() }).eq('id', id);
+    if (up.error) throw up.error;
+    location.hash = '#/caso/' + caso.data.id;
+  } catch (e) { alert('Não deu certo: ' + e.message); }
+};
 
 window.novoLead = async (ev) => {
   ev.preventDefault();
@@ -1209,7 +1281,8 @@ window.novoLead = async (ev) => {
   const v = n => (f.elements[n]?.value || '').trim() || null;
   const { error } = await sb.from('lead').insert({
     parceria_id: PAR.id, nome: v('nome'), telefone: v('telefone'), email: v('email'),
-    area: v('area'), resumo: v('resumo'), proximo_contato: v('proximo_contato'), etapa: 'novo',
+    area_id: v('area_id'), area: nomeArea(v('area_id')) || null,
+    resumo: v('resumo'), proximo_contato: v('proximo_contato'), etapa: 'novo',
   });
   if (error) { st.style.color = 'var(--crit)'; st.textContent = error.message; return; }
   telaCaptacao();
