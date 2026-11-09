@@ -69,7 +69,11 @@ conferido contra `escritorio.backup_token`), `agenda-ics` e `google-sync` (`agen
 comparado em tempo constante), `convidar-membro` (exige perfil titular) e `nota-fiscal`.
 
 `consulta-meet` também tem conferência própria, e desde a parceria ela tem duas portas: aceita
-um login ativo em `usuario` **ou** um membro ativo de parceria ativa. O do escritório só mexe em
+um login ativo em `usuario` **ou** um membro ativo de parceria ativa — **implantada assim no
+Supabase em 09/11/2026**, e conferida marcando uma consulta por vídeo pela porta da parceria: a
+sala saiu em seis segundos, o evento foi para o Google com o vínculo gravado, e remarcar manteve
+a mesma sala. (O teste foi com o login do escritório; a segunda porta só se prova de verdade
+quando a parceira entrar.) O do escritório só mexe em
 evento do escritório dele; o da parceria, só em evento carimbado com a parceria dele. A sala
 nasce na conta do Google do escritório, que é a única que existe — a consulta é do escritório,
 marcada a quatro mãos. Ninguém ganha acesso à agenda por isso: ganha o direito de pedir a sala
