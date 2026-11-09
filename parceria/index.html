@@ -180,7 +180,7 @@ const GRUPOS = [
   ['Meu dia',   [['inicio','Início'],['prazos','Prazos'],['agenda','Agenda'],['publicacoes','Publicações']]],
   ['Pessoas',   [['captacao','Captação'],['clientes','Clientes']]],
   ['Casos',     [['casos','Casos'],['processos','Processos'],['andamento','Andamento']]],
-  ['Conversas', [['recados','Recados'],['whatsapp','WhatsApp']]],
+  ['Conversas', [['mensageria','Avisar o cliente'],['recados','Recados'],['whatsapp','WhatsApp']]],
   ['Dinheiro',  [['financeiro','Financeiro']]],
 ];
 
@@ -1482,6 +1482,77 @@ window.mudarEspera = async (id, data) => {
   telaAndamento();
 };
 
+/* ------------------------------------------------------------- mensageria */
+
+/* Quem está há mais tempo sem notícia nossa, e de quem há novidade para contar.
+   A conta de "novidades" é do banco: andamento relevante que chegou depois do
+   último contato. Serve para o cliente não descobrir pelo processo antes de nós. */
+async function telaMensageria(){
+  const cs = await sb.from('caso').select('id').eq('parceria_id', PAR.id);
+  if (cs.error) return erro(cs.error.message);
+  const ids = (cs.data || []).map(c => c.id);
+  /* A visão não tem parceria_id, e deixar a RLS filtrar sozinha mostraria o
+     escritório inteiro para quem é do escritório. O filtro vai na consulta. */
+  const mp = ids.length
+    ? await sb.from('mensageria_painel').select('*').in('caso_id', ids)
+    : { data: [] };
+  if (mp.error) return erro(mp.error.message);
+  const linhas = (mp.data || []).slice().sort((a,b) =>
+    (b.novidades - a.novidades) ||
+    String(a.ultimo_contato || '').localeCompare(String(b.ultimo_contato || '')));
+
+  const semContato = linhas.filter(l => !l.ultimo_contato).length;
+  const comNovidade = linhas.filter(l => l.novidades > 0).length;
+  const velhos = linhas.filter(l => l.ultimo_contato &&
+    (Date.now() - Date.parse(l.ultimo_contato))/864e5 > 30).length;
+
+  app.innerHTML = menu('mensageria') + `<main>
+  <h1>Avisar o cliente</h1>
+  <p class="meta">Quem está há mais tempo sem notícia nossa, e de quem há novidade para contar.
+    A conta de novidades é do próprio banco: andamento relevante que chegou <b>depois</b> do
+    último contato. Serve para o cliente não descobrir pelo processo antes de ouvir de nós.</p>
+  <div class="kpis">
+    <div class="kpi ${comNovidade?'al':''}"><div class="n">${comNovidade}</div><div class="l">com novidade a contar</div></div>
+    <div class="kpi ${semContato?'al':''}"><div class="n">${semContato}</div><div class="l">nunca contatados</div></div>
+    <div class="kpi"><div class="n">${velhos}</div><div class="l">há mais de 30 dias sem contato</div></div>
+    <div class="kpi"><div class="n">${linhas.length}</div><div class="l">casos abertos</div></div>
+  </div>
+  <div class="card"><h2>Por ordem de quem mais precisa</h2>
+    ${linhas.length ? `<table><thead><tr><th>Cliente</th><th>Caso</th><th>Novidades</th>
+      <th>Último contato</th><th>Último andamento</th><th>Anotar contato</th></tr></thead>
+    <tbody>${linhas.map(l => { const d = l.ultimo_contato
+        ? Math.round((Date.now() - Date.parse(l.ultimo_contato))/864e5) : null;
+      return `<tr>
+      <td>${esc(l.nome)}${l.fone ? `<span class="sub">${esc(l.fone)}</span>` : ''}</td>
+      <td><a class="lnk" href="#/caso/${l.caso_id}">${esc(l.titulo)}</a></td>
+      <td style="width:110px">${l.novidades > 0
+        ? `<span class="pill ser">${l.novidades} nova(s)</span>` : '<span class="sub" style="margin:0">—</span>'}</td>
+      <td class="dt" style="width:140px">${l.ultimo_contato
+        ? br(l.ultimo_contato) + `<span class="sub">há ${d} dias</span>`
+        : '<span class="pill crit">nunca</span>'}</td>
+      <td class="dt" style="width:120px">${l.ultima_movimentacao ? br(l.ultima_movimentacao) : '—'}</td>
+      <td style="width:260px"><form onsubmit="anotarContato(event,'${l.caso_id}')"
+          style="display:flex;gap:5px">
+        <input name="descricao" placeholder="o que foi dito" required style="flex:1;font-size:11.6px">
+        <button class="btn ok" style="font-size:11.4px;padding:4px 8px" type="submit">Anotar</button>
+      </form></td></tr>`; }).join('')}</tbody></table>` : vazio('Nenhum caso aberto na parceria.')}
+  </div></main>` + rodape();
+}
+
+/* `interacao.usuario_id` aponta para `usuario`, e a parceira não está lá: fica em
+   branco, como nos outros campos de autoria. Quem anotou está na auditoria. */
+window.anotarContato = async (ev, casoId) => {
+  ev.preventDefault();
+  const f = ev.target;
+  const descricao = (f.elements['descricao']?.value || '').trim();
+  if (!descricao) return;
+  const { error } = await sb.from('interacao').insert({
+    caso_id: casoId, tipo: 'contato', descricao, data: new Date().toISOString(),
+  });
+  if (error) return alert('Não deu certo: ' + error.message);
+  telaMensageria();
+};
+
 /* ---------------------------------------------------------------- whatsapp */
 
 async function telaWhatsapp(){
@@ -1570,6 +1641,7 @@ async function rota(){
   if (h.startsWith('#/captacao'))   return telaCaptacao();
   if (h.startsWith('#/prazos'))     return telaPrazos();
   if (h.startsWith('#/andamento'))  return telaAndamento();
+  if (h.startsWith('#/mensageria')) return telaMensageria();
   if (h.startsWith('#/whatsapp'))   return telaWhatsapp();
   if (h.startsWith('#/financeiro')) return telaFinanceiro();
   if (h.startsWith('#/recados'))    return telaRecados();

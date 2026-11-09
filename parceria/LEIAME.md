@@ -126,6 +126,28 @@ estiver no processo. Nas causas em que a parceira atua sozinha, sem o escritóri
 procuração, nada chega — e não há como mudar isso sem monitorar a OAB dela, que é justamente
 o que se decidiu não fazer.
 
+## As telas, e por que estas
+
+Decisão do Breno em 08/11/2026: **o sistema do escritório inteiro vem para cá, menos o bolso
+dele — mas cada tela mostra exclusivamente o que pendura num caso ou processo da parceria. As
+informações não se misturam.** Nada do escritório atravessa.
+
+O menu tem os mesmos grupos do sistema do escritório, na mesma ordem de pensamento, para quem
+sabe andar lá saber andar aqui:
+
+- **Meu dia** — Início, Prazos, Agenda (com calendário do mês), Publicações
+- **Pessoas** — Captação (quadro), Clientes
+- **Casos** — Casos (quadro), Processos, Andamento
+- **Conversas** — Avisar o cliente, Recados, WhatsApp
+- **Dinheiro** — Financeiro
+
+**A armadilha que isto escondia, e que custou um susto:** não basta a RLS filtrar. A RLS
+protege a parceira, mas para um login do escritório ela não filtra nada — e a tela passa a
+mostrar o escritório inteiro dentro da porta da parceria. Foi o que aconteceu quando o quadro
+pediu `caso_quadro` sem filtro: abriu com 213 casos. **O filtro tem de estar na consulta**,
+sempre, em toda tela daqui. Vale para `caso_quadro`, `mensageria_painel`, `bot_conversa` e
+qualquer visão ou tabela que não carregue `parceria_id` na própria linha.
+
 ## O que não vem para esta porta
 
 Captação, WhatsApp, notas fiscais, teses, playbook, jurimetria, métricas, auditoria,
