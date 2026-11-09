@@ -3376,6 +3376,8 @@ async function telaCaptacao(){
     }).join('')}
   </div>
 
+  ${porOrigem(LEADS)}
+
   ${perdidos.length?`<div class="card" style="margin-top:20px"><h2>Não fecharam</h2>
     <p class="nota">Vale reler de vez em quando: é aqui que aparece se o problema é preço, triagem ou demora.</p>
     <table><thead><tr><th>Nome</th><th>Origem</th><th>Área</th><th>Até onde foi</th><th>Motivo</th><th>Quando</th></tr></thead>
@@ -3385,6 +3387,61 @@ async function telaCaptacao(){
       <td class="sub" style="margin:0">${esc(l.desfecho_motivo || (l.resumo||'').split('PERDIDO: ')[1] || '—')}</td>
       <td class="dt">${br(l.atualizado_em)}</td></tr>`).join('')}</tbody></table></div>`:''}
   </main>` + rodape();
+}
+
+/* ------------------------------------------------- de onde vem, e o que rende
+   Até aqui a origem era colhida e nunca somada: dava para ver no cartão de onde
+   um lead veio, e não para responder "qual canal paga as contas". Esta é a conta.
+
+   Um lead pode ter DUAS origens — o canal e quem indicou (ver banco/58) —, e por
+   isso ele conta nas DUAS linhas. A coluna não soma o total, de propósito: somar
+   obrigaria a escolher uma das duas respostas, que é o que se queria evitar. */
+function porOrigem(leads){
+  if (!leads.length) return '';
+  const linhas = new Map();
+  const pega = (id) => {
+    const nome = ORIGENS.find(o => o.id === id)?.nome || null;
+    if (!nome) return null;
+    if (!linhas.has(nome)) linhas.set(nome, { nome, entraram:0, viraram:0, perdidos:0, parceria:0, honor:[] });
+    return linhas.get(nome);
+  };
+  let semOrigem = 0;
+  for (const l of leads) {
+    const alvos = [pega(l.origem_id), pega(l.origem2_id)].filter(Boolean);
+    if (!alvos.length) { semOrigem++; continue; }
+    for (const a of alvos) {
+      a.entraram++;
+      if (l.etapa === 'fechado') { a.viraram++; if (Number(l.honorario) > 0) a.honor.push(Number(l.honorario)); }
+      if (l.etapa === 'perdido') a.perdidos++;
+      if (l.parceria_id) a.parceria++;
+    }
+  }
+  const lista = [...linhas.values()].sort((a,b) => b.entraram - a.entraram);
+  const maior = Math.max(1, ...lista.map(x => x.entraram));
+  const media = (v) => v.length ? 'R$ ' + Math.round(v.reduce((a,b)=>a+b,0)/v.length).toLocaleString('pt-BR') : '—';
+
+  return `<div class="card" style="margin-top:20px"><h2>De onde vem, e o que rende</h2>
+    <p class="nota">Quem tem <b>duas origens</b> — o canal e quem indicou — conta nas duas linhas.
+      Por isso a coluna não soma o total: somar obrigaria a escolher uma das duas respostas, que
+      é justamente o que o segundo campo existe para não fazer.${
+      semOrigem ? ` <b>${semOrigem}</b> atendimento(s) sem origem nenhuma ficaram de fora.` : ''}</p>
+    <table><thead><tr><th>Origem</th><th>Entraram</th><th>Viraram caso</th><th>Taxa</th>
+      <th>Honorário médio</th><th>Em parceria</th></tr></thead>
+    <tbody>${lista.map(x => { const decididos = x.viraram + x.perdidos;
+      const taxa = decididos ? Math.round(x.viraram/decididos*100) : null;
+      return `<tr>
+      <td>${esc(x.nome)}
+        <span class="sub"><span style="display:inline-block;height:6px;border-radius:99px;background:var(--serie);width:${Math.round(x.entraram/maior*120)}px;vertical-align:middle"></span></span></td>
+      <td>${x.entraram}</td>
+      <td>${x.viraram}</td>
+      <td>${taxa === null ? '<span class="sub" style="margin:0">ainda decidindo</span>' : taxa + '%'}</td>
+      <td>${media(x.honor)}</td>
+      <td>${x.parceria ? `<span class="pill serie">${x.parceria}</span>` : '<span class="sub" style="margin:0">—</span>'}</td>
+    </tr>`; }).join('')}</tbody></table>
+    <p class="nota" style="padding-top:0">A última coluna é o cruzamento que faltava: quantos
+      daquele canal entraram <b>em parceria</b>. É o que responde "quanto o Google Ads rendeu
+      com a Paula" sem perder de vista quanto ele rendeu sozinho.</p>
+  </div>`;
 }
 
 /* ------------------------------------------------------------------ quadro */
