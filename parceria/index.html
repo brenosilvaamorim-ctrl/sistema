@@ -84,6 +84,7 @@ td{padding:10px 11px;border-bottom:1px solid var(--ln);vertical-align:top}tr:las
 .sub{display:block;color:var(--i3);font-size:11.3px;margin-top:2px}
 .dt{white-space:nowrap;font-variant-numeric:tabular-nums}
 .proc{font-variant-numeric:tabular-nums;font-size:12.3px;color:var(--i2);white-space:nowrap}
+code{font-family:ui-monospace,Menlo,monospace;font-size:.92em;background:var(--s0);padding:1px 4px;border-radius:4px}
 .pill{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;font-size:11.3px;
   font-weight:600;white-space:nowrap;border:1px solid}
 .crit{color:var(--crit);border-color:var(--crit)}.ser{color:var(--ser);border-color:var(--ser)}
@@ -185,6 +186,7 @@ const GRUPOS = [
   ['Meu dia',   [['inicio','Início'],['prazos','Prazos'],['agenda','Agenda'],['publicacoes','Publicações']]],
   ['Pessoas',   [['captacao','Captação'],['clientes','Clientes']]],
   ['Casos',     [['casos','Casos'],['processos','Processos'],['andamento','Andamento']]],
+  ['Escrever',  [['playbook','Playbook'],['ementas','Ementas']]],
   ['Conversas', [['mensageria','Avisar o cliente'],['recados','Recados'],['whatsapp','WhatsApp']]],
   ['Dinheiro',  [['financeiro','Financeiro'],['metricas','Números']]],
 ];
@@ -1587,6 +1589,230 @@ async function chamarFuncao(nome, corpo){
   return j;
 }
 
+/* ==================================================== a biblioteca de trabalhista
+   Playbook e Ementas são a primeira coisa nesta porta que NÃO se filtra por
+   `parceria_id` — e não por descuido: tese e precedente não penduram em caso nenhum,
+   são material de consulta. O que delimita é a matéria: só direito do trabalho
+   (reclamante, reclamada e acidente), decisão do Breno em 09/11/2026.
+
+   Os três campos que guardam de onde o verbete veio — `tese.origem`,
+   `precedente.origem` e `precedente.citacao` — nomeiam cliente de caso que não é da
+   parceria. Por isso a tela não lê as tabelas: lê três VISÕES que simplesmente não
+   trazem essas colunas (banco/61). A regra está no servidor; esconder na tela não
+   seria esconder.
+
+   É só leitura. Ensinar peça ao banco, fila de aprovação e carteira de revisão são do
+   escritório: o acervo é dele, e quem decide o que entra nele é ele. */
+
+let PBK = [], PBTESES = [], EMENTAS = [];
+let FILTRO_PB = '', FILTRO_EM = '';
+
+/* Busca sem acento e sem caixa: quem procura "ferias" tem de achar "férias". */
+const semAcento = t => String(t||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
+const casa = (termo, ...campos) => {
+  const q = semAcento(termo).trim();
+  if (!q) return true;
+  const alvo = semAcento(campos.filter(Boolean).join(' '));
+  return q.split(/\s+/).every(t => alvo.includes(t));
+};
+
+window.copiarDe = async (idOrigem, el) => {
+  const src = document.getElementById(idOrigem);
+  if (!src) { el.textContent = 'não achei o texto'; return; }
+  const rotulo = el.dataset.rot || el.textContent;
+  el.dataset.rot = rotulo;
+  let ok = false;
+  try { await navigator.clipboard.writeText(src.innerText); ok = true; } catch (e) { ok = false; }
+  if (!ok) {
+    /* Sem permissão de área de transferência (acontece em alguns navegadores): cai no
+       caminho antigo, que ainda funciona. */
+    const ta = document.createElement('textarea');
+    ta.value = src.innerText; ta.style.position = 'fixed'; ta.style.top = '-1000px';
+    document.body.appendChild(ta); ta.select();
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    ta.remove();
+  }
+  el.textContent = ok ? 'copiado' : 'não deu — selecione e copie';
+  setTimeout(() => { el.textContent = rotulo; }, 1800);
+};
+
+window.abrirDobra = (id, el) => {
+  const d = document.getElementById(id); if (!d) return;
+  const aberto = d.style.display !== 'none';
+  d.style.display = aberto ? 'none' : 'block';
+  if (el) el.textContent = aberto ? 'Ver a ementa' : 'Esconder';
+};
+
+window.filtrarPb = (v) => { FILTRO_PB = v; pintarPb(); };
+window.filtrarEm = (v) => { FILTRO_EM = v; pintarEm(); };
+
+async function telaPlaybook(){
+  const [pb, te] = await Promise.all([
+    sb.from('playbook_trabalhista').select('*').order('ordem'),
+    sb.from('tese_trabalhista').select('*').order('codigo'),
+  ]);
+  if (pb.error) return erroBiblioteca('playbook_trabalhista', pb.error.message);
+  PBK = pb.data || []; PBTESES = te.data || [];
+  const porId = new Map(PBTESES.map(t => [t.id, t]));
+  const comTexto = new Set(PBK.map(t => t.tese_id).filter(Boolean));
+  const soTese = PBTESES.filter(t => !comTexto.has(t.id));
+
+  app.innerHTML = menu('playbook') + `<main>
+  <h1>Playbook de teses — trabalhista</h1>
+  <p class="meta">As posições padrão do escritório, já escritas: o parágrafo pronto, o
+    fundamento e a resposta para a defesa mais comum. <b>Só direito do trabalho</b> —
+    reclamante, reclamada e acidente de trabalho. É leitura e cópia: o acervo é alimentado
+    do lado do escritório.</p>
+  <div class="kpis">
+    <div class="kpi"><div class="n">${PBK.length}</div><div class="l">textos prontos</div></div>
+    <div class="kpi"><div class="n">${PBTESES.length}</div><div class="l">teses de trabalhista</div></div>
+    <div class="kpi"><div class="n">${soTese.length}</div><div class="l">teses sem texto pronto</div></div>
+  </div>
+  <div class="card"><div style="padding:12px 18px">
+    <input id="pb-busca" placeholder="procure por tema, tese, fundamento ou código — sem acento serve"
+           oninput="filtrarPb(this.value)" value="${esc(FILTRO_PB)}" style="width:100%">
+  </div></div>
+  <div id="pb-lista"></div>
+  </main>` + rodape();
+  window.__pbPorId = porId; window.__pbSoTese = soTese;
+  pintarPb();
+}
+
+function pintarPb(){
+  const alvo = document.getElementById('pb-lista'); if (!alvo) return;
+  const porId = window.__pbPorId || new Map(), soTese = window.__pbSoTese || [];
+  const vistos = PBK.filter(t => { const v = porId.get(t.tese_id);
+    return casa(FILTRO_PB, t.tema, t.tese, t.quando_usar, t.texto_padrao, t.contra, t.fundamento, v?.codigo, v?.titulo); });
+  const teses = soTese.filter(t => casa(FILTRO_PB, t.codigo, t.titulo, t.rubrica, t.gatilho, t.texto_base));
+
+  alvo.innerHTML = `
+  ${FILTRO_PB ? `<p class="nota" style="padding:0 0 8px">${vistos.length} texto(s) e ${teses.length} tese(s) para
+    <b>${esc(FILTRO_PB)}</b>.</p>` : ''}
+  ${vistos.length ? vistos.map(t => { const v = porId.get(t.tese_id); return `<div class="card">
+    <div style="padding:14px 18px">
+      <b style="font-size:14.5px">${esc(t.tema)}</b>
+      ${v ? `<span class="pill good" style="margin-left:7px;font-size:10.5px">${esc(v.codigo)}</span>` : ''}
+      <div class="sub" style="margin-top:4px">${esc(t.tese)}</div>
+      ${t.quando_usar ? `<div class="sub" style="margin-top:6px"><b>Quando usar:</b> ${esc(t.quando_usar)}</div>` : ''}
+      ${t.texto_padrao ? `<div style="margin-top:9px;padding:11px 13px;border-left:3px solid var(--serie);background:var(--s0);border-radius:0 6px 6px 0">
+        <div class="sub" style="margin:0 0 5px"><b>Texto pronto</b></div>
+        <div id="pbt-${t.id}" style="font-size:13.2px;line-height:1.65;white-space:pre-wrap">${esc(t.texto_padrao)}</div>
+        <button class="btn" style="font-size:11.4px;padding:4px 8px;margin-top:8px"
+          onclick="copiarDe('pbt-${t.id}', this)">Copiar o texto</button>
+      </div>` : ''}
+      ${t.contra ? `<div style="margin-top:9px;padding:11px 13px;border-left:3px solid var(--ser);background:var(--s0);border-radius:0 6px 6px 0">
+        <div class="sub" style="margin:0 0 5px"><b>A defesa costuma dizer, e a resposta</b></div>
+        <div style="font-size:13px;line-height:1.6;white-space:pre-wrap">${esc(t.contra)}</div></div>` : ''}
+      ${t.fundamento ? `<div class="sub" style="margin-top:8px"><b>Fundamento:</b> ${esc(t.fundamento)}</div>` : ''}
+      ${v?.provas ? `<div class="sub" style="margin-top:4px"><b>Prova que sustenta:</b> ${esc(v.provas)}</div>` : ''}
+      ${v?.pedido_modelo ? `<div style="margin-top:9px">
+        <div class="sub" style="margin:0 0 4px"><b>Pedido, como se escreve</b></div>
+        <div id="pbp-${t.id}" style="font-size:12.9px;line-height:1.6;white-space:pre-wrap">${esc(v.pedido_modelo)}</div>
+        <button class="btn" style="font-size:11.4px;padding:4px 8px;margin-top:6px"
+          onclick="copiarDe('pbp-${t.id}', this)">Copiar o pedido</button></div>` : ''}
+    </div></div>`; }).join('')
+   : `<div class="card">${vazio(FILTRO_PB ? 'Nenhum texto pronto para essa busca.' : 'Nenhum texto pronto de trabalhista.')}</div>`}
+
+  ${teses.length ? `<div class="card" style="border-left:3px solid var(--warn)">
+    <h2>Teses sem texto pronto — ${teses.length}</h2>
+    <p class="nota">Elas valem e já têm o parágrafo-base, mas ainda não ganharam a versão
+      final na voz do escritório. Dá para usar o texto-base como ponto de partida.</p>
+    ${teses.map(t => `<div style="padding:12px 18px;border-top:1px solid var(--ln)">
+      <span class="pill cin" style="font-size:10.5px">${esc(t.codigo)}</span>
+      <b style="margin-left:6px">${esc(t.titulo || '')}</b>
+      ${t.rubrica ? `<div class="sub" style="margin-top:3px">${esc(t.rubrica)}</div>` : ''}
+      ${t.gatilho ? `<div class="sub" style="margin-top:3px"><b>Aplica-se quando:</b> ${esc(t.gatilho)}</div>` : ''}
+      ${t.texto_base ? `<div style="margin-top:7px">
+        <div id="tb-${t.id}" style="font-size:12.9px;line-height:1.6;white-space:pre-wrap">${esc(t.texto_base)}</div>
+        <button class="btn" style="font-size:11.4px;padding:4px 8px;margin-top:6px"
+          onclick="copiarDe('tb-${t.id}', this)">Copiar o texto-base</button></div>` : ''}
+    </div>`).join('')}</div>` : ''}`;
+}
+
+async function telaEmentas(){
+  const { data, error } = await sb.from('precedente_trabalhista').select('*')
+    .order('confirmado', { ascending: false }).order('julgamento', { ascending: false });
+  if (error) return erroBiblioteca('precedente_trabalhista', error.message);
+  EMENTAS = data || [];
+  const porConferir = EMENTAS.filter(p => !p.confirmado).length;
+  const comEmenta = EMENTAS.filter(p => p.ementa).length;
+
+  app.innerHTML = menu('ementas') + `<main>
+  <h1>Ementas — trabalhista</h1>
+  <p class="meta">Os julgados que as peças do escritório citam, com a ementa como ela foi
+    transcrita. <b>Só direito do trabalho.</b> O que ainda não foi conferido vem marcado, e
+    marcado deve ser tratado: <b>confira o inteiro teor antes de citar</b> — nenhuma ementa
+    daqui dispensa isso.</p>
+  <div class="kpis">
+    <div class="kpi"><div class="n">${EMENTAS.length}</div><div class="l">julgados</div></div>
+    <div class="kpi"><div class="n">${comEmenta}</div><div class="l">com ementa transcrita</div></div>
+    <div class="kpi ${porConferir?'al':''}"><div class="n">${porConferir}</div><div class="l">ainda não conferidos</div></div>
+  </div>
+  <div class="card"><div style="padding:12px 18px">
+    <input id="em-busca" placeholder="procure por tribunal, tema, relator, número ou código da tese"
+           oninput="filtrarEm(this.value)" value="${esc(FILTRO_EM)}" style="width:100%">
+  </div></div>
+  <div id="em-lista"></div>
+  </main>` + rodape();
+  pintarEm();
+}
+
+function pintarEm(){
+  const alvo = document.getElementById('em-lista'); if (!alvo) return;
+  const vistos = EMENTAS.filter(p => casa(FILTRO_EM, p.tribunal, p.tipo_recurso, p.numero,
+    p.relator, p.orgao, p.tema, p.tese_codigo, p.ementa));
+  const refDe = p => [p.tribunal, p.tipo_recurso, p.numero].filter(Boolean).join(' ');
+
+  alvo.innerHTML = `
+  ${FILTRO_EM ? `<p class="nota" style="padding:0 0 8px">${vistos.length} julgado(s) para <b>${esc(FILTRO_EM)}</b>.</p>` : ''}
+  ${vistos.length ? `<div class="card">${vistos.map(p => `
+    <div style="padding:13px 18px;border-top:1px solid var(--ln)">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <b class="proc" style="font-size:12.6px">${esc(refDe(p) || 'julgado sem referência')}</b>
+        ${p.confirmado ? '<span class="pill good">conferido</span>'
+                       : '<span class="pill ser" title="ninguém conferiu o inteiro teor ainda">a conferir</span>'}
+        ${p.situacao ? `<span class="pill cin">${esc(p.situacao)}</span>` : ''}
+        ${p.tese_codigo ? `<span class="pill cin" style="font-size:10.5px">${esc(p.tese_codigo)}</span>` : ''}
+      </div>
+      ${p.tema ? `<div style="margin-top:4px;font-size:13.4px">${esc(p.tema)}</div>` : ''}
+      <div class="sub" style="margin-top:3px">${[
+        p.orgao ? esc(p.orgao) : '',
+        p.relator ? 'rel. ' + esc(p.relator) : '',
+        p.julgamento ? 'julgado em ' + br(p.julgamento) : '',
+        p.publicacao ? 'publicado em ' + br(p.publicacao) : '',
+        p.autoridade ? esc(p.autoridade) : '',
+      ].filter(Boolean).join(' · ') || '—'}</div>
+      <div style="margin-top:7px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        ${p.ementa ? `<button class="btn" style="font-size:11.4px;padding:4px 8px"
+          onclick="abrirDobra('em-${p.id}', this)">Ver a ementa</button>` : '<span class="sub" style="margin:0">sem ementa transcrita</span>'}
+        ${p.link ? `<a class="btn" style="font-size:11.4px;padding:4px 8px;text-decoration:none"
+          href="${esc(p.link)}" target="_blank" rel="noreferrer">Inteiro teor</a>` : ''}
+        <a class="btn" style="font-size:11.4px;padding:4px 8px;text-decoration:none"
+          href="https://www.google.com/search?q=${encodeURIComponent((refDe(p) || p.tema || '') + ' ementa')}"
+          target="_blank" rel="noreferrer">Procurar</a>
+      </div>
+      ${p.ementa ? `<div id="em-${p.id}" style="display:none;margin-top:8px;padding:11px 13px;
+            border-left:3px solid var(--good);background:var(--s0);border-radius:0 6px 6px 0">
+        <div id="emt-${p.id}" style="font-size:12.8px;line-height:1.65;white-space:pre-wrap;max-height:340px;overflow:auto">${esc(p.ementa)}</div>
+        <button class="btn" style="font-size:11.4px;padding:4px 8px;margin-top:8px"
+          onclick="copiarDe('emt-${p.id}', this)">Copiar a ementa</button>
+      </div>` : ''}
+    </div>`).join('')}</div>`
+   : `<div class="card">${vazio(FILTRO_EM ? 'Nenhum julgado para essa busca.' : 'Nenhuma ementa de trabalhista.')}</div>`}`;
+}
+
+/* A biblioteca depende do banco/61. Enquanto ele não rodar, a visão não existe e o
+   Postgres responde 42P01 — dizer isso é melhor do que "erro ao carregar". */
+function erroBiblioteca(visao, msg){
+  const faltando = /does not exist|42P01|schema cache/i.test(msg);
+  app.innerHTML = menu('') + `<main><div class="card"><h2>A biblioteca ainda não foi aberta</h2>
+    <p class="nota">${faltando
+      ? `A visão <code>${esc(visao)}</code> não existe no banco. Ela é criada pelo
+         <b>banco/61_parceria_biblioteca.sql</b>, que precisa ser rodado no SQL Editor do
+         Supabase. Peça ao Dr. Breno.`
+      : 'O banco respondeu: ' + esc(msg)}</p></div></main>` + rodape();
+}
+
 /* ------------------------------------------ ficha de atendimento (preencher)
    Até aqui a parceria só VIA ficha, e anexava o papel. Mas a ficha é o coração da
    triagem: é ela que vira os fatos do caso e a lista de documentos, e é ela que a
@@ -2806,6 +3032,8 @@ async function rota(){
   if (h.startsWith('#/publicacoes'))return telaPublicacoes();
   if (h.startsWith('#/conversa/'))  return telaConversa(h.slice('#/conversa/'.length).split('?')[0]);
   if (h.startsWith('#/agenda'))     return telaAgenda(q.get('caso'), q.get('m'));
+  if (h.startsWith('#/playbook'))   return telaPlaybook();
+  if (h.startsWith('#/ementas'))    return telaEmentas();
   if (h.startsWith('#/ficha/'))     return telaFicha(h.slice('#/ficha/'.length).split('?')[0]);
   if (h.startsWith('#/captacao'))   return telaCaptacao();
   if (h.startsWith('#/prazos'))     return telaPrazos();

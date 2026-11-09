@@ -139,6 +139,7 @@ sabe andar lá saber andar aqui:
 - **Pessoas** — Captação (quadro), Clientes
 - **Casos** — Casos (quadro), Processos, Andamento
 - **Conversas** — Avisar o cliente, Recados, WhatsApp
+- **Escrever** — Playbook, Ementas (só trabalhista; ver a seção seguinte)
 - **Dinheiro** — Financeiro, Números
 
 **A armadilha que isto escondia, e que custou um susto:** não basta a RLS filtrar. A RLS
@@ -195,6 +196,41 @@ A Paula também anota lead por esta porta, e por isso a Captação não é só o
 
 Nas mensagens que saem daqui, quem manda se apresenta pelo **próprio nome** (o de
 `parceria_membro`), e não como "o escritório". A parceira fala por si, no caso que é dos dois.
+
+## A biblioteca: Playbook e Ementas, só de trabalhista
+
+Decisão do Breno em 09/11/2026. São as duas primeiras telas desta porta que **não** se filtram
+por `parceria_id`, e isso é proposital: tese e precedente não penduram em caso nenhum — são
+material de consulta, não informação de cliente. Logo não existe carimbo para filtrar, e o que
+delimita é a **matéria**: só direito do trabalho (reclamante, reclamada e acidente de trabalho),
+que é `area = 'Trabalhista'`. Concursos, disciplinar, administrativo e processual civil
+continuam só do lado do escritório.
+
+**Por que isto virou visão, e não política na tabela.** O problema aqui é de coluna, não de
+linha. Três campos guardam de onde o verbete veio, e o que eles guardam identifica cliente de
+caso que não é da parceria:
+
+| campo | o que há lá |
+|---|---|
+| `tese.origem` | a peça de onde a tese saiu: nome do cliente, parte contrária, data |
+| `precedente.origem` | o mesmo, para o julgado |
+| `precedente.citacao` | o trecho da peça em que o julgado foi citado, copiado de caso real |
+
+Medido antes de escrever a regra: **136 de 136** precedentes têm `origem` preenchida, e as
+distintas são quase todas nome de pessoa. RLS filtra linha, não esconde coluna — e a tela não
+mostrar não é proteção, porque a API está aberta a quem tem login. Então: **nenhuma política
+nova** em `tese`, `playbook` ou `precedente` (a parceira continua sem alcançar as três tabelas)
+e três visões que trazem só o que pode sair — `tese_trabalhista`, `playbook_trabalhista` e
+`precedente_trabalhista` (`banco/61`).
+
+**O cuidado que essas visões exigem**, e é o inverso do que o `44` corrigiu: elas são de
+propósito **sem `security_invoker`**, porque é isso que as faz atravessar a RLS das tabelas-base.
+Quem protege é o `WHERE` de cada uma, e só ele. Portanto: não acrescente coluna sem olhar o que
+ela guarda, não afrouxe o `WHERE`, e se um dia a parceria for a mais de uma área, mude o `WHERE`
+— não a política.
+
+É **só leitura**. Ensinar peça ao banco, fila de aprovação e carteira de revisão seguem do lado
+do escritório: o acervo é dele, e quem decide o que entra nele é ele.
 
 ## O que não vem para esta porta
 
