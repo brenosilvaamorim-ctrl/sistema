@@ -179,7 +179,7 @@ function telaLogin(msg){
 const GRUPOS = [
   ['Meu dia',   [['inicio','Início'],['prazos','Prazos'],['agenda','Agenda'],['publicacoes','Publicações']]],
   ['Pessoas',   [['captacao','Captação'],['clientes','Clientes']]],
-  ['Casos',     [['casos','Casos'],['processos','Processos']]],
+  ['Casos',     [['casos','Casos'],['processos','Processos'],['andamento','Andamento']]],
   ['Conversas', [['recados','Recados'],['whatsapp','WhatsApp']]],
   ['Dinheiro',  [['financeiro','Financeiro']]],
 ];
@@ -1389,6 +1389,99 @@ window.mudarFatal = async (id, data) => {
   telaPrazos();
 };
 
+/* -------------------------------------------------------------- andamento */
+
+/* Dois relógios, como no escritório: há quanto tempo o processo tramita e há
+   quanto tempo está parado. O segundo é o que importa — processo calado por
+   muito tempo é processo que alguém precisa cutucar. Quem está aguardando uma
+   data já marcada não entra na conta: não está parado, está esperando. */
+const humanoDias = n => n == null ? '—'
+  : n < 30 ? n + ' dias'
+  : n < 365 ? Math.round(n/30) + ' meses'
+  : (Math.floor(n/365) + ' a ' + (Math.round((n%365)/30) ? Math.round((n%365)/30) + ' m' : '')).trim();
+
+async function telaAndamento(){
+  const pr = await sb.from('processo').select('*').eq('parceria_id', PAR.id).order('numero_cnj');
+  if (pr.error) return erro(pr.error.message);
+  const procs = pr.data || [];
+  const ids = procs.map(p => p.id);
+  const [mv, cs] = await Promise.all([
+    ids.length ? sb.from('movimentacao').select('processo_id,data,descricao')
+      .in('processo_id', ids).order('data', { ascending: false }).limit(1500) : { data: [] },
+    sb.from('caso').select('id,titulo').eq('parceria_id', PAR.id),
+  ]);
+  const movs = mv.data || [], casos = cs.data || [];
+  const tituloCaso = id => casos.find(c => c.id === id)?.titulo || '';
+  const ultima = {};
+  for (const m of movs) if (!ultima[m.processo_id]) ultima[m.processo_id] = m;
+
+  const paradoHa = p => { const u = ultima[p.id];
+    return u ? Math.round((Date.now() - Date.parse(u.data)) / 864e5) : null; };
+  const emTramite = p => p.data_ajuizamento
+    ? Math.round((Date.now() - Date.parse(p.data_ajuizamento + 'T00:00:00Z')) / 864e5) : null;
+  const esperando = p => p.aguardando_ate && dias(p.aguardando_ate) >= 0;
+
+  const lista = procs.slice().sort((a,b) => (paradoHa(b) ?? -1) - (paradoHa(a) ?? -1));
+  const vivos = lista.filter(p => !esperando(p));
+  const limite = p => p.fase === 'execucao' ? 30 : 90;
+  const pedem = vivos.filter(p => (paradoHa(p) ?? 0) > limite(p) * 2).length;
+  const conferir = vivos.filter(p => { const d = paradoHa(p) ?? 0;
+    return d > limite(p) && d <= limite(p) * 2; }).length;
+  const idades = procs.map(emTramite).filter(x => x != null);
+  const medio = idades.length ? Math.round(idades.reduce((a,b)=>a+b,0)/idades.length) : null;
+
+  app.innerHTML = menu('andamento') + `<main>
+  <h1>Andamento</h1>
+  <p class="meta">Dois relógios: há quanto tempo cada processo tramita, e há quanto tempo está
+    parado. Na fase de conhecimento a demora costuma ser do juízo — 90 dias pedem conferência,
+    180 pedem impulso. Na execução o relógio é mais curto. Quem está aguardando uma data já
+    marcada sai desta conta: não está parado, está esperando.</p>
+  <div class="kpis">
+    <div class="kpi ${pedem?'al':''}"><div class="n">${pedem}</div><div class="l">pedindo providência</div></div>
+    <div class="kpi"><div class="n">${conferir}</div><div class="l">merecendo conferência</div></div>
+    <div class="kpi"><div class="n">${procs.length}</div><div class="l">processos</div></div>
+    <div class="kpi"><div class="n">${humanoDias(medio)}</div><div class="l">tempo médio em trâmite</div></div>
+  </div>
+  <div class="card"><h2>Os mais parados primeiro</h2>
+    <p class="nota">A fase muda a régua, e por isso dá para corrigi-la aqui. "Aguardando até"
+      tira o processo da lista enquanto a data não chega — serve para audiência já marcada.</p>
+    ${lista.length ? `<table><thead><tr><th>Processo</th><th>Caso</th><th>Fase</th>
+      <th>Parado há</th><th>Em trâmite</th><th>Último andamento</th><th>Aguardando até</th></tr></thead>
+    <tbody>${lista.map(p => { const d = paradoHa(p); const esp = esperando(p);
+      const cor = esp ? 'cin' : d == null ? 'cin' : d > limite(p)*2 ? 'crit' : d > limite(p) ? 'ser' : 'good';
+      return `<tr>
+      <td><a class="lnk" href="#/processo/${p.id}">${esc(p.numero_formatado || p.numero_cnj)}</a>
+        <span class="sub">${esc(p.tribunal_sigla || '')}${p.orgao ? ' · ' + esc(p.orgao) : ''}</span></td>
+      <td>${p.caso_id ? `<a class="lnk" href="#/caso/${p.caso_id}">${esc(tituloCaso(p.caso_id))}</a>` : '—'}</td>
+      <td style="width:150px"><select onchange="mudarFase('${p.id}', this.value)" style="font-size:11.6px">
+        <option value="conhecimento" ${p.fase==='conhecimento'?'selected':''}>conhecimento</option>
+        <option value="recursal" ${p.fase==='recursal'?'selected':''}>recursal</option>
+        <option value="execucao" ${p.fase==='execucao'?'selected':''}>execução</option>
+        <option value="arquivado" ${p.fase==='arquivado'?'selected':''}>arquivado</option></select></td>
+      <td style="width:130px"><span class="pill ${cor}">${esp ? 'aguardando' : humanoDias(d)}</span></td>
+      <td class="dt" style="width:110px">${humanoDias(emTramite(p))}</td>
+      <td class="sub" style="margin:0">${ultima[p.id]
+        ? br(ultima[p.id].data) + ' — ' + esc(String(ultima[p.id].descricao || '').slice(0,70))
+        : 'nenhum andamento lido ainda'}</td>
+      <td style="width:150px"><input type="date" style="font-size:11.6px"
+        value="${p.aguardando_ate ? String(p.aguardando_ate).slice(0,10) : ''}"
+        onchange="mudarEspera('${p.id}', this.value)"></td>
+      </tr>`; }).join('')}</tbody></table>`
+    : vazio('Nenhum processo cadastrado na parceria.')}
+  </div></main>` + rodape();
+}
+
+window.mudarFase = async (id, fase) => {
+  const { error } = await sb.from('processo').update({ fase }).eq('id', id);
+  if (error) return alert('Não deu certo: ' + error.message);
+  telaAndamento();
+};
+window.mudarEspera = async (id, data) => {
+  const { error } = await sb.from('processo').update({ aguardando_ate: data || null }).eq('id', id);
+  if (error) return alert('Não deu certo: ' + error.message);
+  telaAndamento();
+};
+
 /* ---------------------------------------------------------------- whatsapp */
 
 async function telaWhatsapp(){
@@ -1476,6 +1569,7 @@ async function rota(){
   if (h.startsWith('#/agenda'))     return telaAgenda(q.get('caso'), q.get('m'));
   if (h.startsWith('#/captacao'))   return telaCaptacao();
   if (h.startsWith('#/prazos'))     return telaPrazos();
+  if (h.startsWith('#/andamento'))  return telaAndamento();
   if (h.startsWith('#/whatsapp'))   return telaWhatsapp();
   if (h.startsWith('#/financeiro')) return telaFinanceiro();
   if (h.startsWith('#/recados'))    return telaRecados();
