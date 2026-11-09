@@ -715,9 +715,10 @@ async function telaCaso(id){
     <form class="form" style="padding:14px 18px" onsubmit="novaParte(event,'${caso.id}')">
       <label><span class="sub">Nome</span><input name="nome" required></label>
       <label><span class="sub">Polo</span>
-        <select name="polo"><option value="">— não informado —</option>
-          <option>Reclamante</option><option>Reclamado</option><option>Autor</option><option>Réu</option>
-          <option>Terceiro</option></select></label>
+        <select name="polo" required>
+          <option value="ativo">ativo — quem pede</option>
+          <option value="passivo">passivo — contra quem se pede</option>
+          <option value="terceiro">terceiro</option></select></label>
       <label><span class="sub">CPF/CNPJ</span><input name="cpf_cnpj"></label>
       <label><span class="sub">Advogado</span><input name="advogado_nome"></label>
       <button class="btn ok" type="submit">Acrescentar</button>
