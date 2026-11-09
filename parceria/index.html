@@ -1739,13 +1739,15 @@ async function telaEmentas(){
 
   app.innerHTML = menu('ementas') + `<main>
   <h1>Ementas — trabalhista</h1>
-  <p class="meta">Os julgados que as peças do escritório citam, com a ementa como ela foi
-    transcrita. <b>Só direito do trabalho.</b> O que ainda não foi conferido vem marcado, e
-    marcado deve ser tratado: <b>confira o inteiro teor antes de citar</b> — nenhuma ementa
-    daqui dispensa isso.</p>
+  <p class="meta">O índice dos julgados que as peças do escritório citam — tribunal, número,
+    tema e relator. <b>Só direito do trabalho.</b> Serve para achar o que já foi usado e em que
+    tese ele entra; o texto da ementa só aparece quando alguém o transcreveu no escritório, e
+    hoje quase nenhum tem. <b>Confira o inteiro teor antes de citar</b>: nada daqui dispensa
+    isso, e o que não foi conferido vem marcado.</p>
   <div class="kpis">
     <div class="kpi"><div class="n">${EMENTAS.length}</div><div class="l">julgados</div></div>
-    <div class="kpi"><div class="n">${comEmenta}</div><div class="l">com ementa transcrita</div></div>
+    <div class="kpi ${comEmenta ? '' : 'al'}"><div class="n">${comEmenta}</div>
+      <div class="l">com o texto da ementa</div></div>
     <div class="kpi ${porConferir?'al':''}"><div class="n">${porConferir}</div><div class="l">ainda não conferidos</div></div>
   </div>
   <div class="card"><div style="padding:12px 18px">
@@ -1763,7 +1765,13 @@ function pintarEm(){
     p.relator, p.orgao, p.tema, p.tese_codigo, p.ementa));
   const refDe = p => [p.tribunal, p.tipo_recurso, p.numero].filter(Boolean).join(' ');
 
+  const semTexto = EMENTAS.length && !EMENTAS.some(p => p.ementa);
   alvo.innerHTML = `
+  ${semTexto ? `<div class="card" style="border-left:3px solid var(--warn)"><div style="padding:12px 18px" class="sub">
+    Nenhum destes julgados tem o <b>texto da ementa</b> guardado, e nenhum tem o link do inteiro
+    teor — o que existe é o índice: tribunal, número, tema e a tese em que ele entra. Quem
+    transcreve a ementa é o escritório, em <i>Aprender → Precedentes</i>; feito lá, aparece aqui.
+    Até então, use o botão <b>Procurar</b> de cada linha.</div></div>` : ''}
   ${FILTRO_EM ? `<p class="nota" style="padding:0 0 8px">${vistos.length} julgado(s) para <b>${esc(FILTRO_EM)}</b>.</p>` : ''}
   ${vistos.length ? `<div class="card">${vistos.map(p => `
     <div style="padding:13px 18px;border-top:1px solid var(--ln)">
@@ -1784,7 +1792,7 @@ function pintarEm(){
       ].filter(Boolean).join(' · ') || '—'}</div>
       <div style="margin-top:7px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
         ${p.ementa ? `<button class="btn" style="font-size:11.4px;padding:4px 8px"
-          onclick="abrirDobra('em-${p.id}', this)">Ver a ementa</button>` : '<span class="sub" style="margin:0">sem ementa transcrita</span>'}
+          onclick="abrirDobra('em-${p.id}', this)">Ver a ementa</button>` : ''}
         ${p.link ? `<a class="btn" style="font-size:11.4px;padding:4px 8px;text-decoration:none"
           href="${esc(p.link)}" target="_blank" rel="noreferrer">Inteiro teor</a>` : ''}
         <a class="btn" style="font-size:11.4px;padding:4px 8px;text-decoration:none"
