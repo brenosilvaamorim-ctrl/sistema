@@ -2215,6 +2215,15 @@ window.leadViraCaso = async (id) => {
     const up = await sb.from('lead').update({ etapa: 'fechado', caso_id: caso.data.id,
       atualizado_em: new Date().toISOString() }).eq('id', id);
     if (up.error) throw up.error;
+    /* A ficha do atendimento passa a ser a ficha DO CASO. Sem isto ela ficava presa ao
+       lead: não aparecia na tela do caso, o papel anexado não chegava lá, e "levar as
+       respostas para os fatos" nunca tinha caso a que levar. É o que o escritório faz
+       na mesma hora (index.html, ao fechar o lead). */
+    const fi = await sb.from('ficha')
+      .update({ caso_id: caso.data.id, cliente_id, atualizado_em: new Date().toISOString() })
+      .eq('lead_id', id);
+    if (fi.error) alert('O caso foi aberto, mas a ficha não ficou amarrada a ele: '
+      + fi.error.message + '\n\nAvise o Dr. Breno.');
     location.hash = '#/caso/' + caso.data.id;
   } catch (e) { alert('Não deu certo: ' + e.message); }
 };
