@@ -69,6 +69,11 @@ h2{font-size:14.5px;margin:15px 18px 3px}
 .cartao .pega{float:right;color:var(--i3);font-size:13px;letter-spacing:1px;user-select:none;cursor:grab}
 .cartao .tit{font-size:13px;font-weight:600;line-height:1.25}
 .cartao .pill{margin:0 4px 3px 0}
+.barra{display:flex;align-items:center;gap:9px;margin:0 0 7px}
+.barra .rot{flex:0 0 190px;font-size:12.6px;color:var(--i2)}
+.barra .tr{flex:1;height:9px;background:var(--s0);border:1px solid var(--ln);border-radius:99px;overflow:hidden}
+.barra .tr i{display:block;height:100%;background:var(--serie)}
+.barra .n{flex:0 0 54px;text-align:right;font-size:12.4px;font-variant-numeric:tabular-nums;color:var(--i2)}
 .kpi .n{font-size:29px;font-weight:650;line-height:1.1;letter-spacing:-.02em}
 .kpi .l{color:var(--i2);font-size:12.5px;margin-top:2px}.kpi.al .n{color:var(--crit)}
 .card{background:var(--s1);border:1px solid var(--ln);border-radius:12px;margin-bottom:18px;overflow:hidden}
@@ -181,7 +186,7 @@ const GRUPOS = [
   ['Pessoas',   [['captacao','Captação'],['clientes','Clientes']]],
   ['Casos',     [['casos','Casos'],['processos','Processos'],['andamento','Andamento']]],
   ['Conversas', [['mensageria','Avisar o cliente'],['recados','Recados'],['whatsapp','WhatsApp']]],
-  ['Dinheiro',  [['financeiro','Financeiro']]],
+  ['Dinheiro',  [['financeiro','Financeiro'],['metricas','Números']]],
 ];
 
 window.abrirGrupo = (ev) => {
@@ -1829,6 +1834,110 @@ window.anotarContato = async (ev, casoId) => {
   telaMensageria();
 };
 
+/* ---------------------------------------------------------------- números */
+
+/* Os números da parceria, contados só sobre o que é dela. Nenhum número do
+   escritório entra aqui — nem para comparar: comparar seria misturar. */
+function barras(titulo, pares){
+  const total = Math.max(1, ...pares.map(([,n]) => n));
+  return `<div class="card"><h2>${esc(titulo)}</h2>
+    <div style="padding:0 18px 16px">${pares.length ? pares.map(([rot, n]) => `<div class="barra">
+      <span class="rot">${esc(rot)}</span>
+      <span class="tr"><i style="width:${Math.round(n/total*100)}%"></i></span>
+      <span class="n">${n}</span></div>`).join('') : '<div class="sub" style="margin:0">nada ainda</div>'}</div></div>`;
+}
+
+async function telaMetricas(){
+  /* `timesheet` não tem parceria_id — pendura no caso. Por isso ele não entra aqui:
+     somar horas exigiria a lista de casos antes, e o número ainda não tem uso. */
+  const [cs, pr, pz, le, la] = await Promise.all([
+    sb.from('caso').select('id,area_id,area,coluna_id,encerrado_em,criado_em,resultado').eq('parceria_id', PAR.id),
+    sb.from('processo').select('id,tribunal_sigla,fase,caso_id').eq('parceria_id', PAR.id),
+    sb.from('prazo').select('id,situacao,data_fatal,cumprido_em').eq('parceria_id', PAR.id),
+    sb.from('lead').select('id,etapa,criado_em').eq('parceria_id', PAR.id),
+    sb.from('lancamento').select('tipo,valor,situacao').eq('parceria_id', PAR.id),
+  ]);
+  if (cs.error) return erro(cs.error.message);
+  const casos = cs.data || [], procs = pr.data || [], prazos = pz.data || [],
+        leads = le.data || [], lancs = la.data || [];
+  const abertos = casos.filter(c => !c.encerrado_em);
+  const encerrados = casos.filter(c => c.encerrado_em);
+
+  const conta = (lista, chave) => {
+    const m = new Map();
+    for (const x of lista) { const k = chave(x) || '— não informado —'; m.set(k, (m.get(k)||0)+1); }
+    return [...m.entries()].sort((a,b) => b[1]-a[1]);
+  };
+  const nomeColuna = id => COLUNAS.find(k => k.id === id)?.nome || null;
+
+  /* Prazo cumprido depois do fatal é prazo perdido na prática, ainda que marcado
+     como cumprido. A conta diz a verdade, não o rótulo. */
+  const cumpridos = prazos.filter(z => z.cumprido_em);
+  const noPrazo = cumpridos.filter(z => String(z.cumprido_em).slice(0,10) <= String(z.data_fatal).slice(0,10)).length;
+  const atrasados = cumpridos.length - noPrazo;
+  const emAberto = prazos.filter(z => !['cumprido','cancelado'].includes(z.situacao));
+  const vencidos = emAberto.filter(z => dias(z.data_fatal) < 0).length;
+
+  const fechados = leads.filter(l => l.etapa === 'fechado').length;
+  const perdidos = leads.filter(l => l.etapa === 'perdido').length;
+  const decididos = fechados + perdidos;
+  const conversao = decididos ? Math.round(fechados / decididos * 100) : null;
+
+  const aReceber = lancs.filter(l => l.tipo === 'entrada' && l.situacao !== 'pago')
+    .reduce((t,l) => t + Number(l.valor||0), 0);
+  const recebido = lancs.filter(l => l.tipo === 'entrada' && l.situacao === 'pago')
+    .reduce((t,l) => t + Number(l.valor||0), 0);
+
+  app.innerHTML = menu('metricas') + `<main>
+  <h1>Números</h1>
+  <p class="meta">Só o que é da parceria. Nenhum número do escritório entra aqui — nem para
+    comparar, porque comparar já seria misturar.</p>
+  <div class="kpis">
+    <div class="kpi"><div class="n">${abertos.length}</div><div class="l">casos abertos</div></div>
+    <div class="kpi"><div class="n">${procs.length}</div><div class="l">processos</div></div>
+    <div class="kpi ${vencidos?'al':''}"><div class="n">${vencidos}</div><div class="l">prazos vencidos em aberto</div></div>
+    <div class="kpi"><div class="n">${conversao === null ? '—' : conversao + '%'}</div>
+      <div class="l">dos atendimentos viraram caso</div></div>
+  </div>
+
+  <div class="card"><h2>Prazos: como estamos cumprindo</h2>
+    <p class="nota">Prazo cumprido depois do fatal continua sendo prazo perdido, ainda que
+      marcado como cumprido. A conta abaixo diz isso, e não o rótulo.</p>
+    <div style="padding:0 18px 16px">
+      <div class="barra"><span class="rot">cumpridos no prazo</span>
+        <span class="tr"><i style="width:${cumpridos.length?Math.round(noPrazo/cumpridos.length*100):0}%"></i></span>
+        <span class="n">${noPrazo}</span></div>
+      <div class="barra"><span class="rot">cumpridos em atraso</span>
+        <span class="tr"><i style="width:${cumpridos.length?Math.round(atrasados/cumpridos.length*100):0}%;background:var(--crit)"></i></span>
+        <span class="n">${atrasados}</span></div>
+      <div class="sub" style="margin-top:8px">${emAberto.length} em aberto${vencidos?`, dos quais ${vencidos} já vencidos`:''}.</div>
+    </div>
+  </div>
+
+  ${barras('Casos abertos por etapa', conta(abertos, c => nomeColuna(c.coluna_id)))}
+  ${barras('Casos por área', conta(casos, c => nomeArea(c.area_id) || c.area))}
+  ${barras('Processos por tribunal', conta(procs, p => p.tribunal_sigla))}
+  ${barras('Processos por fase', conta(procs, p => p.fase))}
+  ${leads.length ? barras('Atendimentos por etapa', conta(leads, l => {
+      const e = ETAPAS.find(([k]) => k === l.etapa);
+      return e ? e[1] : (l.etapa === 'fechado' ? 'Virou caso' : l.etapa === 'perdido' ? 'Não fechou' : l.etapa);
+    })) : ''}
+  ${encerrados.length ? barras('Como os casos terminaram', conta(encerrados, c => c.resultado)) : ''}
+
+  <div class="card"><h2>Dinheiro da parceria</h2>
+    <div style="padding:0 18px 16px">
+      <div class="barra"><span class="rot">já recebido</span>
+        <span class="tr"><i style="width:${(recebido+aReceber)?Math.round(recebido/(recebido+aReceber)*100):0}%"></i></span>
+        <span class="n">${rs(recebido)}</span></div>
+      <div class="barra"><span class="rot">a receber</span>
+        <span class="tr"><i style="width:${(recebido+aReceber)?Math.round(aReceber/(recebido+aReceber)*100):0}%"></i></span>
+        <span class="n">${rs(aReceber)}</span></div>
+      ${(recebido+aReceber) ? '' : '<div class="sub" style="margin-top:8px">Nenhum lançamento na parceria ainda.</div>'}
+    </div>
+  </div>
+  </main>` + rodape();
+}
+
 /* ---------------------------------------------------------------- whatsapp */
 
 async function telaWhatsapp(){
@@ -1918,6 +2027,7 @@ async function rota(){
   if (h.startsWith('#/prazos'))     return telaPrazos();
   if (h.startsWith('#/andamento'))  return telaAndamento();
   if (h.startsWith('#/mensageria')) return telaMensageria();
+  if (h.startsWith('#/metricas'))   return telaMetricas();
   if (h.startsWith('#/whatsapp'))   return telaWhatsapp();
   if (h.startsWith('#/financeiro')) return telaFinanceiro();
   if (h.startsWith('#/recados'))    return telaRecados();
