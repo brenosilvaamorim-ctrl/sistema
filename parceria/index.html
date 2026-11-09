@@ -2247,6 +2247,54 @@ function barras(titulo, pares){
       <span class="n">${n}</span></div>`).join('') : '<div class="sub" style="margin:0">nada ainda</div>'}</div></div>`;
 }
 
+/* De onde vem o atendimento da parceria, e o que cada origem rende. Quem tem duas
+   origens — o canal e quem indicou — conta nas duas linhas, e por isso a coluna não
+   soma o total: somar obrigaria a escolher uma das duas respostas, que é justamente
+   o que o segundo campo existe para não fazer.
+
+   Aqui não há a coluna "em parceria" que o escritório tem: desta porta, tudo é. */
+function porOrigem(leads){
+  if (!leads.length) return '';
+  const linhas = new Map();
+  const pega = (id) => {
+    const nome = nomeOrigem(id);
+    if (!nome) return null;
+    if (!linhas.has(nome)) linhas.set(nome, { nome, entraram:0, viraram:0, perdidos:0, honor:[] });
+    return linhas.get(nome);
+  };
+  let semOrigem = 0;
+  for (const l of leads) {
+    const alvos = [pega(l.origem_id), pega(l.origem2_id)].filter(Boolean);
+    if (!alvos.length) { semOrigem++; continue; }
+    for (const a of alvos) {
+      a.entraram++;
+      if (l.etapa === 'fechado') { a.viraram++; if (Number(l.honorario) > 0) a.honor.push(Number(l.honorario)); }
+      if (l.etapa === 'perdido') a.perdidos++;
+    }
+  }
+  if (!linhas.size) return '';
+  const lista = [...linhas.values()].sort((a,b) => b.entraram - a.entraram);
+  const maior = Math.max(1, ...lista.map(x => x.entraram));
+  const media = v => v.length ? rs(v.reduce((a,b)=>a+b,0)/v.length) : '—';
+
+  return `<div class="card"><h2>De onde vem, e o que rende</h2>
+    <p class="nota">Quem tem <b>duas origens</b> — o canal e quem indicou — conta nas duas
+      linhas. Por isso a coluna não soma o total.${semOrigem
+      ? ` <b>${semOrigem}</b> atendimento(s) sem origem nenhuma ficaram de fora.` : ''}</p>
+    <table><thead><tr><th>Origem</th><th>Entraram</th><th>Viraram caso</th><th>Taxa</th>
+      <th>Honorário médio</th></tr></thead>
+    <tbody>${lista.map(x => { const decididos = x.viraram + x.perdidos;
+      const taxa = decididos ? Math.round(x.viraram/decididos*100) : null;
+      return `<tr>
+      <td>${esc(x.nome)}
+        <span class="sub"><span style="display:inline-block;height:6px;border-radius:99px;background:var(--serie);width:${Math.round(x.entraram/maior*120)}px;vertical-align:middle"></span></span></td>
+      <td>${x.entraram}</td><td>${x.viraram}</td>
+      <td>${taxa === null ? '<span class="sub" style="margin:0">ainda decidindo</span>' : taxa + '%'}</td>
+      <td>${media(x.honor)}</td>
+    </tr>`; }).join('')}</tbody></table>
+  </div>`;
+}
+
 async function telaMetricas(){
   /* `timesheet` não tem parceria_id — pendura no caso. Por isso ele não entra aqui:
      somar horas exigiria a lista de casos antes, e o número ainda não tem uso. */
@@ -2254,7 +2302,7 @@ async function telaMetricas(){
     sb.from('caso').select('id,area_id,area,coluna_id,encerrado_em,criado_em,resultado').eq('parceria_id', PAR.id),
     sb.from('processo').select('id,tribunal_sigla,fase,caso_id').eq('parceria_id', PAR.id),
     sb.from('prazo').select('id,situacao,data_fatal,cumprido_em').eq('parceria_id', PAR.id),
-    sb.from('lead').select('id,etapa,criado_em').eq('parceria_id', PAR.id),
+    sb.from('lead').select('id,etapa,criado_em,origem_id,origem2_id,honorario').eq('parceria_id', PAR.id),
     sb.from('lancamento').select('tipo,valor,situacao').eq('parceria_id', PAR.id),
   ]);
   if (cs.error) return erro(cs.error.message);
@@ -2336,6 +2384,8 @@ async function telaMetricas(){
       return e ? e[1] : (l.etapa === 'fechado' ? 'Virou caso' : l.etapa === 'perdido' ? 'Não fechou' : l.etapa);
     })) : ''}
   ${encerrados.length ? barras('Como os casos terminaram', conta(encerrados, c => c.resultado)) : ''}
+
+  ${porOrigem(leads)}
 
   <div class="card"><h2>Dinheiro da parceria</h2>
     <div style="padding:0 18px 16px">
