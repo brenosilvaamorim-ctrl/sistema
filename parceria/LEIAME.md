@@ -148,7 +148,7 @@ pediu `caso_quadro` sem filtro: abriu com 213 casos. **O filtro tem de estar na 
 sempre, em toda tela daqui. Vale para `caso_quadro`, `mensageria_painel`, `bot_conversa` e
 qualquer visão ou tabela que não carregue `parceria_id` na própria linha.
 
-## A Captação daqui, e as três coisas que ela precisou
+## A Captação daqui, e o que ela precisou
 
 A Paula também anota lead por esta porta, e por isso a Captação não é só o quadro:
 
@@ -172,6 +172,17 @@ A Paula também anota lead por esta porta, e por isso a Captação não é só o
   Uma diferença proposital em relação ao escritório: lá o campo "onde" já vem com o endereço
   do escritório; aqui, não. A parceira não lê a tabela `escritorio` (e não deve), e a consulta
   em parceria pode ser no escritório de qualquer um dos dois. Quem marca escreve onde é.
+- **A viabilidade.** A mesma régua e os mesmos pesos do escritório — prazo 3, prova 3, solvência
+  2, testemunha 1, coerência 1 —, porque a nota tem de significar o mesmo dos dois lados. Com a
+  nota igual, o mesmo lead não aparece bom numa porta e ruim na outra.
+- **Pedir documentos.** A mesma lista do escritório, para o cliente receber o mesmo pedido venha
+  ele por qual porta vier. Aqui o texto abre no WhatsApp de **quem está pedindo**, e não sai pela
+  assistente no número do escritório: a função `whatsapp-bot` só atende quem tem linha em
+  `usuario`, e falar pelo número do escritório não é coisa de se dar a quem é de fora sem o Breno
+  decidir. Feito o pedido, o lead vai para "Análise de documentação" e o retorno fica em três dias.
+
+Nas mensagens que saem daqui, quem manda se apresenta pelo **próprio nome** (o de
+`parceria_membro`), e não como "o escritório". A parceira fala por si, no caso que é dos dois.
 
 ## O que não vem para esta porta
 

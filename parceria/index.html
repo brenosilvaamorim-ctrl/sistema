@@ -1579,6 +1579,140 @@ async function chamarFuncao(nome, corpo){
   return j;
 }
 
+/* ------------------------------------------------ pedido de documentos
+   Depois da consulta vem a parte que trava mais caso: a pessoa some porque não sabe
+   o que mandar. O painel monta a lista, deixa editar e abre o WhatsApp com o texto
+   pronto — a mesma lista do escritório, para o cliente receber o mesmo pedido venha
+   ele por qual porta vier.
+
+   Uma diferença que é de propósito, e não falta: no escritório o pedido pode sair
+   pela assistente do WhatsApp, no número do escritório. Aqui não sai — a função
+   `whatsapp-bot` só atende quem tem linha em `usuario`, e falar pelo número do
+   escritório não é coisa que se dê a quem é de fora sem o Breno decidir. Então o
+   texto abre no WhatsApp de quem está pedindo, que é quem assina o pedido. */
+const DOCS = {
+  comuns: ['RG e CPF', 'Comprovante de residência', 'Contracheques dos últimos três meses',
+           'Ficha funcional (ou histórico funcional)'],
+  procedimento: ['Portaria de instauração', 'Citação ou termo de indiciação',
+                 'Relatório final da comissão', 'Decisão ou publicação da penalidade',
+                 'Defesa já apresentada, se houver'],
+  direito: ['Requerimento protocolado, com o número do protocolo',
+            'Despacho ou ofício que negou o pedido',
+            'Publicação no diário oficial, se houve',
+            'Laudo da perícia, quando o caso envolver saúde'],
+};
+const ASSUNTO_PROCEDIMENTO_DOCS = ['PAD ou sindicância', 'Acúmulo de cargos', 'Reintegração ao cargo'];
+let DOCSASSUNTO = {};   // lead_id -> assunto da ficha, buscado só quando o painel abre
+
+window.abrirDocs = async (id) => {
+  const cx = document.getElementById('dc' + id); if (!cx) return;
+  if (cx.style.display === 'block') { cx.style.display = 'none'; return; }
+  cx.style.display = 'block';
+  cx.innerHTML = '<div class="sub" style="margin:0">carregando…</div>';
+
+  /* O assunto fica na ficha da triagem e decide o que vem marcado. Buscado só agora:
+     carregar a ficha de todos os leads encheria a tela à toa. */
+  if (DOCSASSUNTO[id] === undefined) {
+    const { data } = await sb.from('ficha').select('respostas').eq('lead_id', id)
+      .order('criado_em', { ascending: false }).limit(1).maybeSingle();
+    DOCSASSUNTO[id] = data?.respostas?.assunto ?? null;
+  }
+  const assunto = DOCSASSUNTO[id];
+  /* Sem assunto na ficha, marca só os comuns: pedir documento que não serve cansa a
+     pessoa e atrasa o que importa. */
+  const grupo = assunto == null ? null
+    : (ASSUNTO_PROCEDIMENTO_DOCS.includes(assunto) ? 'procedimento' : 'direito');
+
+  const linha = (txt, marcado) => `<label style="display:flex;gap:6px;align-items:flex-start;margin-bottom:4px">
+    <input type="checkbox" class="dc-item-${id}" value="${esc(txt)}" ${marcado ? 'checked' : ''}>
+    <span class="sub" style="margin:0">${esc(txt)}</span></label>`;
+
+  cx.innerHTML = `
+    <div class="sub" style="margin:0 0 6px">${assunto
+      ? 'Assunto na ficha: <b>' + esc(assunto) + '</b>. Marquei o que costuma valer para esse caso.'
+      : 'A ficha não diz o assunto, então marquei só os documentos comuns.'}</div>
+    ${DOCS.comuns.map(t => linha(t, true)).join('')}
+    ${DOCS.procedimento.map(t => linha(t, grupo === 'procedimento')).join('')}
+    ${DOCS.direito.map(t => linha(t, grupo === 'direito')).join('')}
+    <input type="text" id="dc-extra-${id}" placeholder="outro documento (separe por vírgula)"
+           style="font-size:11.4px;width:100%;margin-top:4px">
+    <div class="sub" style="margin:6px 0 0">O texto abre no seu WhatsApp, para você enviar.</div>
+    <div style="margin-top:6px;display:flex;gap:6px;align-items:center">
+      <button class="btn ok" style="font-size:11.4px;padding:4px 8px"
+        onclick="enviarDocs('${id}')">Abrir no WhatsApp</button>
+      <span class="sub" id="dc-st-${id}" style="margin:0"></span></div>`;
+};
+
+/* Monta o texto a partir do que ficou marcado. Quem pede documento depois da consulta
+   é o advogado, e é o nome dele que a mensagem usa. */
+function textoDocs(id, itens){
+  const l = LEADS.find(x => x.id === id);
+  const primeiro = nomeProprio((l?.nome || '').split(' ')[0]);
+  const eu = PAR.eu?.nome ? nomeProprio(PAR.eu.nome) : null;
+  return `Olá, ${primeiro}. ` + (eu ? `Aqui é ${eu}, advocacia.` : 'Aqui é da advocacia.') + `\n\n` +
+    `Para seguir com a análise do seu caso, preciso destes documentos:\n\n` +
+    itens.map(t => '- ' + t).join('\n') +
+    `\n\nPode mandar por aqui mesmo, em foto ou PDF. Se faltar algum, envie o que tiver que a gente completa depois.`;
+}
+
+window.enviarDocs = async (id) => {
+  const st = document.getElementById('dc-st-' + id);
+  const marcados = [...document.querySelectorAll('.dc-item-' + id)].filter(c => c.checked).map(c => c.value);
+  const extra = (document.getElementById('dc-extra-' + id)?.value || '')
+    .split(',').map(t => t.trim()).filter(Boolean);
+  const itens = [...marcados, ...extra];
+  if (!itens.length) { if (st) { st.style.color = 'var(--crit)';
+    st.textContent = ' marque ao menos um documento'; } return; }
+  const l = LEADS.find(x => x.id === id);
+  if (!l?.telefone) { if (st) { st.style.color = 'var(--crit)';
+    st.textContent = ' este lead não tem telefone'; } return; }
+  window.open(linkWa(l.telefone, textoDocs(id, itens)), '_blank', 'noreferrer');
+
+  /* O pedido foi feito: o lead avança e o retorno passa a ser daqui a três dias —
+     é o prazo em que se cobra sem parecer pressa. */
+  const volta = new Date(Date.now() + 3*864e5).toISOString().slice(0,10);
+  await sb.from('lead').update({ etapa: 'documentos', proximo_contato: volta,
+    atualizado_em: new Date().toISOString() }).eq('id', id);
+  telaCaptacao();
+};
+
+/* ------------------------------------------------------ viabilidade
+   A mesma régua do escritório, com os mesmos pesos: a nota não é opinião, é a soma
+   do que se verificou. Vale para a parceria porque é aqui que se decide se o caso
+   entra — e a nota tem de significar o mesmo dos dois lados, senão o mesmo lead
+   apareceria bom numa porta e ruim na outra. */
+const VIAB = [
+  ['prazo',  'Dentro do prazo (prescrição e decadência)', 3],
+  ['prova',  'Tem prova documental do essencial',         3],
+  ['test',   'Tem testemunha',                            1],
+  ['solv',   'A parte contrária tem como pagar',          2],
+  ['claro',  'O relato é coerente e sem contradição',     1],
+];
+const notaViab = v => VIAB.reduce((a,[k,,peso]) => a + (v?.[k] ? peso : 0), 0);
+const corNota = n => n >= 8 ? 'good' : (n >= 5 ? 'ser' : 'crit');
+
+window.abrirViab = (id) => {
+  const el = document.getElementById('vb'+id); if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+};
+
+window.salvarViab = async (id) => {
+  const l = LEADS.find(x => x.id === id); if (!l) return;
+  const v = {};
+  VIAB.forEach(([k]) => { v[k] = !!document.getElementById('vb-'+k+'-'+id)?.checked; });
+  const valor = document.getElementById('vb-valor-'+id)?.value;
+  if (valor) v.valor = numOuNulo(valor);
+  const obs = document.getElementById('vb-obs-'+id)?.value?.trim();
+  if (obs) v.obs = obs;
+  const n = notaViab(v);
+  const st = document.getElementById('vb-st-'+id);
+  if (st) { st.style.color = 'var(--i3)'; st.textContent = 'guardando…'; }
+  const { error } = await sb.from('lead').update({ viabilidade: v, nota: n }).eq('id', id);
+  if (error) { if (st) { st.style.color = 'var(--crit)'; st.textContent = 'erro: ' + error.message; } return; }
+  l.viabilidade = v; l.nota = n;
+  if (st) { st.style.color = 'var(--good)'; st.textContent = 'nota ' + n + ' de 10'; }
+};
+
 /* --------------------------------------------------- consulta marcada
    Igual ao escritório: "consulta marcada" sem dia e hora não chega à agenda, e o
    que não está na agenda é o que se esquece. Aqui a consulta vira compromisso de
@@ -1686,7 +1820,7 @@ function cartaoLead(l){
     ${l.resumo ? `<div class="sub" style="margin-bottom:6px">${esc(String(l.resumo).slice(0,130))}</div>` : ''}
     ${d !== null ? `<span class="pill ${d<0?'crit':(d<=1?'ser':'good')}">contato ${br(l.proximo_contato)}</span>` : ''}
     ${parado > 7 ? `<span class="pill ser">parado há ${parado} dias</span>` : ''}
-    ${l.nota != null ? `<span class="pill ${l.nota>=7?'good':(l.nota>=4?'warn':'crit')}">viabilidade ${l.nota}/10</span>` : ''}
+    ${l.nota != null ? `<span class="pill ${corNota(l.nota)}">viabilidade ${l.nota}/10</span>` : ''}
     ${(() => { const e = LEADEV[l.id]; return e
       ? `<div class="pill serie" title="${esc(e.local || e.link_sala || 'sem local informado')}"
            >consulta ${rotConsulta(e)}${ROT_FORMATO[e.formato] ? ' · ' + ROT_FORMATO[e.formato] : ''}</div>` : ''; })()}
@@ -1706,14 +1840,20 @@ function cartaoLead(l){
         ${ETAPAS.map(([k,r])=>`<option value="${k}" ${l.etapa===k?'selected':''}>${r}</option>`).join('')}
         <option value="perdido">Não fechou</option>
       </select>
+      <button class="btn" style="font-size:11.4px;padding:4px 8px"
+        onclick="abrirViab('${l.id}')">Viabilidade</button>
       <button class="btn ${LEADEV[l.id] ? '' : 'ok'}" style="font-size:11.4px;padding:4px 8px"
         title="marca dia e hora e joga a consulta na agenda"
         onclick="abrirConsulta('${l.id}')">${LEADEV[l.id] ? 'Remarcar' : 'Marcar consulta'}</button>
       ${LEADEV[l.id] ? `<button class="btn" style="font-size:11.4px;padding:4px 8px"
         onclick="desmarcarConsulta('${l.id}')">Desmarcar</button>` : ''}
+      ${['consulta','documentos'].includes(l.etapa) ? `<button class="btn" style="font-size:11.4px;padding:4px 8px"
+        title="monta a lista de documentos e abre o WhatsApp com o texto pronto"
+        onclick="abrirDocs('${l.id}')">Pedir documentos</button>` : ''}
       <button class="btn" style="font-size:11.4px;padding:4px 8px"
         onclick="leadViraCaso('${l.id}')">Virar caso</button>
     </div>
+    <div id="dc${l.id}" style="display:none;margin-top:8px;border-top:1px solid var(--ln);padding-top:8px"></div>
     ${(() => { const e = LEADEV[l.id] || null; const d = e ? String(e.inicio) : '';
       return `<div id="cs${l.id}" style="display:none;margin-top:8px;border-top:1px solid var(--ln);padding-top:8px">
       <div class="sub" style="margin:0 0 5px">A consulta entra na Agenda da parceria como
@@ -1740,6 +1880,18 @@ function cartaoLead(l){
           onclick="agendarConsulta('${l.id}')">${e ? 'Guardar a nova data' : 'Marcar e pôr na agenda'}</button>
         <span class="sub" id="cs-st-${l.id}" style="margin:0"></span></div>
     </div>`; })()}
+    <div id="vb${l.id}" style="display:none;margin-top:8px;border-top:1px solid var(--ln);padding-top:8px">
+      ${VIAB.map(([k,r,peso])=>`<label style="display:flex;gap:6px;align-items:flex-start;margin-bottom:4px">
+        <input type="checkbox" id="vb-${k}-${l.id}" ${l.viabilidade?.[k]?'checked':''}>
+        <span class="sub" style="margin:0">${r} <b>(${peso})</b></span></label>`).join('')}
+      <input type="text" id="vb-valor-${l.id}" placeholder="valor estimado da causa"
+             value="${l.viabilidade?.valor ?? ''}" style="font-size:11.4px;width:100%;margin-top:4px">
+      <input type="text" id="vb-obs-${l.id}" placeholder="o que falta para decidir"
+             value="${esc(l.viabilidade?.obs || '')}" style="font-size:11.4px;width:100%;margin-top:4px">
+      <div style="margin-top:6px;display:flex;gap:6px;align-items:center">
+        <button class="btn ok" style="font-size:11.4px;padding:4px 8px" onclick="salvarViab('${l.id}')">Guardar</button>
+        <span class="sub" id="vb-st-${l.id}" style="margin:0"></span></div>
+    </div>
   </div>`;
 }
 
