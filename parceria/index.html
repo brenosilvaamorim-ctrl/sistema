@@ -121,7 +121,8 @@ textarea{width:100%;resize:vertical;line-height:1.45}
   border:1px solid var(--ln);background:var(--s1);white-space:pre-wrap;margin:6px 0}
 .bolha.meu{margin-left:auto;background:var(--serie);color:#fff;border-color:var(--serie)}
 .bolha .quem{display:block;font-size:11px;opacity:.75;margin-top:3px;color:inherit}
-.mov{list-style:none;margin:0;padding:0}
+.mov{list-style:none;margin:0;padding:0;color:var(--ink)}
+.pzpainel input,.pzpainel select{width:100%;min-width:0}
 .mov li{padding:7px 0;border-bottom:1px solid var(--ln);font-size:13.2px;line-height:1.45}
 .mov li:last-child{border-bottom:0}
 .mov .q{font-weight:600}
@@ -2784,6 +2785,7 @@ window.abrirPz = async (id, redesenhando) => {
 
   const linha = document.createElement('tr');
   linha.id = 'pzp-' + id;
+  linha.className = 'pzpainel';
   linha.innerHTML = `<td colspan="${tr.children.length}" style="background:var(--s0);padding:14px 18px">
     <div style="display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:18px">
       <div>
@@ -2805,7 +2807,7 @@ window.abrirPz = async (id, redesenhando) => {
           ${campo('O que precisa ser feito', `<input type="text" id="pz-${id}-prov" value="${esc(z.providencia || '')}">`, true)}
           ${campo('Vence em', `<input type="date" id="pz-${id}-data" value="${String(z.data_fatal).slice(0,10)}">`)}
           ${campo('Prazo de', `<span style="display:flex;gap:6px;align-items:center">
-              <input type="number" id="pz-${id}-dias" min="0" value="${z.dias ?? ''}" style="width:70px">
+              <input type="number" id="pz-${id}-dias" min="0" value="${z.dias ?? ''}" style="width:70px;flex:none">
               <select id="pz-${id}-uteis"><option value="1" ${z.dias_uteis !== false ? 'selected' : ''}>dias úteis</option>
                 <option value="0" ${z.dias_uteis === false ? 'selected' : ''}>dias corridos</option></select></span>`)}
           ${campo('Caso', `<select id="pz-${id}-caso" onchange="trocarCasoPz('${id}')"><option value="">— sem caso —</option>${opcoesCasoPz(z.caso_id)}</select>`)}
@@ -2832,7 +2834,8 @@ window.abrirPz = async (id, redesenhando) => {
   const { data, error } = await sb.from('auditoria').select('*')
     .eq('parceria_id', PAR.id).eq('tabela', 'prazo').eq('registro_id', id).order('criado_em', { ascending: false }).limit(40);
   const alvo = document.getElementById('pz-' + id + '-hist'); if (!alvo) return;
-  const movs = (data || []).map(a => descreverMov(a, { semAlvo: true })).filter(Boolean);
+  const movs = (data || []).map(a => descreverMov(a, { semAlvo: true, semCaso: true })).filter(Boolean);
+  alvo.className = '';
   alvo.innerHTML = error ? 'não deu para ler o histórico: ' + esc(error.message)
     : movs.length ? `<ul class="mov">${movs.join('')}</ul>` : 'Nada registrado ainda.';
 };
@@ -2950,7 +2953,7 @@ function verboMov(a){
   if (a.acao === 'delete') return 'apagou';
   const x = a.antes || {}, y = a.depois || {};
   if (a.tabela === 'prazo' && x.situacao !== y.situacao) {
-    if (y.situacao === 'confirmado') return x.situacao === 'cumprido' ? 'desfez o cumprimento de' : 'confirmou';
+    if (y.situacao === 'confirmado') return x.situacao === 'cumprido' ? 'desfez o cumprimento' : 'confirmou';
     if (y.situacao === 'cumprido') return 'marcou como cumprido';
     if (y.situacao === 'cancelado') return 'descartou';
     if (y.situacao === 'sugerido') return 'reabriu';
@@ -2970,14 +2973,16 @@ function descreverMov(a, op = {}){
     if (!mud.length) return '';
   }
   const tab = ROT_TAB[a.tabela] || a.tabela;
-  const alvo = op.semAlvo ? '' : ` ${a.acao === 'insert' && ['ficha','minuta'].includes(a.tabela) ? 'uma' : 'o'} ${tab}`
+  const verbo = verboMov(a);
+  const art = verbo === 'desfez o cumprimento' ? 'do' : a.acao === 'insert' && ['ficha','minuta'].includes(a.tabela) ? 'uma' : 'o';
+  const alvo = op.semAlvo ? '' : ` ${art} ${tab}`
     + (a.descricao ? ` <b>${esc(a.descricao.length > 80 ? a.descricao.slice(0,80) + '…' : a.descricao)}</b>` : '');
   const caso = !op.semCaso && a.caso_id && a.tabela !== 'caso' && (PZ.casos.find(c => c.id === a.caso_id)?.titulo || MOV_CASOS[a.caso_id])
     ? ` · <a class="lnk" href="#/caso/${a.caso_id}">${esc(PZ.casos.find(c => c.id === a.caso_id)?.titulo || MOV_CASOS[a.caso_id])}</a>` : '';
   const det = mud.slice(0, 6).map(k => `${ROT_CAMPO[k] || k.replace(/_/g, ' ')}: ${esc(valorMov(k, x[k]))} → <b>${esc(valorMov(k, y[k]))}</b>`);
   if (mud.length > 6) det.push(`e mais ${mud.length - 6} campos`);
   const quem = (a.usuario_nome || 'alguém').replace(' (parceria)', '');
-  return `<li><span class="q">${esc(quem)}</span> ${verboMov(a)}${alvo}${caso}
+  return `<li><span class="q">${esc(quem)}</span> ${verbo}${alvo}${caso}
     <span class="h">${horaBr(a.criado_em)}</span>
     ${det.length ? `<span class="d">${det.join(' · ')}</span>` : ''}</li>`;
 }
