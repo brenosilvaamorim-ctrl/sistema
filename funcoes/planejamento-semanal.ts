@@ -31,11 +31,11 @@ const corta = (s: unknown, n: number) => {
   const t = String(s ?? '').replace(/\s+/g, ' ').trim();
   return t.length > n ? t.slice(0, n) + '…' : t;
 };
-// Hora de Petrolina (UTC−3, sem horário de verão) de um timestamp do banco.
-const horaLocal = (ts: string) =>
-  new Date(Date.parse(ts) - 3 * 3600e3).toISOString().slice(11, 16);
-const dataLocal = (ts: string) =>
-  new Date(Date.parse(ts) - 3 * 3600e3).toISOString().slice(0, 10);
+// A agenda guarda a hora de Petrolina como se fosse UTC (a audiência das 9h05 está
+// gravada `09:05+00:00`) — é assim que a tela lê, recortando o texto. Aqui também:
+// converter fuso deslocaria tudo três horas para trás.
+const horaLocal = (ts: string) => String(ts).slice(11, 16);
+const dataLocal = (ts: string) => String(ts).slice(0, 10);
 
 /* ---------------------------------------------------------------- quem chama
    Responde com a chave de serviço, que ignora a RLS: a conferência é feita aqui dentro,
@@ -180,13 +180,13 @@ Deno.serve(async (req) => {
       q(adm.from('evento')
         .select('id,tipo,titulo,inicio,fim,dia_inteiro,local,urgencia,caso:caso_id(id,titulo),cliente:cliente_id(nome)')
         .eq('escritorio_id', esc).not('situacao', 'in', '("concluida","cancelada")')
-        .gte('inicio', inicio + 'T03:00:00Z').lt('inicio', somaDias(fim, 1) + 'T03:00:00Z')
+        .gte('inicio', inicio + 'T00:00:00Z').lt('inicio', somaDias(fim, 1) + 'T00:00:00Z')
         .order('inicio').limit(80)),
       // tarefas que já passaram da data e continuam abertas
       q(adm.from('evento')
         .select('id,tipo,titulo,inicio,caso:caso_id(id,titulo),cliente:cliente_id(nome)')
         .eq('escritorio_id', esc).eq('tipo', 'tarefa').not('situacao', 'in', '("concluida","cancelada")')
-        .gte('inicio', ha30 + 'T03:00:00Z').lt('inicio', inicio + 'T03:00:00Z')
+        .gte('inicio', ha30 + 'T00:00:00Z').lt('inicio', inicio + 'T00:00:00Z')
         .order('inicio').limit(25)),
       q(adm.from('intimacao')
         .select('id,data_disponibilizacao,tribunal_sigla,orgao,tipo_comunicacao,numero_formatado,texto,caso:caso_id(id,titulo)')
