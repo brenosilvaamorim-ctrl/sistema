@@ -135,7 +135,7 @@ informações não se misturam.** Nada do escritório atravessa.
 O menu tem os mesmos grupos do sistema do escritório, na mesma ordem de pensamento, para quem
 sabe andar lá saber andar aqui:
 
-- **Meu dia** — Início, Prazos, Agenda (com calendário do mês), Publicações
+- **Meu dia** — Início, Prazos, Agenda (com calendário do mês), Publicações, Movimentação
 - **Pessoas** — Captação (quadro), Clientes
 - **Casos** — Casos (quadro), Processos, Andamento
 - **Conversas** — Avisar o cliente, Recados, WhatsApp
@@ -148,6 +148,20 @@ mostrar o escritório inteiro dentro da porta da parceria. Foi o que aconteceu q
 pediu `caso_quadro` sem filtro: abriu com 213 casos. **O filtro tem de estar na consulta**,
 sempre, em toda tela daqui. Vale para `caso_quadro`, `mensageria_painel`, `bot_conversa` e
 qualquer visão ou tabela que não carregue `parceria_id` na própria linha.
+
+## Prazos e movimentação (15/11/2026, banco/63)
+
+**Prazos.** Cada prazo abre um painel com o trecho da publicação de onde o robô tirou a data
+(e a publicação inteira, se preciso), todos os campos para corrigir, e as ações que a situação
+permite: confirmar, cumprir, desfazer o cumprido, descartar e reabrir. **Descartar exige o
+motivo** (`prazo.motivo_descarte`): num sistema a dois, o porquê é metade da informação — sem
+ele, o outro advogado precisa reler a publicação para confiar no descarte. Nada some.
+
+**Movimentação.** Lê a `auditoria`, que o gatilho `anotar()` escreve a cada gravação, com o
+nome de quem estava logado. O banco/63 deu a ela `parceria_id` e `caso_id` (o gatilho os deduz
+da linha, do caso ou do processo), uma política para a parceira ler só o que leva o carimbo, e
+gatilho em mais dez tabelas. A tela filtra por `parceria_id` na consulta — a mesma armadilha de
+sempre. A publicação (`intimacao`) não é anotada: quem a inclui é o robô, centenas por semana.
 
 ## A Captação daqui, e o que ela precisou
 
