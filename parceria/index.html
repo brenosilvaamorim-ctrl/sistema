@@ -2974,7 +2974,9 @@ function descreverMov(a, op = {}){
   }
   const tab = ROT_TAB[a.tabela] || a.tabela;
   const verbo = verboMov(a);
-  const art = verbo === 'desfez o cumprimento' ? 'do' : a.acao === 'insert' && ['ficha','minuta'].includes(a.tabela) ? 'uma' : 'o';
+  /* O artigo concorda com o nome: "a parte", "a peça", "as horas". */
+  const art = verbo === 'desfez o cumprimento' ? 'do'
+    : a.tabela === 'timesheet' ? 'as' : ['parte','minuta','ficha'].includes(a.tabela) ? 'a' : 'o';
   const alvo = op.semAlvo ? '' : ` ${art} ${tab}`
     + (a.descricao ? ` <b>${esc(a.descricao.length > 80 ? a.descricao.slice(0,80) + '…' : a.descricao)}</b>` : '');
   const caso = !op.semCaso && a.caso_id && a.tabela !== 'caso' && (PZ.casos.find(c => c.id === a.caso_id)?.titulo || MOV_CASOS[a.caso_id])
@@ -3030,7 +3032,7 @@ async function telaMovimentacao(){
       <input type="search" placeholder="procurar…" value="${esc(MOV.busca)}"
         onchange="MOV.busca=this.value;telaMovimentacao()">
     </div>
-    ${linhas.length ? Object.entries(porDia).map(([d, itens]) => `<h2 style="text-transform:capitalize">${esc(d)}</h2>
+    ${linhas.length ? Object.entries(porDia).map(([d, itens]) => `<h2>${esc(d.charAt(0).toUpperCase() + d.slice(1))}</h2>
       <ul class="mov" style="padding:2px 18px 10px">${itens.join('')}</ul>`).join('')
       : vazio('Nada registrado com esses filtros.')}
     ${todas.length === 600 ? '<p class="nota">Mostrando as 600 mais recentes; estreite o período para ver o resto.</p>' : ''}
