@@ -165,6 +165,33 @@ cálculo sem a decisão do titular na tela. Não usa chave nem IA: só fontes p�
 **Se uma fonte falhar** (o site mudou ou ficou fora do ar), o registro mostra qual. As outras
 seguem normalmente, e a que falhou busca desde a última vez em que deu certo na rodada seguinte.
 
+## Plano da semana (função `planejamento-semanal`)
+
+Todo **domingo às 18h de Petrolina** monta o plano da semana que começa. Lê prazos (vencidos,
+da semana e da seguinte), agenda, tarefas atrasadas, publicações a conferir, prescrições,
+processos com espera vencendo, casos sem processo parados há mais de 30 dias, minutas em
+rascunho, leads sem retorno, contas a receber e a pagar, assinaturas paradas, projetos e o
+que ficou sem marcar no plano anterior. Pede ao Claude (`ANTHROPIC_API_KEY`; tenta o Opus e
+cai para o Sonnet) que distribua tudo em dias, grava em `planejamento` e manda por e-mail
+(`RESEND_API_KEY`, `ALERTA_EMAIL_PARA`). A tela mostra o plano no **Início**, com caixa de
+"feito" por item — marcar ali não dá baixa em prazo nem em compromisso.
+
+**Quem pode chamar:** a mesma conferência das outras — chave dos robôs (o agendador), chave
+de serviço ou login ativo do escritório. Pela tela, o botão *Refazer com os dados de agora*
+chama com o login e **não** manda e-mail (`?enviar=1` manda). `?seco=1` devolve só os dados
+juntados, sem chamar o Claude e sem gravar: é o jeito barato de conferir o que ela lê.
+
+**Instalar:**
+
+1. **Banco** — SQL Editor → rodar `banco/62_planejamento_semanal.sql`. Cria a tabela e agenda
+   a tarefa copiando o comando da tarefa do `aviso-prazos` (que já manda a chave no cabeçalho).
+2. **Função** — Deploy a new function → Via Editor, nome `planejamento-semanal`, colando
+   `funcoes/planejamento-semanal.ts`. **Desligue "Verify JWT"**, como no `aviso-prazos`: o
+   agendador chama com a chave pública, que não é JWT; quem confere é o código.
+3. **Testar** — no Início, *Montar agora*. Leva de 30 a 90 segundos.
+
+A tela publicada antes do passo 1 não quebra: sem a tabela, o quadro só não aparece.
+
 ## Conector do Claude (função `mcp-escritorio`)
 
 Deixa o Claude (claude.ai e Claude Desktop) consultar o sistema numa conversa: buscar

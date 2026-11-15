@@ -604,12 +604,78 @@ window.assinouAgora = async (id, data) => {
   telaInicio();
 };
 
+/* O plano da semana — montado todo domingo pela função planejamento-semanal
+   (banco/62_planejamento_semanal.sql). Marcar um item guarda só o id dele em `feitos`:
+   não dá baixa em prazo nem em evento, porque o plano é sugestão e a baixa continua
+   sendo feita onde sempre foi. O que ficar sem marcar volta no plano do domingo seguinte. */
+let INIPLANO = null;
+const DIASEM = ['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
+function quadroPlano(h){
+  const P = INIPLANO;
+  if (!P) return `<h2>A semana</h2>
+    <p class="nota">Ainda não há plano para esta semana. Ele é montado sozinho todo domingo às 18h,
+      com prazos, agenda, publicações, leads e financeiro — e chega também por e-mail.</p>
+    <div style="padding:0 18px 18px"><button class="btn ok" onclick="refazerPlano(this)">Montar agora</button></div>`;
+  const pl = P.plano || {}, feitos = new Set(P.feitos || []);
+  const item = i => `<label class="item" style="display:flex;gap:8px;align-items:flex-start;margin:4px 0;cursor:pointer;${feitos.has(i.id)?'opacity:.45;text-decoration:line-through':''}">
+      <input type="checkbox" ${feitos.has(i.id)?'checked':''} onchange="planoFeito('${i.id}',this)" style="margin-top:4px">
+      <span>${i.hora?`<b>${esc(i.hora)}</b> · `:''}${esc(i.texto)}${i.link?` <a class="lnk" href="${esc(i.link)}" onclick="event.stopPropagation()">abrir</a>`:''}</span></label>`;
+  const dias = (pl.dias||[]).map(d => {
+    const passou = d.data < h, eHoje = d.data === h;
+    const nome = DIASEM[new Date(d.data+'T12:00:00Z').getUTCDay()];
+    const corpo = `${d.foco?`<div class="sub" style="margin-bottom:4px">${esc(d.foco)}</div>`:''}
+      ${(d.itens||[]).map(item).join('') || '<div class="sub">Livre.</div>'}`;
+    const feitosDia = (d.itens||[]).filter(i => feitos.has(i.id)).length;
+    return passou
+      ? `<details style="margin:10px 0"><summary class="sub" style="cursor:pointer">${nome}, ${br(d.data)} — ${feitosDia} de ${(d.itens||[]).length} feitos</summary>${corpo}</details>`
+      : `<div style="margin:12px 0;${eHoje?'border-left:3px solid var(--good);padding-left:10px':''}">
+          <b>${nome}, ${br(d.data)}${eHoje?' — hoje':''}</b>${corpo}</div>`;
+  }).join('');
+  return `<h2>A semana, de ${br(P.inicio)} a ${br(P.fim)}</h2>
+    ${pl.resumo?`<p class="nota">${esc(pl.resumo)}</p>`:''}
+    <div style="padding:0 18px 18px">
+      ${(pl.alertas||[]).length?`<div style="border-left:3px solid var(--crit);padding:2px 10px;margin-bottom:10px">
+        <b style="color:var(--crit)">Não pode escorregar</b>${pl.alertas.map(item).join('')}</div>`:''}
+      ${dias}
+      ${(pl.adiantar||[]).length?`<details style="margin-top:10px"><summary style="cursor:pointer"><b>Se sobrar tempo, adiantar</b> <span class="sub" style="display:inline">(${pl.adiantar.length})</span></summary>${pl.adiantar.map(item).join('')}</details>`:''}
+      <p class="sub" style="margin-top:12px">Montado em ${br(P.gerado_em)} às ${String(new Date(P.gerado_em).toLocaleTimeString('pt-BR')).slice(0,5)}. É sugestão: marcar aqui não dá baixa em prazo nem em compromisso.
+        <button class="btn" style="margin-left:6px" onclick="refazerPlano(this)">Refazer com os dados de agora</button></p>
+    </div>`;
+}
+window.planoFeito = async (itemId, el) => {
+  const P = INIPLANO; if (!P) return;
+  const s = new Set(P.feitos || []);
+  el.checked ? s.add(itemId) : s.delete(itemId);
+  const feitos = [...s];
+  const { error } = await sb.from('planejamento').update({ feitos }).eq('id', P.id);
+  if (error){ el.checked = !el.checked; return alert('Não foi possível: ' + error.message); }
+  P.feitos = feitos;
+  const lb = el.closest('.item');
+  if (lb){ lb.style.opacity = el.checked ? '.45' : ''; lb.style.textDecoration = el.checked ? 'line-through' : ''; }
+};
+window.refazerPlano = async (btn) => {
+  if (INIPLANO && !confirm('Refazer o plano com os dados de agora? As marcações de feito desta versão se perdem.')) return;
+  const alvo = document.getElementById('iniplano');
+  const parar = relogio(alvo, 'Lendo prazos, agenda, publicações, leads e financeiro e montando a semana…');
+  let j;
+  try {
+    const { data:{session} } = await sb.auth.getSession();
+    const r = await fetch(SB_URL + '/functions/v1/planejamento-semanal', { method:'POST',
+      headers:{ apikey: SB_KEY, Authorization:'Bearer '+session.access_token, 'content-type':'application/json' },
+      body: '{}' });
+    j = await r.json();
+  } catch (e) { j = { erro: 'A conexão caiu no meio (' + e.message + '). Tente de novo.' }; }
+  parar();
+  if (j.erro){ alvo.innerHTML = `<h2>A semana</h2><p class="nota">Não deu: ${esc(j.erro)}</p>`; return; }
+  telaInicio();
+};
+
 async function telaInicio(){
   const h = hoje();
   const d7  = new Date(Date.now() + 7*864e5).toISOString().slice(0,10);
   const d30 = new Date(Date.now() - 30*864e5).toISOString().slice(0,10);
   const mes = h.slice(0,7);
-  const [pz, ev, itm, lc, cs, asn] = await Promise.all([
+  const [pz, ev, itm, lc, cs, asn, pla] = await Promise.all([
     sb.from('prazo').select('id,descricao,data_fatal,situacao,caso:caso_id(id,titulo)')
       .in('situacao',['sugerido','confirmado']).order('data_fatal'),
     sb.from('evento').select('id,titulo,tipo,inicio,local,link_sala,situacao,caso:caso_id(id,titulo),cliente:cliente_id(nome)')
@@ -620,8 +686,12 @@ async function telaInicio(){
     sb.from('assinatura')
       .select('id,titulo,tipo,link,plataforma,enviado_em,caso:caso_id(id,titulo,cliente:cliente_id(nome,whatsapp,telefone))')
       .is('assinado_em', null).order('enviado_em'),
+    sb.from('planejamento').select('id,semana_de,inicio,fim,plano,feitos,gerado_em')
+      .gte('fim', h).order('semana_de').limit(1),
   ]);
   if (pz.error) return erro(pz.error.message);
+  /* Se a tabela ainda não existir (banco/62 não rodado), o quadro só não aparece. */
+  INIPLANO = pla.error ? undefined : ((pla.data||[])[0] || null);
   const PZ = pz.data||[], EV = ev.data||[], LC = lc.data||[];
   const dia = e => String(e.inicio).slice(0,10);
   const vencidos  = PZ.filter(p => p.data_fatal <  h);
@@ -706,6 +776,7 @@ async function telaInicio(){
                    :'<span class="sub" style="display:inline">sem caso vinculado</span>'}</td>
       </tr>`).join('')}</tbody></table>
     </details></div>`:''}
+  ${INIPLANO === undefined ? '' : `<div class="card" id="iniplano">${quadroPlano(h)}</div>`}
   <div class="card"><h2>Os próximos sete dias</h2>
     <div style="padding:0 18px 18px">
       ${(pr7.map(linhaPz).join('') + ev7.map(linhaEv).join(''))
