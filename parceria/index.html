@@ -121,6 +121,12 @@ textarea{width:100%;resize:vertical;line-height:1.45}
   border:1px solid var(--ln);background:var(--s1);white-space:pre-wrap;margin:6px 0}
 .bolha.meu{margin-left:auto;background:var(--serie);color:#fff;border-color:var(--serie)}
 .bolha .quem{display:block;font-size:11px;opacity:.75;margin-top:3px;color:inherit}
+.mov{list-style:none;margin:0;padding:0}
+.mov li{padding:7px 0;border-bottom:1px solid var(--ln);font-size:13.2px;line-height:1.45}
+.mov li:last-child{border-bottom:0}
+.mov .q{font-weight:600}
+.mov .h{color:var(--i3);font-size:11.3px;margin-left:6px;white-space:nowrap}
+.mov .d{display:block;color:var(--i2);font-size:11.8px;margin-top:2px}
 .tl{list-style:none;margin:0;padding:6px 18px 20px}
 .tl li{position:relative;padding:0 0 18px 26px;border-left:2px solid var(--ln)}
 .tl li:last-child{border-left-color:transparent;padding-bottom:4px}
@@ -183,7 +189,7 @@ function telaLogin(msg){
 /* Os mesmos grupos do sistema do escritório, na mesma ordem de pensamento: o dia,
    as pessoas, os casos, a conversa e o dinheiro. Quem sabe andar lá sabe andar aqui. */
 const GRUPOS = [
-  ['Meu dia',   [['inicio','Início'],['prazos','Prazos'],['agenda','Agenda'],['publicacoes','Publicações']]],
+  ['Meu dia',   [['inicio','Início'],['prazos','Prazos'],['agenda','Agenda'],['publicacoes','Publicações'],['movimentacao','Movimentação']]],
   ['Pessoas',   [['captacao','Captação'],['clientes','Clientes']]],
   ['Casos',     [['casos','Casos'],['processos','Processos'],['andamento','Andamento']]],
   ['Escrever',  [['playbook','Playbook'],['ementas','Ementas']]],
@@ -296,7 +302,7 @@ async function telaInicio(){
     ${prazos.length ? `<table><thead><tr><th>Fatal</th><th>Providência</th><th>Caso</th><th></th></tr></thead><tbody>
       ${prazos.map(p => { const d = dias(p.data_fatal), [cor, rot] = sit(d);
         return `<tr><td class="dt">${br(p.data_fatal)}<span class="sub">${d<0?Math.abs(d)+' dias atrás':d+' dias'}</span></td>
-        <td>${esc(p.descricao)}</td>
+        <td><a class="lnk" href="#/prazos?abrir=${p.id}">${esc(p.descricao)}</a></td>
         <td>${p.caso_id ? `<a class="lnk" href="#/caso/${p.caso_id}">${esc(tituloCaso(p.caso_id))}</a>` : '—'}</td>
         <td><span class="pill ${cor}">${rot}</span></td></tr>`; }).join('')}
     </tbody></table>` : vazio('Nenhum prazo nos próximos 30 dias.')}
@@ -684,9 +690,15 @@ async function telaCaso(id){
   <div class="card"><h2>Prazos</h2>
     ${prazos.length ? `<table><tbody>${prazos.map(p => { const d = dias(p.data_fatal), [cor, rot] = sit(d);
       return `<tr><td class="dt" style="width:110px">${br(p.data_fatal)}</td>
-      <td>${esc(p.descricao)}${p.providencia?`<span class="sub">${esc(p.providencia)}</span>`:''}</td>
-      <td style="width:110px">${p.situacao==='cumprido'?'<span class="pill good">cumprido</span>':`<span class="pill ${cor}">${rot}</span>`}</td>
+      <td><a class="lnk" href="#/prazos?abrir=${p.id}" title="abrir para conferir, corrigir ou descartar">${esc(p.descricao)}</a>
+        ${p.providencia?`<span class="sub">${esc(p.providencia)}</span>`:''}
+        ${p.situacao==='cancelado'&&p.motivo_descarte?`<span class="sub">descartado: ${esc(p.motivo_descarte)}</span>`:''}</td>
+      <td style="width:120px">${p.situacao==='cumprido'?'<span class="pill good">cumprido</span>'
+        :p.situacao==='cancelado'?'<span class="pill cin">descartado</span>'
+        :p.situacao==='sugerido'?'<span class="pill warn">a conferir</span>'
+        :`<span class="pill ${cor}">${rot}</span>`}</td>
       </tr>`; }).join('')}</tbody></table>` : vazio('Sem prazos.')}
+    <div style="padding:0 18px 16px"><a class="lnk" href="#/prazos">lançar ou conferir prazos</a></div>
   </div>
 
   <div class="card"><h2>Dinheiro deste caso</h2>
@@ -855,8 +867,29 @@ async function telaCaso(id){
       <button class="btn" type="submit">Encerrar o caso</button>
       <span id="enc-st" class="sub" style="margin:0"></span>
     </form></div>`}
+
+  <div class="card"><h2>Movimentação deste caso</h2>
+    <p class="nota">Quem incluiu, alterou, cumpriu ou apagou o quê neste caso, dos dois lados.
+      <a class="lnk" href="#/movimentacao">Ver a da parceria inteira</a>.</p>
+    <div id="mov-caso" style="padding:0 18px 14px" class="sub">carregando…</div></div>
   </main>` + rodape();
   const f = document.getElementById('fio'); if (f) f.scrollTop = f.scrollHeight;
+  movimentacaoDoCaso(caso.id, caso.titulo, procs);
+}
+
+/* Carrega depois de a página estar na tela: o histórico é o último card e não deve
+   atrasar o resto. O filtro pela parceria vai na consulta, não só na RLS — para o login
+   do escritório a RLS deixaria passar a auditoria inteira. */
+async function movimentacaoDoCaso(casoId, titulo, procs){
+  const { data, error } = await sb.from('auditoria').select('*')
+    .eq('parceria_id', PAR.id).eq('caso_id', casoId).order('criado_em', { ascending: false }).limit(80);
+  const alvo = document.getElementById('mov-caso'); if (!alvo) return;
+  if (error) { alvo.textContent = 'não deu para ler: ' + error.message; return; }
+  MOV_CASOS[casoId] = titulo;
+  PZ.procs = procs.map(p => ({ id: p.id, numero_formatado: p.numero_formatado || p.numero_cnj, caso_id: casoId }));
+  const itens = (data || []).map(a => descreverMov(a, { semCaso: true })).filter(Boolean);
+  alvo.className = '';
+  alvo.innerHTML = itens.length ? `<ul class="mov">${itens.join('')}</ul>` : '<span class="sub">Nada registrado ainda.</span>';
 }
 
 /* Nenhuma destas grava escritorio_id: o gatilho do banco/54 o deduz do caso. */
@@ -1261,7 +1294,7 @@ function calendario(mes, eventos, prazos){
         return `<div class="dia ${c.dia === hoje() ? 'hoje' : ''}"><span class="n">${c.n}</span>
           ${doDia.map(e => `<a class="${passou?'pas':''}" href="#/agenda?m=${mes}"
              title="${esc(e.titulo)}">${String(e.inicio).slice(11,16)} ${esc(e.titulo)}</a>`).join('')}
-          ${pzDia.map(z => `<a class="${passou?'pas':''}" href="#/casos"
+          ${pzDia.map(z => `<a class="${passou?'pas':''}" href="#/prazos?abrir=${z.id}"
              title="prazo: ${esc(z.descricao||'')}">⏳ ${esc(z.descricao||'prazo')}</a>`).join('')}
         </div>`;
       }).join('')}
@@ -2563,96 +2596,442 @@ window.moverLead = async (id, etapa) => {
 
 /* O prazo nasce SUGERIDO: quem o leu foi o robô, lendo a publicação do Diário.
    Confirmar é ato de advogado, e é o que o torna um compromisso do escritório —
-   por isso a tela separa o que ainda não foi conferido do que já foi. */
-async function telaPrazos(){
+   por isso a tela separa o que ainda não foi conferido do que já foi.
+
+   Conferir de verdade pede três coisas que a linha da tabela não dá: o trecho da
+   publicação de onde o robô tirou a data (para ver se o prazo existe mesmo), poder
+   corrigir tudo — não só a data — e descartar dizendo por quê. Tudo isso mora no
+   painel que abre debaixo da linha. E nada some: cumprido se desfaz, descartado se
+   reabre, e cada passo fica na movimentação com o nome de quem deu. */
+let PZ = { filtro:'abertos', busca:'', aberto:null, todos:[], casos:[], procs:[] };
+
+async function telaPrazos(abrir){
   const [pz, cs, pr] = await Promise.all([
     sb.from('prazo').select('*').eq('parceria_id', PAR.id).order('data_fatal'),
-    sb.from('caso').select('id,titulo').eq('parceria_id', PAR.id),
-    sb.from('processo').select('id,numero_cnj').eq('parceria_id', PAR.id),
+    sb.from('caso').select('id,titulo,encerrado_em').eq('parceria_id', PAR.id).order('titulo'),
+    sb.from('processo').select('id,numero_cnj,numero_formatado,caso_id').eq('parceria_id', PAR.id),
   ]);
   if (pz.error) return erro(pz.error.message);
-  const todos = pz.data || [], casos = cs.data || [], procs = pr.data || [];
-  const tituloCaso = id => casos.find(c => c.id === id)?.titulo || '';
-  const numero = id => procs.find(p => p.id === id)?.numero_cnj || '';
+  PZ.todos = pz.data || []; PZ.casos = cs.data || []; PZ.procs = pr.data || [];
+  if (abrir) {
+    const z = PZ.todos.find(x => x.id === abrir);
+    if (z) { PZ.aberto = abrir; PZ.filtro = filtroDoPrazo(z); PZ.busca = ''; }
+  }
+  desenharPrazos();
+}
 
-  const vivos = todos.filter(z => !['cumprido','cancelado'].includes(z.situacao));
-  const cumpridos = todos.filter(z => z.situacao === 'cumprido');
+const vivo = z => !['cumprido','cancelado'].includes(z.situacao);
+const filtroDoPrazo = z => z.situacao === 'cumprido' ? 'cumpridos' : z.situacao === 'cancelado' ? 'descartados' : 'abertos';
+const tituloCasoPz = id => PZ.casos.find(c => c.id === id)?.titulo || '';
+const numeroPz = id => { const p = PZ.procs.find(x => x.id === id); return p ? (p.numero_formatado || p.numero_cnj) : ''; };
+
+function desenharPrazos(){
+  const todos = PZ.todos;
+  const vivos = todos.filter(vivo);
   const sugeridos = vivos.filter(z => z.situacao === 'sugerido');
+  const cumpridos = todos.filter(z => z.situacao === 'cumprido').sort((a,b) => String(b.cumprido_em).localeCompare(String(a.cumprido_em)));
+  const descartados = todos.filter(z => z.situacao === 'cancelado').sort((a,b) => String(b.data_fatal).localeCompare(String(a.data_fatal)));
   const vencidos = vivos.filter(z => dias(z.data_fatal) < 0);
   const emCinco = vivos.filter(z => { const d = dias(z.data_fatal); return d >= 0 && d <= 5; });
 
-  const linha = z => { const d = dias(z.data_fatal), [cor, rot] = sit(d);
-    return `<tr>
-    <td class="dt" style="width:150px"><b>${br(z.data_fatal)}</b>
-      <span class="sub">${d < 0 ? Math.abs(d) + ' dias atrás' : (d === 0 ? 'hoje' : 'em ' + d + ' dias')}</span></td>
-    <td>${esc(z.descricao)}
-      <span class="sub">${z.dias ? z.dias + (z.dias_uteis ? ' dias úteis' : ' dias corridos') : ''}${
-        z.caso_id ? ' · ' + esc(tituloCaso(z.caso_id)) : ''}${
-        z.processo_id ? ' · ' + esc(numero(z.processo_id)) : ''}</span></td>
-    <td style="width:120px"><span class="pill ${cor}">${rot}</span></td>
-    <td style="width:150px">${z.situacao === 'sugerido'
-      ? '<span class="pill warn">a conferir</span>'
-      : '<span class="pill good">confirmado</span>'}
-      ${z.confianca != null ? `<span class="sub">leitura ${Math.round(z.confianca*100)}%</span>` : ''}</td>
-    <td style="width:230px;white-space:nowrap">
-      <input type="date" value="${String(z.data_fatal).slice(0,10)}" style="font-size:11.6px"
-        onchange="mudarFatal('${z.id}', this.value)" title="corrigir a data">
-      ${z.situacao === 'sugerido'
-        ? `<button class="btn ok" style="font-size:11.4px;padding:4px 8px" onclick="confirmarPrazo('${z.id}')">Confirmar</button>`
-        : ''}
-      <button class="btn" style="font-size:11.4px;padding:4px 8px" onclick="cumprirPrazo('${z.id}')">Cumprido</button>
-    </td></tr>`; };
+  const termo = PZ.busca.trim().toLowerCase();
+  const casa = z => !termo || [z.descricao, z.providencia, tituloCasoPz(z.caso_id), numeroPz(z.processo_id), z.motivo_descarte]
+    .some(t => String(t || '').toLowerCase().includes(termo));
 
-  const bloco = (titulo, lista, nota) => lista.length ? `<div class="card"><h2>${titulo} — ${lista.length}</h2>
-    ${nota ? `<p class="nota">${nota}</p>` : ''}
-    <table><tbody>${lista.map(linha).join('')}</tbody></table></div>` : '';
+  const abas = [['abertos','Em aberto', vivos.length], ['conferir','A conferir', sugeridos.length],
+    ['cumpridos','Cumpridos', cumpridos.length], ['descartados','Descartados', descartados.length], ['todos','Todos', todos.length]];
 
-  const adiante = vivos.filter(z => dias(z.data_fatal) > 5);
+  let corpo;
+  if (PZ.filtro === 'abertos') {
+    const v = vencidos.filter(casa), c = emCinco.filter(casa), a = vivos.filter(z => dias(z.data_fatal) > 5).filter(casa);
+    corpo = blocoPz('Vencidos', v, 'Vencido não some sozinho: ou foi cumprido e falta marcar, ou precisa de providência hoje.')
+      + blocoPz('Até cinco dias', c) + blocoPz('Mais à frente', a)
+      + (v.length + c.length + a.length ? '' : `<div class="card">${vazio(termo ? 'Nada com esse termo.' : 'Nenhum prazo em aberto.')}</div>`);
+  } else {
+    const lista = { conferir: sugeridos, cumpridos, descartados, todos }[PZ.filtro].filter(casa);
+    const notas = { conferir: 'Prazos que o robô leu e ninguém conferiu ainda. Abra cada um, leia o trecho da publicação e confirme, corrija ou descarte.',
+      descartados: 'O que alguém marcou como "não é prazo", com o motivo. Se o descarte foi engano, reabra.',
+      cumpridos: 'Marcado cumprido por engano? Abra e desfaça.' };
+    corpo = lista.length ? blocoPz(abas.find(x => x[0] === PZ.filtro)[1], lista, notas[PZ.filtro])
+      : `<div class="card">${vazio(termo ? 'Nada com esse termo.' : 'Nada aqui.')}</div>`;
+  }
 
   app.innerHTML = menu('prazos') + `<main>
   <h1>Prazos</h1>
   <p class="meta">Os prazos dos casos em parceria. O robô lê a publicação do Diário e sugere a
     data; <b>conferir é ato de advogado</b> — enquanto não for confirmado, o prazo fica marcado
-    como a conferir. A data pode ser corrigida aqui, e a correção vale nos dois lados.</p>
+    como a conferir. Clique em <b>Abrir</b> para ver de onde o prazo saiu, corrigir, confirmar ou
+    descartar. Tudo o que se faz aqui vale nos dois lados e fica na
+    <a class="lnk" href="#/movimentacao">movimentação</a>, com o nome de quem fez.</p>
   <div class="kpis">
     <div class="kpi ${vencidos.length?'al':''}"><div class="n">${vencidos.length}</div><div class="l">vencidos</div></div>
     <div class="kpi ${emCinco.length?'al':''}"><div class="n">${emCinco.length}</div><div class="l">vencem em até 5 dias</div></div>
     <div class="kpi ${sugeridos.length?'al':''}"><div class="n">${sugeridos.length}</div><div class="l">esperando conferência</div></div>
     <div class="kpi"><div class="n">${cumpridos.length}</div><div class="l">cumpridos</div></div>
   </div>
-  ${bloco('Vencidos', vencidos, 'Vencido não some sozinho: ou foi cumprido e falta marcar, ou precisa de providência hoje.')}
-  ${bloco('Até cinco dias', emCinco)}
-  ${bloco('Mais à frente', adiante)}
-  ${vivos.length ? '' : `<div class="card">${vazio('Nenhum prazo em aberto.')}</div>`}
-  ${cumpridos.length ? `<div class="card"><h2>Cumpridos — ${cumpridos.length}</h2>
-    <table><tbody>${cumpridos.slice(0,25).map(z=>`<tr>
-      <td class="dt" style="width:150px">${br(z.data_fatal)}</td>
-      <td>${esc(z.descricao)}<span class="sub">${z.caso_id ? esc(tituloCaso(z.caso_id)) : ''}</span></td>
-      <td style="width:150px"><span class="pill good">cumprido ${br(z.cumprido_em)}</span></td>
-    </tr>`).join('')}</tbody></table></div>` : ''}
+
+  <div class="card"><h2>Lançar um prazo</h2>
+    <p class="nota">Para o prazo que o robô não leu — o que veio por e-mail, por intimação pessoal,
+      ou o combinado entre nós. Entra já confirmado, porque quem lança é advogado.</p>
+    <form class="form" onsubmit="novoPrazo(event)">
+      <label class="larga"><span class="sub">Do que se trata</span>
+        <input name="descricao" type="text" required placeholder="Ex.: réplica à contestação"></label>
+      <label class="larga"><span class="sub">O que precisa ser feito</span>
+        <input name="providencia" type="text" placeholder="protocolar, juntar documento, comparecer…"></label>
+      <label><span class="sub">Vence em</span><input name="data_fatal" type="date" required></label>
+      <label><span class="sub">Caso</span><select name="caso_id" id="pz-novo-caso" onchange="trocarCasoPz('novo')">
+        <option value="">— escolha —</option>${opcoesCasoPz(null)}</select></label>
+      <label><span class="sub">Processo</span><select name="processo_id" id="pz-novo-proc">${opcoesProcPz(null, null)}</select></label>
+      <button class="btn ok" type="submit">Lançar</button>
+      <span id="pz-novo-st" class="sub" style="margin:0"></span>
+    </form></div>
+
+  <div class="filtros">
+    ${abas.map(([k, r, n]) => `<button class="btn ${PZ.filtro===k?'ok':''}" onclick="filtrarPz('${k}')">${r} · ${n}</button>`).join('')}
+    <input type="search" id="pz-busca" placeholder="procurar por descrição, caso, processo…" value="${esc(PZ.busca)}"
+      oninput="buscarPz(this.value)">
+  </div>
+  ${corpo}
   </main>` + rodape();
+
+  if (PZ.aberto) abrirPz(PZ.aberto, true);
+}
+
+function opcoesCasoPz(atual){
+  return PZ.casos.map(c => `<option value="${c.id}" ${atual===c.id?'selected':''}>${esc(c.titulo)}${c.encerrado_em?' (encerrado)':''}</option>`).join('');
+}
+/* Só os processos do caso escolhido; sem caso, todos — e escolher o processo traz o caso dele. */
+function opcoesProcPz(casoId, atual){
+  const l = casoId ? PZ.procs.filter(p => p.caso_id === casoId) : PZ.procs;
+  return `<option value="">— nenhum / vale para o caso todo —</option>` +
+    l.map(p => `<option value="${p.id}" ${atual===p.id?'selected':''}>${esc(p.numero_formatado || p.numero_cnj)}</option>`).join('');
+}
+window.trocarCasoPz = (id) => {
+  const casoId = document.getElementById('pz-' + id + '-caso').value;
+  document.getElementById('pz-' + id + '-proc').innerHTML = opcoesProcPz(casoId || null, null);
+};
+
+window.filtrarPz = (k) => { PZ.filtro = k; PZ.aberto = null; desenharPrazos(); };
+let PZ_T = null;
+window.buscarPz = (v) => { PZ.busca = v; clearTimeout(PZ_T); PZ_T = setTimeout(() => {
+  desenharPrazos(); const i = document.getElementById('pz-busca'); i.focus(); i.setSelectionRange(v.length, v.length); }, 250); };
+
+function blocoPz(titulo, lista, nota){
+  if (!lista.length) return '';
+  return `<div class="card"><h2>${titulo} — ${lista.length}</h2>
+    ${nota ? `<p class="nota">${nota}</p>` : ''}
+    <table><tbody>${lista.map(linhaPz).join('')}</tbody></table></div>`;
+}
+
+function seloPz(z){
+  if (z.situacao === 'cumprido')  return `<span class="pill good">cumprido ${br(z.cumprido_em)}</span>`;
+  if (z.situacao === 'cancelado') return `<span class="pill cin">descartado</span>`;
+  if (z.situacao === 'sugerido')  return `<span class="pill warn">a conferir</span>`;
+  return `<span class="pill good">confirmado</span>`;
+}
+
+function linhaPz(z){
+  const d = dias(z.data_fatal), [cor, rot] = sit(d);
+  const quando = vivo(z) ? `<span class="sub">${d < 0 ? Math.abs(d) + ' dias atrás' : (d === 0 ? 'hoje' : 'em ' + d + ' dias')}</span>` : '';
+  return `<tr id="pzl-${z.id}">
+    <td style="width:34px;text-align:center">${vivo(z)
+      ? `<input type="checkbox" title="marcar como cumprido" onchange="cumprirPz('${z.id}')">` : ''}</td>
+    <td class="dt" style="width:130px"><b>${br(z.data_fatal)}</b>${quando}</td>
+    <td>${esc(z.descricao)}
+      <span class="sub">${[z.providencia ? esc(z.providencia) : '',
+        z.caso_id ? `<a class="lnk" href="#/caso/${z.caso_id}">${esc(tituloCasoPz(z.caso_id))}</a>` : '<span style="color:var(--ser)">sem caso</span>',
+        z.processo_id ? esc(numeroPz(z.processo_id)) : ''].filter(Boolean).join(' · ')}</span>
+      ${z.situacao === 'cancelado' && z.motivo_descarte ? `<span class="sub">motivo: ${esc(z.motivo_descarte)}</span>` : ''}</td>
+    <td style="width:110px">${vivo(z) ? `<span class="pill ${cor}">${rot}</span>` : ''}</td>
+    <td style="width:150px">${seloPz(z)}
+      ${z.confianca != null && z.situacao === 'sugerido' ? `<span class="sub">leitura do robô ${Math.round(z.confianca*100)}%</span>` : ''}</td>
+    <td style="width:90px;text-align:right">
+      <button class="btn" onclick="abrirPz('${z.id}')">${PZ.aberto === z.id ? 'Fechar' : 'Abrir'}</button></td>
+  </tr>`;
+}
+
+/* O painel do prazo. Abre debaixo da linha, com tudo o que é preciso para decidir:
+   o trecho da publicação, os campos para corrigir, as ações que a situação permite
+   e o histórico do próprio prazo. */
+window.abrirPz = async (id, redesenhando) => {
+  const velho = document.getElementById('pzp-' + id);
+  if (velho && !redesenhando) { velho.remove(); PZ.aberto = null; desenharPrazos(); return; }
+  document.querySelectorAll('tr[id^="pzp-"]').forEach(x => x.remove());
+  const z = PZ.todos.find(x => x.id === id); const tr = document.getElementById('pzl-' + id);
+  if (!z || !tr) return;
+  if (PZ.aberto !== id) { PZ.aberto = id; const b = tr.querySelector('td:last-child .btn'); if (b) b.textContent = 'Fechar'; }
+
+  const m = z.memoria_calculo || {};
+  const alertas = (m.alertas || []).map(a => `<div style="color:var(--ser);font-size:12.4px">▲ ${esc(a)}</div>`).join('');
+  const origem = z.origem === 'manual' ? 'lançado ou corrigido à mão' : 'lido pelo robô na publicação';
+  const campo = (rot, html, larga) => `<label style="display:flex;flex-direction:column;gap:3px;${larga?'grid-column:1/-1':''}">
+    <span class="sub" style="margin:0">${rot}</span>${html}</label>`;
+
+  let acoes;
+  if (z.situacao === 'sugerido') acoes = `
+      <button class="btn ok" onclick="salvarPz('${id}','confirmar')">Confirmar o prazo</button>
+      <button class="btn" onclick="salvarPz('${id}')">Só guardar as correções</button>
+      <button class="btn" onclick="mostrarDescarte('${id}')">Não é prazo…</button>`;
+  else if (z.situacao === 'confirmado') acoes = `
+      <button class="btn ok" onclick="salvarPz('${id}')">Guardar as correções</button>
+      <button class="btn" onclick="cumprirPz('${id}')">Cumprido</button>
+      <button class="btn" onclick="mostrarDescarte('${id}')">Descartar…</button>`;
+  else if (z.situacao === 'cumprido') acoes = `
+      <button class="btn ok" onclick="salvarPz('${id}')">Guardar as correções</button>
+      <button class="btn" onclick="desfazerCumprido('${id}')">Desfazer o cumprimento</button>`;
+  else acoes = `
+      <button class="btn ok" onclick="reabrirPz('${id}')">Reabrir — volta para a conferir</button>`;
+
+  const linha = document.createElement('tr');
+  linha.id = 'pzp-' + id;
+  linha.innerHTML = `<td colspan="${tr.children.length}" style="background:var(--s0);padding:14px 18px">
+    <div style="display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:18px">
+      <div>
+        <div class="sub" style="margin:0 0 6px">De onde saiu: <b>${origem}</b>${
+          z.data_publicacao ? ` · publicado em ${br(z.data_publicacao)}` : ''}${
+          z.dias ? ` · ${z.dias} ${z.dias_uteis ? 'dias úteis' : 'dias corridos'}` : ''}${
+          z.confianca != null ? ` · leitura ${Math.round(z.confianca*100)}%` : ''}</div>
+        ${alertas}
+        ${z.trecho_origem ? `<div style="background:var(--s1);border:1px solid var(--ln);border-left:3px solid var(--serie);
+            border-radius:8px;padding:10px 12px;font-size:12.6px;line-height:1.5;white-space:pre-wrap;max-height:220px;overflow:auto">${esc(z.trecho_origem)}</div>`
+          : `<div class="sub">Sem trecho guardado${z.origem === 'manual' ? ' — lançado à mão' : ''}.</div>`}
+        ${z.intimacao_id ? `<div style="margin-top:8px"><a class="lnk" onclick="verPublicacaoPz('${id}','${z.intimacao_id}')">ler a publicação inteira</a></div>
+          <div id="pz-${id}-pub"></div>` : ''}
+        ${z.situacao === 'cancelado' ? `<p style="font-size:12.8px;margin:12px 0 0"><b>Descartado.</b> Motivo: ${esc(z.motivo_descarte || 'não informado')}</p>` : ''}
+      </div>
+      <div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px 12px">
+          ${campo('Do que se trata', `<input type="text" id="pz-${id}-desc" value="${esc(z.descricao || '')}">`, true)}
+          ${campo('O que precisa ser feito', `<input type="text" id="pz-${id}-prov" value="${esc(z.providencia || '')}">`, true)}
+          ${campo('Vence em', `<input type="date" id="pz-${id}-data" value="${String(z.data_fatal).slice(0,10)}">`)}
+          ${campo('Prazo de', `<span style="display:flex;gap:6px;align-items:center">
+              <input type="number" id="pz-${id}-dias" min="0" value="${z.dias ?? ''}" style="width:70px">
+              <select id="pz-${id}-uteis"><option value="1" ${z.dias_uteis !== false ? 'selected' : ''}>dias úteis</option>
+                <option value="0" ${z.dias_uteis === false ? 'selected' : ''}>dias corridos</option></select></span>`)}
+          ${campo('Caso', `<select id="pz-${id}-caso" onchange="trocarCasoPz('${id}')"><option value="">— sem caso —</option>${opcoesCasoPz(z.caso_id)}</select>`)}
+          ${campo('Processo', `<select id="pz-${id}-proc">${opcoesProcPz(z.caso_id || null, z.processo_id || null)}</select>`)}
+        </div>
+        <div id="pz-${id}-desc-box" style="display:none;margin-top:10px">
+          ${campo('Por que não é prazo — fica registrado para o outro lado ver',
+            `<input type="text" id="pz-${id}-mot" placeholder="Ex.: mero expediente; prazo é da outra parte; publicação repetida">`, true)}
+          <div style="margin-top:7px;display:flex;gap:6px;flex-wrap:wrap">
+            ${['publicação repetida','prazo da outra parte','mero expediente, sem prazo','já cumprido antes','não é deste processo']
+              .map(t => `<button class="btn" type="button" onclick="document.getElementById('pz-${id}-mot').value='${t}'">${t}</button>`).join('')}
+          </div>
+          <button class="btn" style="margin-top:8px;border-color:var(--crit);color:var(--crit)" onclick="descartarPz('${id}')">Descartar o prazo</button>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">${acoes}
+          <span class="sub" id="pz-${id}-st" style="margin:0"></span></div>
+      </div>
+    </div>
+    <div style="margin-top:14px"><div class="sub" style="margin:0 0 4px">O que já aconteceu com este prazo</div>
+      <div id="pz-${id}-hist" class="sub">carregando…</div></div>
+  </td>`;
+  tr.after(linha);
+
+  const { data, error } = await sb.from('auditoria').select('*')
+    .eq('parceria_id', PAR.id).eq('tabela', 'prazo').eq('registro_id', id).order('criado_em', { ascending: false }).limit(40);
+  const alvo = document.getElementById('pz-' + id + '-hist'); if (!alvo) return;
+  const movs = (data || []).map(a => descreverMov(a, { semAlvo: true })).filter(Boolean);
+  alvo.innerHTML = error ? 'não deu para ler o histórico: ' + esc(error.message)
+    : movs.length ? `<ul class="mov">${movs.join('')}</ul>` : 'Nada registrado ainda.';
+};
+
+window.verPublicacaoPz = async (id, intimacaoId) => {
+  const box = document.getElementById('pz-' + id + '-pub'); if (!box) return;
+  if (box.innerHTML) { box.innerHTML = ''; return; }
+  box.innerHTML = '<div class="sub">buscando…</div>';
+  const { data, error } = await sb.from('intimacao')
+    .select('data_disponibilizacao,tribunal_sigla,orgao,tipo_comunicacao,texto,link_pje').eq('id', intimacaoId).maybeSingle();
+  if (error || !data) { box.innerHTML = `<div class="sub">não deu para abrir a publicação${error ? ': ' + esc(error.message) : ''}.</div>`; return; }
+  box.innerHTML = `<div style="margin-top:8px;background:var(--s1);border:1px solid var(--ln);border-radius:8px;padding:10px 12px;
+      font-size:12.4px;line-height:1.5;white-space:pre-wrap;max-height:320px;overflow:auto"><b>${esc([data.tribunal_sigla, data.orgao,
+      data.tipo_comunicacao].filter(Boolean).join(' · '))} — ${br(data.data_disponibilizacao)}</b>
+${esc(data.texto)}</div>${data.link_pje ? `<a class="lnk" href="${esc(data.link_pje)}" target="_blank" rel="noopener">abrir no PJe</a>` : ''}`;
+};
+
+window.mostrarDescarte = (id) => {
+  const b = document.getElementById('pz-' + id + '-desc-box');
+  b.style.display = b.style.display === 'none' ? 'block' : 'none';
+  if (b.style.display === 'block') document.getElementById('pz-' + id + '-mot').focus();
+};
+
+async function gravarPz(id, campos){
+  const st = document.getElementById('pz-' + id + '-st');
+  if (st) { st.style.color = 'var(--i3)'; st.textContent = 'gravando…'; }
+  const { error } = await sb.from('prazo').update(campos).eq('id', id);
+  if (error) { if (st) { st.style.color = 'var(--crit)'; st.textContent = 'não deu certo: ' + error.message; } else alert('Não deu certo: ' + error.message); return false; }
+  const z = PZ.todos.find(x => x.id === id); Object.assign(z, campos);
+  PZ.filtro = PZ.filtro === 'todos' ? 'todos' : filtroDoPrazo(z);
+  desenharPrazos();
+  return true;
 }
 
 /* Confirmar não grava quem confirmou: `confirmado_por` aponta para `usuario`, e a
    parceira não está nessa tabela. Quem fez o quê fica na auditoria, pelo nome. */
-window.confirmarPrazo = async (id) => {
-  const { error } = await sb.from('prazo')
-    .update({ situacao: 'confirmado', confirmado_em: new Date().toISOString() }).eq('id', id);
-  if (error) return alert('Não deu certo: ' + error.message);
+window.salvarPz = async (id, modo) => {
+  const v = k => (document.getElementById('pz-' + id + '-' + k)?.value ?? '').trim();
+  const st = document.getElementById('pz-' + id + '-st');
+  const falha = t => { st.style.color = 'var(--crit)'; st.textContent = t; };
+  if (!v('desc')) return falha('escreva do que se trata');
+  if (!v('data')) return falha('a data de vencimento é obrigatória');
+  const z = PZ.todos.find(x => x.id === id);
+  const campos = { descricao: v('desc'), providencia: v('prov') || null, data_fatal: v('data'),
+    dias: v('dias') === '' ? null : Number(v('dias')), dias_uteis: v('uteis') !== '0',
+    caso_id: v('caso') || null, processo_id: v('proc') || null };
+  if (!campos.caso_id && campos.processo_id) campos.caso_id = PZ.procs.find(p => p.id === campos.processo_id)?.caso_id || null;
+  if (modo === 'confirmar' && !campos.caso_id) return falha('ligue o prazo a um caso antes de confirmar');
+  if (campos.data_fatal !== String(z.data_fatal).slice(0,10) || campos.dias !== z.dias) campos.origem = 'manual';
+  if (modo === 'confirmar') { campos.situacao = 'confirmado'; campos.confirmado_em = new Date().toISOString(); }
+  gravarPz(id, campos);
+};
+window.cumprirPz = (id) => gravarPz(id, { situacao: 'cumprido', cumprido_em: new Date().toISOString() });
+window.desfazerCumprido = (id) => gravarPz(id, { situacao: 'confirmado', cumprido_em: null });
+window.descartarPz = (id) => {
+  const mot = (document.getElementById('pz-' + id + '-mot')?.value || '').trim();
+  if (!mot) { const st = document.getElementById('pz-' + id + '-st'); st.style.color = 'var(--crit)';
+    return st.textContent = 'diga em poucas palavras por que não é prazo'; }
+  gravarPz(id, { situacao: 'cancelado', motivo_descarte: mot });
+};
+window.reabrirPz = (id) => gravarPz(id, { situacao: 'sugerido', motivo_descarte: null });
+
+window.novoPrazo = async (ev) => {
+  ev.preventDefault();
+  const f = ev.target, st = document.getElementById('pz-novo-st');
+  const g = n => (f.elements[n].value || '').trim() || null;
+  const campos = { parceria_id: PAR.id, descricao: g('descricao'), providencia: g('providencia'), data_fatal: g('data_fatal'),
+    caso_id: g('caso_id'), processo_id: g('processo_id'), origem: 'manual', situacao: 'confirmado', confirmado_em: new Date().toISOString() };
+  if (!campos.caso_id && campos.processo_id) campos.caso_id = PZ.procs.find(p => p.id === campos.processo_id)?.caso_id || null;
+  if (!campos.caso_id) { st.style.color = 'var(--crit)'; return st.textContent = 'escolha o caso'; }
+  st.style.color = 'var(--i3)'; st.textContent = 'gravando…';
+  const { error } = await sb.from('prazo').insert(campos);
+  if (error) { st.style.color = 'var(--crit)'; return st.textContent = 'não deu certo: ' + error.message; }
+  PZ.filtro = 'abertos'; PZ.aberto = null;
   telaPrazos();
 };
-window.cumprirPrazo = async (id) => {
-  const { error } = await sb.from('prazo')
-    .update({ situacao: 'cumprido', cumprido_em: new Date().toISOString() }).eq('id', id);
-  if (error) return alert('Não deu certo: ' + error.message);
-  telaPrazos();
-};
-window.mudarFatal = async (id, data) => {
-  if (!data) return;
-  const { error } = await sb.from('prazo').update({ data_fatal: data }).eq('id', id);
-  if (error) return alert('Não deu certo: ' + error.message);
-  telaPrazos();
-};
+
+/* ------------------------------------------------------------ movimentação */
+
+/* Quem fez o quê. O registro é a auditoria do banco (banco/63): cada inclusão,
+   alteração e exclusão nas tabelas da parceria vira uma linha, com o nome de quem
+   estava logado — o gatilho é que escreve, então não há como a tela esquecer de
+   anotar. Aqui só se traduz a linha para português. */
+const ROT_TAB = { prazo:'prazo', caso:'caso', cliente:'cliente', processo:'processo', evento:'compromisso',
+  lancamento:'lançamento', honorario:'honorários', lead:'atendimento', fato:'fato', parte:'parte',
+  caso_documento:'documento pedido', documento:'documento', minuta:'peça', ficha:'ficha',
+  timesheet:'horas', interacao:'contato', parceria_recado:'recado' };
+const ROT_CAMPO = { descricao:'descrição', providencia:'providência', data_fatal:'vencimento', situacao:'situação',
+  caso_id:'caso', processo_id:'processo', titulo:'título', nome:'nome', etapa:'etapa', dias:'dias', dias_uteis:'dias úteis',
+  motivo_descarte:'motivo', valor:'valor', vencimento:'vencimento', inicio:'início', fim:'fim', local:'local',
+  telefone:'telefone', whatsapp:'WhatsApp', email:'e-mail', cpf_cnpj:'CPF/CNPJ', resumo:'resumo', obs:'observação',
+  recebido_em:'recebido em', minutos:'minutos', data:'data', status:'status', corpo:'texto', tipo:'tipo', area_id:'área',
+  coluna_id:'etapa', encerrado_em:'encerrado em', resultado:'resultado', fase:'fase', respostas:'respostas', texto:'texto',
+  proximo_contato:'próximo contato', polo:'polo', numero_cnj:'número' };
+const RUIDO = new Set(['id','criado_em','atualizado_em','escritorio_id','parceria_id','memoria_calculo','confirmado_em',
+  'confirmado_por','cumprido_em','lido_em','arquivo_em','viabilidade','nota','ordem','origem','confianca']);
+
+function valorMov(k, v){
+  if (v === null || v === undefined || v === '') return '—';
+  if (k === 'caso_id') return PZ.casos.find(c => c.id === v)?.titulo || MOV_CASOS[v] || 'outro caso';
+  if (k === 'processo_id') return PZ.procs.find(p => p.id === v)?.numero_formatado || 'outro processo';
+  if (k === 'area_id') return nomeArea(v) || 'outra área';
+  if (k === 'coluna_id') return COLUNAS.find(c => c.id === v)?.nome || 'outra etapa';
+  if (typeof v === 'boolean') return v ? 'sim' : 'não';
+  if (typeof v === 'object') return 'alterado';
+  const s = String(v);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return br(s);
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) return horaBr(s);
+  if (k === 'situacao') return { sugerido:'a conferir', cancelado:'descartado' }[s] || s;
+  return s.length > 90 ? s.slice(0, 90) + '…' : s;
+}
+
+function verboMov(a){
+  if (a.acao === 'insert') return 'incluiu';
+  if (a.acao === 'delete') return 'apagou';
+  const x = a.antes || {}, y = a.depois || {};
+  if (a.tabela === 'prazo' && x.situacao !== y.situacao) {
+    if (y.situacao === 'confirmado') return x.situacao === 'cumprido' ? 'desfez o cumprimento de' : 'confirmou';
+    if (y.situacao === 'cumprido') return 'marcou como cumprido';
+    if (y.situacao === 'cancelado') return 'descartou';
+    if (y.situacao === 'sugerido') return 'reabriu';
+  }
+  if (a.tabela === 'caso' && !x.encerrado_em && y.encerrado_em) return 'encerrou';
+  if (a.tabela === 'lead' && x.etapa !== y.etapa) return 'moveu';
+  return 'editou';
+}
+
+/* Uma linha do histórico. Alteração que só mexeu em campo de bastidor (carimbo de
+   hora, cálculo interno) não interessa a ninguém e não aparece. */
+function descreverMov(a, op = {}){
+  const x = a.antes || {}, y = a.depois || {};
+  let mud = [];
+  if (a.acao === 'update') {
+    mud = Object.keys(y).filter(k => !RUIDO.has(k) && JSON.stringify(x[k] ?? null) !== JSON.stringify(y[k] ?? null));
+    if (!mud.length) return '';
+  }
+  const tab = ROT_TAB[a.tabela] || a.tabela;
+  const alvo = op.semAlvo ? '' : ` ${a.acao === 'insert' && ['ficha','minuta'].includes(a.tabela) ? 'uma' : 'o'} ${tab}`
+    + (a.descricao ? ` <b>${esc(a.descricao.length > 80 ? a.descricao.slice(0,80) + '…' : a.descricao)}</b>` : '');
+  const caso = !op.semCaso && a.caso_id && a.tabela !== 'caso' && (PZ.casos.find(c => c.id === a.caso_id)?.titulo || MOV_CASOS[a.caso_id])
+    ? ` · <a class="lnk" href="#/caso/${a.caso_id}">${esc(PZ.casos.find(c => c.id === a.caso_id)?.titulo || MOV_CASOS[a.caso_id])}</a>` : '';
+  const det = mud.slice(0, 6).map(k => `${ROT_CAMPO[k] || k.replace(/_/g, ' ')}: ${esc(valorMov(k, x[k]))} → <b>${esc(valorMov(k, y[k]))}</b>`);
+  if (mud.length > 6) det.push(`e mais ${mud.length - 6} campos`);
+  const quem = (a.usuario_nome || 'alguém').replace(' (parceria)', '');
+  return `<li><span class="q">${esc(quem)}</span> ${verboMov(a)}${alvo}${caso}
+    <span class="h">${horaBr(a.criado_em)}</span>
+    ${det.length ? `<span class="d">${det.join(' · ')}</span>` : ''}</li>`;
+}
+
+let MOV = { quem:'', tipo:'', periodo:'30', busca:'' };
+let MOV_CASOS = {};
+
+async function telaMovimentacao(){
+  const desde = MOV.periodo ? new Date(Date.now() - Number(MOV.periodo) * 864e5).toISOString() : '2000-01-01';
+  let q = sb.from('auditoria').select('*').eq('parceria_id', PAR.id).gte('criado_em', desde)
+    .order('criado_em', { ascending: false }).limit(600);
+  if (MOV.tipo) q = q.eq('tabela', MOV.tipo);
+  const [au, cs, pr] = await Promise.all([q,
+    sb.from('caso').select('id,titulo,encerrado_em').eq('parceria_id', PAR.id),
+    sb.from('processo').select('id,numero_cnj,numero_formatado,caso_id').eq('parceria_id', PAR.id)]);
+  if (au.error) return erro(au.error.message);
+  PZ.casos = cs.data || []; PZ.procs = pr.data || [];
+  MOV_CASOS = Object.fromEntries(PZ.casos.map(c => [c.id, c.titulo]));
+  const todas = au.data || [];
+  const pessoas = [...new Set(todas.map(a => (a.usuario_nome || 'alguém').replace(' (parceria)', '')))].sort();
+  const termo = MOV.busca.trim().toLowerCase();
+  const linhas = todas.filter(a => (!MOV.quem || (a.usuario_nome || 'alguém').replace(' (parceria)', '') === MOV.quem)
+      && (!termo || JSON.stringify([a.descricao, MOV_CASOS[a.caso_id], a.depois, a.antes]).toLowerCase().includes(termo)))
+    .map(a => ({ a, html: descreverMov(a) })).filter(x => x.html);
+
+  const porDia = {};
+  linhas.forEach(({ a, html }) => { const d = new Date(a.criado_em).toLocaleDateString('pt-BR', { weekday:'long', day:'2-digit', month:'long' });
+    (porDia[d] = porDia[d] || []).push(html); });
+
+  app.innerHTML = menu('movimentacao') + `<main>
+  <h1>Movimentação</h1>
+  <p class="meta">Tudo o que foi incluído, alterado, cumprido ou apagado nos casos da parceria, de um
+    lado e do outro, com o nome de quem fez e a hora. O registro é feito pelo próprio banco a cada
+    gravação — não depende de ninguém lembrar de anotar. "robô/sistema" é o que os robôs fazem
+    sozinhos, como ler a publicação e sugerir o prazo.</p>
+  <div class="card">
+    <div class="filtros" style="margin-top:14px">
+      <select onchange="MOV.quem=this.value;telaMovimentacao()"><option value="">todas as pessoas</option>
+        ${pessoas.map(p => `<option ${MOV.quem===p?'selected':''}>${esc(p)}</option>`).join('')}</select>
+      <select onchange="MOV.tipo=this.value;telaMovimentacao()"><option value="">tudo</option>
+        ${Object.entries(ROT_TAB).map(([k, r]) => `<option value="${k}" ${MOV.tipo===k?'selected':''}>${r}</option>`).join('')}</select>
+      <select onchange="MOV.periodo=this.value;telaMovimentacao()">
+        ${[['7','últimos 7 dias'],['30','últimos 30 dias'],['90','últimos 90 dias'],['','desde o começo']]
+          .map(([k, r]) => `<option value="${k}" ${MOV.periodo===k?'selected':''}>${r}</option>`).join('')}</select>
+      <input type="search" placeholder="procurar…" value="${esc(MOV.busca)}"
+        onchange="MOV.busca=this.value;telaMovimentacao()">
+    </div>
+    ${linhas.length ? Object.entries(porDia).map(([d, itens]) => `<h2 style="text-transform:capitalize">${esc(d)}</h2>
+      <ul class="mov" style="padding:2px 18px 10px">${itens.join('')}</ul>`).join('')
+      : vazio('Nada registrado com esses filtros.')}
+    ${todas.length === 600 ? '<p class="nota">Mostrando as 600 mais recentes; estreite o período para ver o resto.</p>' : ''}
+  </div>
+  </main>` + rodape();
+}
 
 /* -------------------------------------------------------------- andamento */
 
@@ -3074,7 +3453,8 @@ async function rota(){
   if (h.startsWith('#/ementas'))    return telaEmentas();
   if (h.startsWith('#/ficha/'))     return telaFicha(h.slice('#/ficha/'.length).split('?')[0]);
   if (h.startsWith('#/captacao'))   return telaCaptacao();
-  if (h.startsWith('#/prazos'))     return telaPrazos();
+  if (h.startsWith('#/prazos'))     return telaPrazos(q.get('abrir'));
+  if (h.startsWith('#/movimentacao'))return telaMovimentacao();
   if (h.startsWith('#/andamento'))  return telaAndamento();
   if (h.startsWith('#/mensageria')) return telaMensageria();
   if (h.startsWith('#/metricas'))   return telaMetricas();
