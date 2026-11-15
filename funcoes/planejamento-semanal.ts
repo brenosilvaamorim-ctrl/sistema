@@ -109,7 +109,9 @@ Devolva SÓ um JSON, sem texto antes ou depois, neste formato:
   "adiantar": [ { "texto": "…", "ref": "R8" ou null } ]
 }
 Os "dias" vão do primeiro ao último dia da semana informada, um objeto por dia, mesmo que vazio.
-No máximo 3 alertas.`;
+Limites, porque o plano tem de caber numa olhada: no máximo 3 alertas, 6 itens por dia e 8 em
+"adiantar"; cada "texto" com até 110 caracteres e cada "foco" com até 60. Agrupe o que for
+parecido ("Conferir as 12 publicações da semana passada") em vez de listar um a um.`;
 
 async function planejar(contexto: string, key: string) {
   // Opus primeiro: é uma chamada por semana, e o raciocínio de distribuir a semana é o
@@ -122,7 +124,7 @@ async function planejar(contexto: string, key: string) {
       method: 'POST',
       headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
       body: JSON.stringify({
-        model, max_tokens: 6000, system: SISTEMA,
+        model, max_tokens: 12000, system: SISTEMA,
         messages: [{ role: 'user', content: contexto }],
       }),
     });
@@ -133,7 +135,10 @@ async function planejar(contexto: string, key: string) {
       .map((b: any) => b.text).join('\n').trim();
     const m = txt.match(/\{[\s\S]*\}/);
     try { return { plano: JSON.parse(m ? m[0] : txt), modelo: model }; }
-    catch { throw new Error('O Claude respondeu fora do formato (stop: ' + (j.stop_reason ?? '?') + ').'); }
+    catch {
+      throw new Error('O Claude respondeu fora do formato (stop: ' + (j.stop_reason ?? '?') +
+        ', ' + (j.usage?.output_tokens ?? '?') + ' tokens de saída).');
+    }
   }
   throw new Error(erroClaude(404, ultimo));
 }
@@ -331,6 +336,22 @@ Deno.serve(async (req) => {
 
   if (seco) return json({ semana_de, inicio, fim, dados, contexto });
 
+  /* O agendador (pg_net) desiste da resposta em 60 s, e o Claude leva mais que isso para
+     escrever a semana. Para o robô, a função responde na hora e termina o trabalho em
+     segundo plano; o resultado fica no registro da função e na tabela. Pela tela, espera. */
+  const trabalho = gerar();
+  if (quem.robo && (globalThis as any).EdgeRuntime?.waitUntil) {
+    (globalThis as any).EdgeRuntime.waitUntil(trabalho.then(r => console.log('[plano]', JSON.stringify(r.corpo))));
+    return json({ aceito: true, semana_de, inicio, fim, dados }, 202);
+  }
+  const r = await trabalho;
+  return json(r.corpo, r.status);
+
+  async function gerar(): Promise<{ corpo: any; status: number }> {
+  const t0 = Date.now();
+  const json = (corpo: any, status = 200) =>
+    ({ corpo: { ...corpo, segundos: Math.round((Date.now() - t0) / 1000) }, status });
+
   const key = Deno.env.get('ANTHROPIC_API_KEY');
   if (!key) return json({ erro: 'ANTHROPIC_API_KEY não configurada em Edge Functions → Secrets.' }, 500);
 
@@ -411,4 +432,5 @@ Deno.serve(async (req) => {
   if (error) return json({ erro: 'O plano saiu, mas não consegui gravar: ' + error.message, plano: final }, 500);
 
   return json({ id: salvo.id, semana_de, inicio, fim, modelo, email, dados, plano: final });
+  }
 });
