@@ -88,6 +88,10 @@ Como planejar:
 - Prazo vencido e ainda aberto: ou foi cumprido e falta dar baixa, ou precisa de decisão hoje.
   Diga qual das duas coisas fazer, sem alarde.
 - Publicações a conferir entram cedo na semana, num bloco só.
+- ATO CRÍTICO (sentença, acórdão, decisão monocrática, liminar, embargos julgados, homologação)
+  ainda não tratado é sempre o primeiro alerta e entra no primeiro dia útil: ler a decisão,
+  conferir o prazo de recurso no PJe e planejar a peça. Se estiver "sem prazo lançado", a
+  tarefa é calcular e lançar o prazo hoje.
 - Caso marcado pelo advogado como "não pode esperar" ou "muito urgente" tem prioridade sobre o
   resto do que não for prazo fatal: o próximo passo dele entra cedo na semana.
 - Prazo de regime "Protocolar a ação" é meta interna de 15 dias úteis para ajuizar caso novo:
@@ -241,6 +245,14 @@ Deno.serve(async (req) => {
 
   const parados = CS.filter((c: any) => !(c.processo ?? []).length).slice(0, 15);
 
+  // Ato crítico (banco/67): sentença, acórdão, liminar… ainda sem tratar. Se a coluna ainda não
+  // existir, segue sem eles.
+  const { data: CRT } = await adm.from('intimacao')
+    .select('critico,data_disponibilizacao,numero_formatado,situacao,caso:caso_id(id,titulo),prazo(data_fatal,situacao)')
+    .eq('escritorio_id', esc).not('critico', 'is', null).gte('data_disponibilizacao', somaDias(hoje, -45));
+  const criticos = (CRT ?? []).filter((i: any) => !['sem_providencia', 'cumprida'].includes(i.situacao)
+    && !(i.prazo ?? []).some((p: any) => ['cumprido', 'cancelado'].includes(p.situacao)));
+
   // Urgência do caso (banco/64): juízo do advogado. Se a coluna ainda não existir, segue sem ela.
   const { data: URG } = await adm.from('caso')
     .select('id,titulo,urgencia,cliente:cliente_id(nome),processo(id)')
@@ -303,6 +315,13 @@ Deno.serve(async (req) => {
     `- [${ref('#/caso/' + c.id)}] ${c.cliente?.nome ?? ''} · ${corta(c.titulo, 100)}${c.area ? ' · ' + c.area : ''}` +
     ` · última mexida ${String(c.atualizado_em).slice(0, 10)}`));
 
+  sec('ATOS CRÍTICOS publicados e ainda não tratados (sentença, acórdão, liminar…)', criticos.map((i: any) => {
+    const pz = (i.prazo ?? []).filter((p: any) => ['sugerido', 'confirmado'].includes(p.situacao))
+      .sort((a: any, b: any) => a.data_fatal.localeCompare(b.data_fatal))[0];
+    return `- [${ref(i.caso?.id ? '#/caso/' + i.caso.id : '#/prazos')}] ${String(i.critico).toUpperCase()} publicada em ${i.data_disponibilizacao}` +
+      ` · ${i.caso?.titulo ?? i.numero_formatado ?? ''} · ${pz ? 'prazo ' + pz.data_fatal + (pz.situacao === 'sugerido' ? ' (sugerido)' : '') : 'SEM PRAZO LANÇADO'}`;
+  }));
+
   sec('Casos marcados como urgentes pelo advogado', (URG ?? []).map((c: any) =>
     `- [${ref('#/caso/' + c.id)}] ${c.urgencia === 'critica' ? 'NÃO PODE ESPERAR' : 'muito urgente'} · ${c.cliente?.nome ?? ''} · ${corta(c.titulo, 100)}` +
     `${(c.processo ?? []).length ? '' : ' · ainda sem processo'}`));
@@ -344,7 +363,7 @@ Deno.serve(async (req) => {
     esperas: PRO.length, casos_parados: parados.length, minutas: MN.length, leads: LD.length,
     a_receber: LC.filter((l: any) => l.tipo === 'entrada').length,
     a_pagar: LC.filter((l: any) => l.tipo === 'saida').length,
-    assinaturas: AS.length, projetos: PJ.length, urgentes: (URG ?? []).length, sobra_semana_anterior: sobra.length,
+    assinaturas: AS.length, projetos: PJ.length, urgentes: (URG ?? []).length, criticos: criticos.length, sobra_semana_anterior: sobra.length,
   };
 
   if (seco) return json({ semana_de, inicio, fim, dados, contexto });

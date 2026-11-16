@@ -177,7 +177,12 @@ textarea{width:100%;resize:vertical;line-height:1.45}
 .md-c{padding:3px 0}
 .md-ev{font-size:12.4px;border-left:3px solid var(--i3);background:var(--s0);border-radius:0 6px 6px 0;padding:4px 8px;margin:2px 0}
 .md-ev.audiencia{border-left-color:var(--crit)}.md-ev.tarefa{border-left-color:var(--taref)}.md-ev.reuniao{border-left-color:var(--serie)}.md-ev.pericia{border-left-color:var(--warn)}
-.pzrow{padding-left:10px;padding-right:6px}.pzrow:hover{background:var(--s0)}.pzrow.sel{background:var(--s0);box-shadow:inset 3px 0 0 var(--ink)}
+.pzrow{padding-left:10px;padding-right:6px}
+.critico-bloco{border:2px solid var(--crit);border-radius:12px;background:color-mix(in srgb,var(--crit) 7%,var(--s1));margin:0 0 18px;padding:14px 18px}
+.critico-bloco .tit{font:600 17px/1.3 Georgia,serif;color:var(--crit);margin-bottom:6px}
+.critico-bloco .it{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;padding:8px 0;border-top:1px solid color-mix(in srgb,var(--crit) 25%,transparent);font-size:13.6px}
+.critico-bloco .it:first-of-type{border-top:0}
+.pzrow.critica{box-shadow:inset 4px 0 0 var(--crit);background:color-mix(in srgb,var(--crit) 6%,transparent)}.pzrow:hover{background:var(--s0)}.pzrow.sel{background:var(--s0);box-shadow:inset 3px 0 0 var(--ink)}
 #pzdet .ficha{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
 .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--ln);
   border:1px solid var(--ln);border-radius:10px;overflow:hidden}
@@ -751,7 +756,7 @@ async function telaInicio(){
   const d7  = new Date(Date.now() + 7*864e5).toISOString().slice(0,10);
   const d30 = new Date(Date.now() - 30*864e5).toISOString().slice(0,10);
   const mes = h.slice(0,7);
-  const [pz, ev, itm, lc, cs, asn, pla, urg, lds] = await Promise.all([
+  const [pz, ev, itm, lc, cs, asn, pla, urg, lds, crt] = await Promise.all([
     sb.from('prazo').select('id,descricao,data_fatal,situacao,regime,data_inicio,caso:caso_id(id,titulo)')
       .in('situacao',['sugerido','confirmado']).order('data_fatal'),
     sb.from('evento').select('id,titulo,tipo,inicio,local,link_sala,situacao,caso:caso_id(id,titulo),cliente:cliente_id(nome)')
@@ -768,6 +773,9 @@ async function telaInicio(){
     sb.from('caso').select('id,titulo,urgencia,cliente:cliente_id(nome)').in('urgencia',['alta','critica'])
       .is('encerrado_em', null).order('urgencia'),
     sb.from('lead').select('id').not('etapa','in','("fechado","perdido")').lte('proximo_contato', h),
+    sb.from('intimacao').select('id,critico,data_disponibilizacao,numero_formatado,tribunal_sigla,situacao,caso_id,caso:caso_id(titulo),prazo(id,data_fatal,situacao)')
+      .not('critico','is',null).gte('data_disponibilizacao', new Date(Date.now() - 45*864e5).toISOString().slice(0,10))
+      .order('data_disponibilizacao', { ascending:false }),
   ]);
   if (pz.error) return erro(pz.error.message);
   /* Se a tabela ainda não existir (banco/62 não rodado), o quadro só não aparece. */
@@ -796,6 +804,10 @@ async function telaInicio(){
   const sai   = LC.filter(x=>x.tipo==='saida').reduce((a,b)=>a+Number(b.valor||0),0);
 
   const protocolos = PZ.filter(p => p.regime === 'protocolo');
+  /* Ato crítico fica no topo até ser tratado: prazo cumprido ou descartado, ou a publicação
+     baixada. Enquanto isso, nada no Início vem antes dele. */
+  const CRIT = (crt.error ? [] : (crt.data||[])).filter(i =>
+    !['sem_providencia','cumprida'].includes(i.situacao) && !(i.prazo||[]).some(p => ['cumprido','cancelado'].includes(p.situacao)));
   const URGS = urg.error ? [] : (urg.data||[]).sort((a,b) => (a.urgencia==='critica'?0:1) - (b.urgencia==='critica'?0:1));
   const leadsHoje = lds.error ? 0 : (lds.data||[]).length;
   /* "Hoje" é o que tem dia marcado para hoje, mais o que venceu na última semana — esse ainda
@@ -847,6 +859,17 @@ async function telaInicio(){
       <a class="btn" style="text-decoration:none" href="#/mensageria">Escrever ao cliente</a>
     </div>
   </div>
+  ${CRIT.length ? `<div class="critico-bloco">
+    <div class="tit">▲ ${CRIT.length === 1 ? 'Ato crítico publicado — não pode passar' : CRIT.length + ' atos críticos publicados — não podem passar'}</div>
+    ${CRIT.map(i => { const pz = (i.prazo||[]).filter(p => ['sugerido','confirmado'].includes(p.situacao)).sort((a,b)=>a.data_fatal.localeCompare(b.data_fatal))[0];
+      return `<div class="it">${pillCrit(i.critico)}
+        <span style="flex:1;min-width:220px">${i.caso_id ? `<a class="lnk" href="#/caso/${i.caso_id}"><b>${esc(i.caso?.titulo || '')}</b></a>` : `<b>${esc(i.numero_formatado || 'processo não cadastrado')}</b>`}
+          <span class="sub">publicada em ${br(i.data_disponibilizacao)} · ${esc(i.tribunal_sigla || '')} ${esc(i.numero_formatado || '')}</span></span>
+        <span>${pz ? `<b style="color:var(--crit)">prazo ${dias(pz.data_fatal) < 0 ? 'venceu em' : 'até'} ${br(pz.data_fatal)}</b>
+            <span class="sub">${dias(pz.data_fatal) < 0 ? 'há ' + humano(-dias(pz.data_fatal)) : dias(pz.data_fatal) === 0 ? 'hoje' : 'em ' + humano(dias(pz.data_fatal))}${pz.situacao === 'sugerido' ? ' · a conferir' : ''}</span>`
+          : '<b style="color:var(--crit)">sem prazo lançado — confira já</b>'}</span>
+        <a class="btn" style="text-decoration:none;border-color:var(--crit);color:var(--crit)" href="#/prazos">Tratar</a></div>`; }).join('')}
+  </div>` : ''}
   <div class="lado">
     <div>
       <div class="card"><h2>Hoje</h2>
@@ -937,7 +960,7 @@ function tabelaPrazos(titulo, nota, itens, podeConfirmar){
 let PZLISTA = [];
 async function telaPrazos(){
   const { data, error } = await sb.from('prazo')
-    .select('id,descricao,providencia,data_fatal,dias,situacao,confianca,trecho_origem,memoria_calculo,processo_id,caso_id,intimacao:intimacao_id(numero_formatado,tribunal_sigla,orgao,link_pje),caso:caso_id(titulo)')
+    .select('id,descricao,providencia,data_fatal,dias,situacao,confianca,trecho_origem,memoria_calculo,processo_id,caso_id,intimacao:intimacao_id(numero_formatado,tribunal_sigla,orgao,link_pje,critico),caso:caso_id(titulo)')
     .in('situacao',['sugerido','confirmado']).order('data_fatal');
   if(error) return erro(error.message);
   const lista = data||[], sug = lista.filter(p=>p.situacao==='sugerido'), conf = lista.filter(p=>p.situacao==='confirmado');
@@ -945,12 +968,15 @@ async function telaPrazos(){
   const semCaso = lista.filter(p=>!p.caso_id).length;
   const urg = lista.filter(p=>dias(p.data_fatal)<=5).length, venc = lista.filter(p=>dias(p.data_fatal)<0).length;
   const tri = await blocoTriagem();
+  /* Ato crítico sobe para o topo do seu grupo, qualquer que seja a data. */
+  const critPrimeiro = (a,b) => (b.intimacao?.critico ? 1 : 0) - (a.intimacao?.critico ? 1 : 0);
+  sug.sort(critPrimeiro); conf.sort(critPrimeiro);
   const ordem = [...sug, ...conf];
   if (!ordem.some(p => p.id === PZSEL)) PZSEL = ordem[0]?.id || null;
   const rowPz = p => { const r = dias(p.data_fatal), [k,,tx] = sit(r);
-    return `<div class="dl-it pzrow${p.id===PZSEL?' sel':''}" data-id="${p.id}" onclick="selPz('${p.id}')" style="cursor:pointer;grid-template-columns:70px minmax(0,1fr) auto">
+    return `<div class="dl-it pzrow${p.id===PZSEL?' sel':''}${p.intimacao?.critico?' critica':''}" data-id="${p.id}" onclick="selPz('${p.id}')" style="cursor:pointer;grid-template-columns:70px minmax(0,1fr) auto">
       <span class="h"><b style="color:var(--ink)">${br(p.data_fatal).slice(0,5)}</b><br><span style="font-size:11px;color:${r<0?'var(--crit)':'var(--i3)'}">${r===0?'hoje':(r<0?'há '+(-r)+'d':'em '+r+'d')}</span></span>
-      <span class="t"><b>${esc(p.descricao)}</b>
+      <span class="t">${p.intimacao?.critico ? pillCrit(p.intimacao.critico) + ' ' : ''}<b>${esc(p.descricao)}</b>
         <span class="sub">${p.caso ? esc(p.caso.titulo) : '<span style="color:var(--warn)">sem caso</span>'}${p.intimacao?.tribunal_sigla ? ' · ' + esc(p.intimacao.tribunal_sigla) : ''}</span></span>
       <span class="ac"><span class="pill ${k}" style="font-size:10.6px;padding:1px 7px">${tx}</span></span></div>`; };
   app.innerHTML = menu('prazos') + `
@@ -1005,6 +1031,8 @@ function pintarDetPz(id){
       ${campo('Publicação → início', m.publicacao ? br(m.publicacao) + ' → ' + br(m.inicioContagem) : '')}
       ${campo('Confiança da leitura', p.confianca ? Math.round(p.confianca*100) + '%' : '')}
     </div>
+    ${p.intimacao?.critico ? `<div class="banda crit" style="margin:0 18px 12px;border-width:2px"><span><b>▲ ${esc(ATOCRIT[p.intimacao.critico] || p.intimacao.critico)}.</b>
+      Ato que pede reação — recurso, embargos ou cumprimento. Leia a publicação inteira e confira o prazo no PJe antes de qualquer outra coisa.</span></div>` : ''}
     ${(m.alertas||[]).length ? `<div class="banda ser" style="margin:0 18px 12px">${m.alertas.map(a => '▲ ' + esc(a)).join('<br>')}</div>` : ''}
     ${p.trecho_origem ? `<div style="margin:0 18px 14px"><div class="sub" style="margin:0 0 4px">Trecho lido da intimação</div>
       <div class="q" style="font-size:13px;line-height:1.55;background:var(--s0);border:1px solid var(--ln);border-radius:8px;padding:10px 12px">“${esc(p.trecho_origem)}”</div></div>` : ''}
@@ -2014,6 +2042,10 @@ window.baixarIcs = () => {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(b); a.download = 'agenda-escritorio.ics'; a.click();
 };
+/* Ato crítico (banco/67): sentença, acórdão, liminar… A coluna intimacao.critico diz qual. */
+const ATOCRIT = { sentenca:'Sentença', acordao:'Acórdão', monocratica:'Decisão monocrática',
+  embargos:'Embargos de declaração julgados', tutela:'Tutela / liminar', homologacao:'Homologação' };
+const pillCrit = k => k ? `<span class="pill" style="background:var(--crit);border-color:var(--crit);color:#fff">▲ ${esc(ATOCRIT[k] || k)}</span>` : '';
 const URG = { baixa:['Pouco urgente','cin'], normal:['Normal','ser'], alta:['Muito urgente','warn'], critica:['Não pode esperar','crit'] };
 let TEMCONV = null;
 const semColunaConvidado = e => !!e && /convidado_email/.test(e.message || '');
@@ -2276,7 +2308,7 @@ function formEvento(){
 }
 async function telaAgenda(){
   const colPz = c => 'id,descricao,data_fatal,dias,situacao,urgencia,caso_id' + c +
-    ',intimacao:intimacao_id(numero_formatado,orgao),caso:caso_id(titulo,cliente_id,cliente:cliente_id(id,nome))';
+    ',intimacao:intimacao_id(numero_formatado,orgao,critico),caso:caso_id(titulo,cliente_id,cliente:cliente_id(id,nome))';
   const colEv = c => 'id,tipo,titulo,inicio,local,descricao,urgencia,situacao,link_sala,caso_id,cliente_id,subtipo,lead_id,projeto_id' + c +
     ',cliente:cliente_id(id,nome),caso:caso_id(titulo,cliente_id,cliente:cliente_id(id,nome)),projeto:projeto_id(titulo)';
   const extra = TEMCONV === false ? '' : ',convidado_email';
@@ -2306,7 +2338,7 @@ async function telaAgenda(){
     convidado:p.convidado_email,
     caso_id:p.caso_id||null, caso_nome:p.caso?.titulo||null,
     cliente_id:p.caso?.cliente?.id||null, cliente_nome:p.caso?.cliente?.nome||null,
-    titulo:`Prazo: ${p.descricao}${p.caso?.titulo ? ' — '+p.caso.titulo : ''}`, nome:p.descricao,
+    titulo:`Prazo: ${p.descricao}${p.caso?.titulo ? ' — '+p.caso.titulo : ''}`, nome:p.descricao, critico:p.intimacao?.critico || null,
     detalhe:`${p.dias||''} dias úteis · situação: ${p.situacao}\n${p.intimacao?.numero_formatado||''}`,
     local:p.intimacao?.orgao||'' });
   for (const e of (ev.data||[])) AGE.push({
@@ -2343,6 +2375,7 @@ async function telaAgenda(){
       <span class="t"><span class="tipo ${it.tipo}"></span>${it.caso_id
           ? `<a class="lnk" href="#/caso/${it.caso_id}"><b>${esc(it.nome || it.titulo)}</b></a>` : `<b>${esc(it.nome || it.titulo)}</b>`}
         ${it.urgencia && it.urgencia!=='normal' ? ` <span class="pill ${URG[it.urgencia]?.[1]||'cin'}" style="font-size:10.6px;padding:1px 7px">${URG[it.urgencia]?.[0]||it.urgencia}</span>` : ''}
+        ${it.critico ? ' ' + pillCrit(it.critico) : ''}
         <span class="sub">${[it.tipo === 'prescricao' ? 'prescrição' : (TIPOLINHA[it.tipo]||[it.tipo])[0] + (it.subtipo ? ' · ' + esc(it.subtipo) : ''),
           it.local ? esc(it.local) : ''].filter(Boolean).join(' · ')}</span>
         <span class="sub" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${vinculoAgenda(it, 'mini')}${subtipoAudiencia(it)}</span></span>
@@ -4570,7 +4603,7 @@ async function telaCaso(id){
     ? await sb.from('movimentacao').select('*').in('processo_id', procIds).order('data', {ascending:false}).limit(300)
     : { data: [] };
   const itm = procIds.length
-    ? await sb.from('intimacao').select('id,processo_id,data_disponibilizacao,orgao,tipo_comunicacao,texto').in('processo_id', procIds).limit(200)
+    ? await sb.from('intimacao').select('id,processo_id,data_disponibilizacao,orgao,tipo_comunicacao,texto,critico,situacao').in('processo_id', procIds).limit(200)
     : { data: [] };
 
   const L = [];
@@ -4630,6 +4663,12 @@ async function telaCaso(id){
   /* caso previdenciário: atalho para a análise (Previdenciário) */
   const prevAn = ((await sb.from('prev_analise').select('id').eq('caso_id', id).limit(1)).data || [])[0] || null;
   if (CASOABA.id !== id) CASOABA = { id, aba: 'geral' };
+  /* Ato crítico dos últimos 45 dias que ainda pede reação: prazo aberto ligado a ele, ou nenhum prazo. */
+  const critCaso = (itm.data||[]).filter(i => i.critico && dias(i.data_disponibilizacao) >= -45
+      && !['sem_providencia','cumprida'].includes(i.situacao))
+    .map(i => ({ i, pz: (pz.data||[]).filter(p => p.intimacao_id === i.id) }))
+    .filter(x => !x.pz.some(p => ['cumprido','cancelado'].includes(p.situacao)))
+    .sort((a,b) => String(b.i.data_disponibilizacao).localeCompare(String(a.i.data_disponibilizacao)));
   const protocolo = CASOPROC.length ? null
     : (pz.data||[]).find(p => p.regime === 'protocolo' && ['sugerido','confirmado'].includes(p.situacao)) || null;
   const ehPrev = prevAn || /previd|inss|aposent|benef|loas|bpc|pens[ãa]o|aux[ií]lio/i.test((c.area||'') + ' ' + c.titulo);
@@ -4649,6 +4688,12 @@ async function telaCaso(id){
         `<button class="${k}${(c.urgencia||'normal')===k?' on':''}" onclick="urgenciaCaso('${c.id}','${k}')">${r}</button>`).join('')}</div>
     </div>` : ''}
   </div>
+  ${critCaso.map(({i, pz: ps}) => { const ab = ps.find(p => ['sugerido','confirmado'].includes(p.situacao));
+    return `<div class="banda crit" style="border-width:2px;background:color-mix(in srgb,var(--crit) 7%,var(--s1))">
+      <span>${pillCrit(i.critico)} <b>publicada em ${br(i.data_disponibilizacao)}</b> —
+        ${ab ? `prazo ${dias(ab.data_fatal) < 0 ? 'venceu em' : 'até'} <b>${br(ab.data_fatal)}</b>${ab.situacao === 'sugerido' ? ' (a conferir)' : ''}` : '<b>sem prazo lançado</b>'}.
+        <span class="sub" style="display:inline;color:var(--i2)">Ato que pede recurso, embargos ou cumprimento.</span></span>
+      <a class="btn" style="text-decoration:none;border-color:var(--crit);color:var(--crit)" href="#/prazos">Tratar</a></div>`; }).join('')}
   ${protocolo ? `<div class="banda ${dias(protocolo.data_fatal) < 0 || dias(protocolo.data_fatal) <= 3 ? 'crit' : 'ser'}">
     <span><b>Protocolar até ${br(protocolo.data_fatal)}</b> — ${dias(protocolo.data_fatal) < 0
       ? 'passou da meta há ' + humano(-dias(protocolo.data_fatal))
@@ -9090,6 +9135,15 @@ let TRI = [], TRIFILTRO = 'semprazo', TRIDIAS = 30;
 const confRotulo = c => c == null ? ['—','cin']
   : (c >= 0.8 ? ['confiança alta','good'] : (c >= 0.5 ? ['confiança regular','warn'] : ['confiança baixa','ser']));
 function classificar(i){
+  /* Ato crítico vem antes de tudo: o robô pode não ter achado número de dias no texto de uma
+     sentença, e aí ela caía em "sem providência", em verde. É o que não pode acontecer. */
+  if (i.critico) {
+    const p = i.prazos[0];
+    return { chave:'critico', rotulo:'▲ ' + (ATOCRIT[i.critico] || 'Ato crítico'), cor:'crit', conf: p ? Number(p.confianca ?? 0) : null,
+      titulo: (ATOCRIT[i.critico] || 'Ato crítico') + (p ? ' — ' + p.descricao : ''),
+      explica: p ? 'Prazo calculado para ' + br(p.data_fatal) + '. Confira no PJe: ato que pede recurso ou cumprimento.'
+                 : 'O robô não achou o prazo no texto. Leia a publicação e lance o prazo à mão — este ato não pode passar.' };
+  }
   if (i.prazos.length) {
     const c = Math.max(...i.prazos.map(p => Number(p.confianca ?? 0)));
     const p = i.prazos[0];
@@ -9218,7 +9272,7 @@ function pintarTriagem(){
 async function blocoTriagem(){
   const desde = new Date(Date.now() - TRIDIAS * 864e5).toISOString().slice(0,10);
   const [it, pz, ev, rs] = await Promise.all([
-    sb.from('intimacao').select('id,numero_processo,numero_formatado,orgao,tribunal_sigla,tipo_comunicacao,tipo_documento,classe,data_disponibilizacao,texto,link_pje,situacao,processo_id,caso_id,caso:caso_id(titulo)')
+    sb.from('intimacao').select('id,numero_processo,numero_formatado,orgao,tribunal_sigla,tipo_comunicacao,tipo_documento,classe,data_disponibilizacao,texto,link_pje,situacao,processo_id,caso_id,critico,caso:caso_id(titulo)')
       .gte('data_disponibilizacao', desde).order('data_disponibilizacao', { ascending:false }).limit(400),
     sb.from('prazo').select('id,intimacao_id,descricao,data_fatal,dias,confianca,situacao').not('intimacao_id','is',null).limit(1000),
     sb.from('evento').select('id,titulo,inicio,tipo,descricao,processo_id').eq('tipo','audiencia').limit(1000),

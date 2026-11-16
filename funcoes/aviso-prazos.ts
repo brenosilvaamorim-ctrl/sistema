@@ -62,6 +62,17 @@ Deno.serve(async (req) => {
     .order('prescricao_em');
   const prescricoes = presc ?? [];
 
+  // Ato crítico (banco/67): sentença, acórdão, liminar… dos últimos 45 dias, ainda sem tratar.
+  // Vai no topo do e-mail e no assunto, porque é o que não pode passar batido.
+  const ROT: Record<string,string> = { sentenca:'Sentença', acordao:'Acórdão', monocratica:'Decisão monocrática',
+    embargos:'Embargos de declaração julgados', tutela:'Tutela / liminar', homologacao:'Homologação' };
+  const desde45 = new Date(Date.now() - 45 * 86400000).toISOString().slice(0, 10);
+  const { data: crt } = await db.from('intimacao')
+    .select('critico, data_disponibilizacao, numero_formatado, tribunal_sigla, situacao, caso:caso_id(titulo), prazo(data_fatal, situacao)')
+    .not('critico', 'is', null).gte('data_disponibilizacao', desde45).order('data_disponibilizacao', { ascending: false });
+  const criticos = (crt ?? []).filter((i: any) => !['sem_providencia', 'cumprida'].includes(i.situacao)
+    && !(i.prazo ?? []).some((p: any) => ['cumprido', 'cancelado'].includes(p.situacao)));
+
   const lista = prazos ?? [];
   const vencidos = lista.filter((p: any) => p.data_fatal < hoje);
   const ativos = lista.filter((p: any) => p.data_fatal >= hoje);
@@ -92,6 +103,7 @@ Deno.serve(async (req) => {
     prescricoes: prescricoes.length,
     urgentes: urgentes.length,
     vencidos: vencidos.length,
+    criticos: criticos.length,
     proximo: ativos[0] ? { vence: ativos[0].data_fatal, o_que: ativos[0].descricao } : null,
   };
 
@@ -101,7 +113,7 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ ...resumo, email: 'não configurado' }, null, 2),
       { headers: { 'Content-Type': 'application/json' } });
   }
-  if (!ativos.length && !vencidos.length && !prescricoes.length) {
+  if (!ativos.length && !vencidos.length && !prescricoes.length && !criticos.length) {
     return new Response(JSON.stringify({ ...resumo, email: 'nada a avisar' }, null, 2),
       { headers: { 'Content-Type': 'application/json' } });
   }
@@ -113,6 +125,16 @@ Deno.serve(async (req) => {
       ${ativos.length} em aberto${urgentes.length ? `, <strong style="color:#d03b3b">${urgentes.length} vencendo em até 5 dias</strong>` : ''}.
       ${ativos[0] ? `Mais curto: <strong>${ativos[0].descricao}</strong>, ${br(ativos[0].data_fatal)}.` : ''}
     </p>
+    ${criticos.length ? `
+      <div style="border:2px solid #d03b3b;border-radius:10px;padding:12px 16px;margin:16px 0;background:#fdf1f1">
+        <div style="font-size:16px;font-weight:700;color:#d03b3b;margin-bottom:6px">▲ ${criticos.length === 1 ? 'Ato crítico publicado' : criticos.length + ' atos críticos publicados'} — não pode passar</div>
+        ${criticos.map((i: any) => { const pz = (i.prazo ?? []).filter((p: any) => ['sugerido','confirmado'].includes(p.situacao))
+            .sort((a: any, b: any) => a.data_fatal.localeCompare(b.data_fatal))[0];
+          return `<div style="padding:7px 0;border-top:1px solid #f1c9c9">
+            <b style="color:#d03b3b">${ROT[i.critico] ?? i.critico}</b> · ${i.caso?.titulo ?? i.numero_formatado ?? 'processo não cadastrado'}
+            <div style="color:#52514e;font-size:13px">publicada em ${br(i.data_disponibilizacao)} · ${i.tribunal_sigla ?? ''} ${i.numero_formatado ?? ''} ·
+              ${pz ? `<b>prazo até ${br(pz.data_fatal)}</b>${pz.situacao === 'sugerido' ? ' (a conferir)' : ''}` : '<b style="color:#d03b3b">sem prazo lançado — confira já</b>'}</div></div>`; }).join('')}
+      </div>` : ''}
     ${bloco('▲ Vencidos — confira se foram cumpridos', vencidos, '#d03b3b')}
     ${bloco('▲ Urgentes — até 5 dias', urgentes, '#ec835a')}
     ${bloco('Demais prazos', ativos.filter((p: any) => !urgentes.includes(p)), '#52514e')}
@@ -139,7 +161,9 @@ Deno.serve(async (req) => {
     body: JSON.stringify({
       from: Deno.env.get('ALERTA_EMAIL_DE') ?? 'onboarding@resend.dev',
       to: [para],
-      subject: urgentes.length
+      subject: criticos.length
+        ? `▲ Ato crítico: ${ROT[(criticos[0] as any).critico] ?? 'publicação'} — ${(criticos[0] as any).caso?.titulo ?? 'confira já'}${criticos.length > 1 ? ` (e mais ${criticos.length - 1})` : ''}`
+        : urgentes.length
         ? `${urgentes.length} prazo(s) urgente(s) — o mais curto vence ${br(ativos[0].data_fatal)}`
         : `Prazos: ${ativos.length} em aberto`,
       html,
