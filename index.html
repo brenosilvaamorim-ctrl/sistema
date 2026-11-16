@@ -3866,6 +3866,8 @@ function cartao(c){
       c.polo ? ' · ' + esc(c.polo) : ''} · ${c.processos} processo(s)</div>
     ${d !== null ? `<span class="pill ${k}">prazo ${br(c.proximo_prazo)}${d<0?' (vencido)':''}</span>` : ''}
     ${u==='critica' || u==='alta' ? `<span class="pill ${URG[u][1]}">${URG[u][0]}</span>` : ''}
+    ${typeof CASOPROT !== 'undefined' && CASOPROT[c.id] ? (() => { const n = dias(CASOPROT[c.id]);
+      return `<span class="pill ${n <= 3 ? 'crit' : 'ser'}">protocolar ${n < 0 ? 'venceu ' + br(CASOPROT[c.id]) : 'até ' + br(CASOPROT[c.id])}</span>`; })() : ''}
     ${parado !== null && parado > 90 ? `<span class="pill ser">parado há ${parado} dias</span>` : ''}
     ${pillsTag(c.id)}
     <div style="margin-top:9px;display:flex;gap:5px;flex-wrap:wrap">
@@ -3946,12 +3948,13 @@ window.abrirNovoCaso = () => {
   if (d.style.display !== 'none') d.querySelector('input[name="cliente"]')?.focus();
 };
 
-let CASOURG = {}, SOURGENTES = false;
+let CASOURG = {}, CASOPROT = {}, SOURGENTES = false, SOPROTOCOLO = false;
 async function telaCasos(){
-  const [q, co, od, ar, og] = await Promise.all([
+  const [q, co, od, pp, ar, og] = await Promise.all([
     sb.from('caso_quadro').select('*'),
     sb.from('coluna_caso').select('*').order('ordem'),
     sb.from('caso').select('id,ordem,urgencia'), /* a ordem manual e a urgência moram em caso, não na view */
+    sb.from('prazo').select('caso_id,data_fatal').eq('regime','protocolo').in('situacao',['sugerido','confirmado']),
     sb.from('area_atuacao').select('id,nome').eq('ativo',true).order('ordem'),
     sb.from('origem_captacao').select('id,nome').eq('ativo',true).order('nome'),
   ]);
@@ -3965,8 +3968,14 @@ async function telaCasos(){
   if (TAGFILTRO && !TAGS.some(t=>t.id===TAGFILTRO)) TAGFILTRO = null;
   let abertos = QUADRO.filter(c=>!c.encerrado_em).sort(porOrdemCaso);
   if (TAGFILTRO) abertos = abertos.filter(c => tagsDoCaso(c.id).some(t => t.id === TAGFILTRO));
+  /* "Aguardando protocolo": caso aberto ainda sem processo. Quando há a meta de 15 dias úteis
+     (banco/64), ela aparece no cartão e ordena a lista — o mais apertado primeiro. */
+  CASOPROT = {}; (pp.data||[]).forEach(x => { CASOPROT[x.caso_id] = x.data_fatal; });
   const urgentes = abertos.filter(c => ['alta','critica'].includes(CASOURG[c.id])).length;
+  const semProtocolo = abertos.filter(c => !Number(c.processos)).length;
   if (SOURGENTES) abertos = abertos.filter(c => ['alta','critica'].includes(CASOURG[c.id]));
+  if (SOPROTOCOLO) abertos = abertos.filter(c => !Number(c.processos))
+    .sort((a,b) => String(CASOPROT[a.id]||'9999').localeCompare(String(CASOPROT[b.id]||'9999')));
   const encerrados = QUADRO.filter(c=>c.encerrado_em)
     .sort((a,b)=>String(b.encerrado_em).localeCompare(String(a.encerrado_em)));
   const comPrazo = abertos.filter(c=>c.proximo_prazo && dias(c.proximo_prazo) <= 5).length;
@@ -3981,6 +3990,8 @@ async function telaCasos(){
         parados ? ` · ${parados} parados há mais de 90 dias` : ''} · ${encerrados.length} encerrados</p></div>
     <div class="acoesc">
       <button class="btn ${SOURGENTES?'ok':''}" onclick="SOURGENTES=!SOURGENTES; telaCasos()" title="mostrar só os casos marcados como muito urgentes ou não pode esperar">Só urgentes${urgentes?' · '+urgentes:''}</button>
+      <button class="btn ${SOPROTOCOLO?'ok':''}" onclick="SOPROTOCOLO=!SOPROTOCOLO; telaCasos()" title="casos abertos que ainda não têm processo — os com meta de 15 dias úteis vêm primeiro">Aguardando protocolo${semProtocolo?' · '+semProtocolo:''}</button>
+      ${SOURGENTES || SOPROTOCOLO ? `<button class="btn" onclick="SOURGENTES=false; SOPROTOCOLO=false; telaCasos()">limpar</button>` : ''}
     </div>
   </div>
   <p class="nota" style="margin:0 0 12px">Arraste pela alça <b>⠿</b> para mudar de etapa ou reordenar. A cor da borda é a urgência que você marcou no caso:
@@ -4559,7 +4570,7 @@ async function telaCaso(id){
     ? await sb.from('movimentacao').select('*').in('processo_id', procIds).order('data', {ascending:false}).limit(300)
     : { data: [] };
   const itm = procIds.length
-    ? await sb.from('intimacao').select('id,data_disponibilizacao,orgao,tipo_comunicacao,texto').in('processo_id', procIds).limit(200)
+    ? await sb.from('intimacao').select('id,processo_id,data_disponibilizacao,orgao,tipo_comunicacao,texto').in('processo_id', procIds).limit(200)
     : { data: [] };
 
   const L = [];
@@ -4601,9 +4612,10 @@ async function telaCaso(id){
   CASOLINHA = L; CASOFILTRO = new Set();
 
   CASOMOV = {};
-  for (const m of (mv.data||[])) {
-    const d = String(m.data).slice(0,10);
-    if (!CASOMOV[m.processo_id] || d > CASOMOV[m.processo_id]) CASOMOV[m.processo_id] = d;
+  for (const m of [...(mv.data||[]).map(x => ({ p:x.processo_id, d:x.data })),
+                   ...(itm.data||[]).map(x => ({ p:x.processo_id, d:x.data_disponibilizacao }))]) {
+    const d = String(m.d).slice(0,10);
+    if (!CASOMOV[m.p] || d > CASOMOV[m.p]) CASOMOV[m.p] = d;
   }
   const pzAbertos = (pz.data||[]).filter(p => ['sugerido','confirmado'].includes(p.situacao));
   const proximo = pzAbertos.map(p=>p.data_fatal).sort()[0];
@@ -10097,7 +10109,10 @@ function humano(n){
   return a + (a === 1 ? ' ano' : ' anos') + (m ? ' e ' + m + (m === 1 ? ' mês' : ' meses') : '');
 }
 /* data do último sinal de vida do processo */
-const ultimoSinal = p => p.ultima_movimentacao || p.ultima_intimacao || p.data_ajuizamento || null;
+/* O mais recente entre o andamento do DataJud e a intimação do DJEN (banco/66). O DataJud
+   chega atrasado: usar só ele dava "parado há 40 dias" a processo intimado na semana. */
+const maisRecente = (...xs) => xs.filter(Boolean).map(String).sort().pop() || null;
+const ultimoSinal = p => maisRecente(p.ultima_movimentacao, p.ultima_intimacao) || p.data_ajuizamento || null;
 /* Devolve { cor, peso, titulo, acao, silenciado } para um processo. */
 function semaforo(p){
   const hoje = new Date().toISOString().slice(0,10);
@@ -10130,7 +10145,7 @@ function semaforo(p){
       acao:'no primeiro ano a prescrição não corre (art. 921, §1º, do CPC)' };
   }
 
-  const base = p.ultima_movimentacao || p.ultima_intimacao;
+  const base = maisRecente(p.ultima_movimentacao, p.ultima_intimacao);
   if (!base) {
     if (!p.ultima_sync) return { cor:'cin', peso:1, titulo:'Ainda não consultado',
       acao:'o robô do DataJud ainda não trouxe nada deste número — confira se está correto' };

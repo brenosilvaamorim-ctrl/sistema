@@ -422,17 +422,19 @@ async function telaInicio(){
 
 let CASOBUSCA = '';
 
-let CASOURG = {}, SOURGENTES = false;
+let CASOURG = {}, CASOPROT = {}, SOURGENTES = false, SOPROTOCOLO = false;
 async function telaCasos(){
   /* A visão caso_quadro não tem parceria_id, e deixar a RLS filtrar sozinha não
      serve: para um login do escritório ela devolve o escritório inteiro, e esta
      porta passaria a mostrar o que não é da parceria. Então a lista de casos vem
      primeiro, carimbada, e a visão é pedida só para esses. */
-  const [od, cl] = await Promise.all([
+  const [od, cl, pp] = await Promise.all([
     sb.from('caso').select('id,ordem,urgencia').eq('parceria_id', PAR.id),
     sb.from('cliente').select('id,nome').eq('parceria_id', PAR.id).order('nome'),
+    sb.from('prazo').select('caso_id,data_fatal').eq('parceria_id', PAR.id).eq('regime','protocolo').in('situacao',['sugerido','confirmado']),
   ]);
   if (od.error) return erro(od.error.message);
+  CASOPROT = {}; (pp.data||[]).forEach(x => { CASOPROT[x.caso_id] = x.data_fatal; });
   const meus = (od.data || []).map(x => x.id);
   const q = meus.length ? await sb.from('caso_quadro').select('*').in('id', meus) : { data: [] };
   if (q.error) return erro(q.error.message);
@@ -447,7 +449,10 @@ async function telaCasos(){
     && (!TAGFILTRO || tagsDoCaso(c.id).some(t => t.id === TAGFILTRO));
   let abertos = QUADRO.filter(c => !c.encerrado_em && casa(c)).sort(porOrdemCaso);
   const urgentes = abertos.filter(c => ['alta','critica'].includes(CASOURG[c.id])).length;
+  const semProtocolo = abertos.filter(c => !Number(c.processos)).length;
   if (SOURGENTES) abertos = abertos.filter(c => ['alta','critica'].includes(CASOURG[c.id]));
+  if (SOPROTOCOLO) abertos = abertos.filter(c => !Number(c.processos))
+    .sort((a,b) => String(CASOPROT[a.id]||'9999').localeCompare(String(CASOPROT[b.id]||'9999')));
   const encerrados = QUADRO.filter(c => c.encerrado_em && casa(c))
     .sort((a,b) => String(b.encerrado_em).localeCompare(String(a.encerrado_em)));
   const comPrazo = abertos.filter(c => c.proximo_prazo && dias(c.proximo_prazo) <= 5).length;
@@ -461,6 +466,8 @@ async function telaCasos(){
         parados ? ` · ${parados} parados há mais de 90 dias` : ''} · ${encerrados.length} encerrados</p></div>
     <div class="acoesc">
       <button class="btn ${SOURGENTES?'ok':''}" onclick="SOURGENTES=!SOURGENTES; telaCasos()">Só urgentes${urgentes?' · '+urgentes:''}</button>
+      <button class="btn ${SOPROTOCOLO?'ok':''}" onclick="SOPROTOCOLO=!SOPROTOCOLO; telaCasos()" title="casos abertos ainda sem processo">Aguardando protocolo${semProtocolo?' · '+semProtocolo:''}</button>
+      ${SOURGENTES || SOPROTOCOLO ? `<button class="btn" onclick="SOURGENTES=false; SOPROTOCOLO=false; telaCasos()">limpar</button>` : ''}
     </div>
   </div>
   <p class="nota" style="margin:0 0 12px">O mesmo quadro do escritório, com o que é nosso. Arraste pela alça <b>⠿</b> para mudar de etapa —
@@ -595,6 +602,8 @@ function cartao(c){
       esc(c.area_nome || c.area || 'sem área')}${c.polo ? ' · ' + esc(c.polo) : ''} · ${c.processos} processo(s)</div>
     ${d !== null ? `<span class="pill ${k}">prazo ${br(c.proximo_prazo)}${d<0?' (vencido)':''}</span>` : ''}
     ${u==='critica' || u==='alta' ? `<span class="pill ${URG[u][1]}">${URG[u][0]}</span>` : ''}
+    ${CASOPROT[c.id] ? (() => { const n = dias(CASOPROT[c.id]);
+      return `<span class="pill ${n <= 3 ? 'crit' : 'ser'}">protocolar ${n < 0 ? 'venceu ' + br(CASOPROT[c.id]) : 'até ' + br(CASOPROT[c.id])}</span>`; })() : ''}
     ${parado !== null && parado > 90 ? `<span class="pill ser">parado há ${parado} dias</span>` : ''}
     ${pillsTag(c.id)}
     <div style="margin-top:9px;display:flex;gap:5px;flex-wrap:wrap">
