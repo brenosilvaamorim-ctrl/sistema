@@ -168,6 +168,17 @@ textarea{width:100%;resize:vertical;line-height:1.45}
 .vistas{display:inline-flex;border:1px solid var(--ln);border-radius:8px;overflow:hidden}
 .vistas button{font:inherit;font-size:12.3px;padding:5px 11px;border:0;background:var(--s1);color:var(--i2);cursor:pointer}
 .vistas button.on{background:var(--ink);color:var(--s1);font-weight:600}
+.md-it{border:1px solid var(--ln);border-radius:8px;padding:8px 10px;margin:6px 0;font-size:13px;background:var(--s0);cursor:grab}
+.md-it:hover{border-color:var(--i3)}.md-it.sel{border-color:var(--ink);box-shadow:inset 3px 0 0 var(--ink)}
+.md-grade{padding:0 18px 16px}
+.md-hora{display:grid;grid-template-columns:44px minmax(0,1fr);border-top:1px solid var(--ln);min-height:42px}
+.md-hora.alvo{cursor:copy}.md-hora.alvo:hover,.md-hora.sobre{background:var(--s0)}
+.md-h{font-size:11.4px;color:var(--i3);padding-top:4px;font-variant-numeric:tabular-nums}
+.md-c{padding:3px 0}
+.md-ev{font-size:12.4px;border-left:3px solid var(--i3);background:var(--s0);border-radius:0 6px 6px 0;padding:4px 8px;margin:2px 0}
+.md-ev.audiencia{border-left-color:var(--crit)}.md-ev.tarefa{border-left-color:var(--taref)}.md-ev.reuniao{border-left-color:var(--serie)}.md-ev.pericia{border-left-color:var(--warn)}
+.pzrow{padding-left:10px;padding-right:6px}.pzrow:hover{background:var(--s0)}.pzrow.sel{background:var(--s0);box-shadow:inset 3px 0 0 var(--ink)}
+#pzdet .ficha{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
 .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--ln);
   border:1px solid var(--ln);border-radius:10px;overflow:hidden}
 .cabdia{background:var(--s0);padding:7px 8px;font-size:10.4px;color:var(--i3);
@@ -509,17 +520,9 @@ window.trocarProcPz = (id) => {
   if (pr && pr.caso_id && !selCaso.value) selCaso.value = pr.caso_id;
 };
 
-window.abrirConfirma = async (id) => {
-  const linha = document.getElementById('pzp-' + id);
-  if (linha) { linha.remove(); return; }
-  await carregarPzListas();
-  const p = (PZLISTA || []).find(x => x.id === id); if (!p) return;
-  const tr = document.getElementById('pzl-' + id); if (!tr) return;
-  const cols = tr.children.length;
-  const novaLinha = document.createElement('tr');
-  novaLinha.id = 'pzp-' + id;
-  const confirmado = p.situacao === 'confirmado';
-  novaLinha.innerHTML = `<td colspan="${cols}" style="background:var(--f2);padding:14px 18px">
+function htmlConfirma(p){
+  const id = p.id, confirmado = p.situacao === 'confirmado';
+  return `
     <div style="font-size:12.6px;color:var(--i2);margin-bottom:9px">
       ${confirmado ? 'Corrija o que estiver errado. A situação continua confirmada.'
         : 'Antes de confirmar, diga <b>de que trata</b> este prazo e a <b>que caso e processo</b> ele pertence — sem caso, ele não aparece na ficha do cliente nem nos relatórios.'}
@@ -551,7 +554,31 @@ window.abrirConfirma = async (id) => {
         ${confirmado ? 'Guardar as correções' : 'Confirmar o prazo'}</button>
       <button class="btn" onclick="abrirConfirma('${id}')">Cancelar</button>
       <span class="sub" id="pz-st-${id}" style="margin:0"></span>
-    </div></td>`;
+    </div>`;
+}
+window.abrirConfirma = async (id) => {
+  /* Na tela de Prazos (11/2026) o formulário abre no painel da direita, não numa linha nova. */
+  const painel = document.getElementById('pzdet');
+  if (painel) {
+    await carregarPzListas();
+    const p = (PZLISTA || []).find(x => x.id === id); if (!p) return;
+    if (painel.dataset.form === id) { painel.dataset.form = ''; return pintarDetPz(id); }
+    painel.dataset.form = id;
+    painel.innerHTML = `<h2>${p.situacao === 'confirmado' ? 'Editar o prazo' : 'Conferir e confirmar'}</h2>
+      <div style="padding:4px 18px 18px">${htmlConfirma(p)}</div>`;
+    document.getElementById('pz-desc-' + id)?.focus();
+    return;
+  }
+  const linha = document.getElementById('pzp-' + id);
+  if (linha) { linha.remove(); return; }
+  await carregarPzListas();
+  const p = (PZLISTA || []).find(x => x.id === id); if (!p) return;
+  const tr = document.getElementById('pzl-' + id); if (!tr) return;
+  const cols = tr.children.length;
+  const novaLinha = document.createElement('tr');
+  novaLinha.id = 'pzp-' + id;
+  const confirmado = p.situacao === 'confirmado';
+  novaLinha.innerHTML = `<td colspan="${cols}" style="background:var(--f2);padding:14px 18px">${htmlConfirma(p)}</td>`;
   tr.after(novaLinha);
   document.getElementById('pz-desc-' + id).focus();
 };
@@ -918,29 +945,99 @@ async function telaPrazos(){
   const semCaso = lista.filter(p=>!p.caso_id).length;
   const urg = lista.filter(p=>dias(p.data_fatal)<=5).length, venc = lista.filter(p=>dias(p.data_fatal)<0).length;
   const tri = await blocoTriagem();
+  const ordem = [...sug, ...conf];
+  if (!ordem.some(p => p.id === PZSEL)) PZSEL = ordem[0]?.id || null;
+  const rowPz = p => { const r = dias(p.data_fatal), [k,,tx] = sit(r);
+    return `<div class="dl-it pzrow${p.id===PZSEL?' sel':''}" data-id="${p.id}" onclick="selPz('${p.id}')" style="cursor:pointer;grid-template-columns:70px minmax(0,1fr) auto">
+      <span class="h"><b style="color:var(--ink)">${br(p.data_fatal).slice(0,5)}</b><br><span style="font-size:11px;color:${r<0?'var(--crit)':'var(--i3)'}">${r===0?'hoje':(r<0?'há '+(-r)+'d':'em '+r+'d')}</span></span>
+      <span class="t"><b>${esc(p.descricao)}</b>
+        <span class="sub">${p.caso ? esc(p.caso.titulo) : '<span style="color:var(--warn)">sem caso</span>'}${p.intimacao?.tribunal_sigla ? ' · ' + esc(p.intimacao.tribunal_sigla) : ''}</span></span>
+      <span class="ac"><span class="pill ${k}" style="font-size:10.6px;padding:1px 7px">${tx}</span></span></div>`; };
   app.innerHTML = menu('prazos') + `
-  <main><h1>Prazos e publicações</h1><p class="meta">Tudo o que chegou do Diário e o que virou prazo, no mesmo lugar.
-    Atualizado pelo robô do DJEN às 9h e 15h, dias úteis. Depois de tratado aqui, aparece na agenda e na ficha do caso.</p>
-  <div class="kpis">
-    <div class="kpi"><div class="n">${lista.length}</div><div class="l">em aberto</div></div>
-    <div class="kpi ${urg?'al':''}"><div class="n">${urg}</div><div class="l">vencem em até 5 dias</div></div>
-    <div class="kpi ${venc?'al':''}"><div class="n">${venc}</div><div class="l">já vencidos</div></div>
-    <div class="kpi"><div class="n">${sug.length}</div><div class="l">aguardando confirmação</div></div>
-    <div class="kpi ${semCaso?'al':''}"><div class="n">${semCaso}</div><div class="l">sem caso vinculado</div></div>
+  <main>
+  <div class="cab">
+    <div><h1>Prazos e publicações</h1>
+      <p class="meta">${lista.length} em aberto · ${sug.length} aguardando conferência${urg ? ` · <b style="color:var(--crit)">${urg} vencem em até 5 dias</b>` : ''}${venc ? ` · ${venc} já vencidos` : ''}
+        · robô do DJEN às 9h e 15h, dias úteis</p></div>
   </div>
-  ${semCaso?`<div class="aviso" style="border-color:var(--warn)"><b>${semCaso} prazo(s) sem caso vinculado.</b>
-    Prazo sem caso não aparece na ficha do cliente, não entra no relatório do caso e não tem como virar peça.
-    Use <i>Conferir e confirmar</i> — ou <i>Editar</i>, nos já confirmados — para ligar cada um.</div>`:''}
-  ${sug.length?`<div class="aviso"><b>${sug.length} prazo(s) aguardando sua confirmação.</b>
-    Foram lidos automaticamente do texto da intimação. Confira a data antes de aceitar —
-    a contagem é sugestão do sistema, a responsabilidade continua sendo sua.</div>`:''}
-  ${tabelaPrazos('Aguardando confirmação','O botão <b>Conferir e confirmar</b> abre um painel: escreva do que o prazo trata, ajuste a data e diga a que caso e processo ele pertence. Descarte o que não for prazo.',sug,true)}
-  ${tabelaPrazos('Confirmados por você','Marque o quadradinho quando protocolar: o prazo sai do painel e some da agenda. <b>Editar</b> corrige a descrição, a data, o caso ou o processo.',conf,false)}
-  ${lista.length?'':'<div class="card"><div class="vazio">Nenhum prazo em aberto.</div></div>'}
-  ${tri}
+  ${semCaso?`<div class="banda ser"><span><b>${semCaso} prazo(s) sem caso vinculado.</b> Sem caso, o prazo não aparece na ficha do cliente nem no relatório.
+    Abra cada um e ligue ao caso.</span></div>`:''}
+  ${lista.length ? `<div class="lado" style="grid-template-columns:minmax(0,1fr) minmax(0,1.1fr)">
+    <div class="card" style="margin-bottom:0"><div class="dl" id="pzlista" style="padding-top:6px">
+      ${sug.length ? `<div class="dl-dia">Aguardando sua conferência<span class="sub">${sug.length} · lidos pelo robô; a data é sugestão</span></div>${sug.map(rowPz).join('')}` : ''}
+      ${conf.length ? `<div class="dl-dia">Confirmados<span class="sub">${conf.length} · dê baixa quando protocolar</span></div>${conf.map(rowPz).join('')}` : ''}
+    </div>
+    <p class="sub" style="margin:0 18px 14px">Use ↑ e ↓ para passar de um prazo ao outro.</p></div>
+    <div class="card" id="pzdet" style="position:sticky;top:64px;max-height:calc(100vh - 80px);overflow:auto;margin-bottom:0"></div>
+  </div>` : '<div class="card"><div class="vazio">Nenhum prazo em aberto.</div></div>'}
+  <div style="margin-top:18px">${tri}</div>
   </main>` + rodape();
   pintarTriagem();
+  if (PZSEL) pintarDetPz(PZSEL);
 }
+/* Lista à esquerda, detalhe à direita (11/2026): conferir uma publicação atrás da outra
+   sem sair da tela e sem abrir linha no meio da tabela. */
+let PZSEL = null;
+window.selPz = id => {
+  PZSEL = id;
+  document.querySelectorAll('.pzrow').forEach(x => x.classList.toggle('sel', x.dataset.id === id));
+  pintarDetPz(id);
+};
+function pintarDetPz(id){
+  const alvo = document.getElementById('pzdet'); if (!alvo) return;
+  alvo.dataset.form = '';
+  const p = (PZLISTA||[]).find(x => x.id === id);
+  if (!p) { alvo.innerHTML = '<div class="vazio">Escolha um prazo na lista.</div>'; return; }
+  const r = dias(p.data_fatal), [k,ic,tx] = sit(r), m = p.memoria_calculo || {};
+  const campo = (rot, v) => v ? `<div><span class="r">${rot}</span>${v}</div>` : '';
+  alvo.innerHTML = `
+    <div style="padding:16px 18px 4px;display:flex;gap:10px;align-items:flex-start;justify-content:space-between">
+      <div><div style="font:600 18px/1.3 Georgia,serif">${esc(p.descricao)}</div>
+        <div class="sub" style="margin-top:3px">${p.situacao === 'sugerido' ? 'Sugerido pelo robô — confira antes de aceitar' : 'Confirmado'}${p.providencia ? ' · ' + esc(p.providencia) : ''}</div></div>
+      <span class="pill ${k}"><span aria-hidden="true">${ic}</span> ${tx}</span>
+    </div>
+    <div class="ficha">
+      ${campo('Vence', '<b>' + br(p.data_fatal) + '</b> · ' + (r===0?'hoje':(r<0?'há '+(-r)+' dias':'em '+r+' dias')))}
+      ${campo('Caso', p.caso ? `<a class="lnk" href="#/caso/${p.caso_id}">${esc(p.caso.titulo)}</a>` : '<span style="color:var(--warn)">sem caso — ligue ao confirmar</span>')}
+      ${campo('Processo', p.processo_id ? `<a class="lnk" href="#/processo/${p.processo_id}">${esc(p.intimacao?.numero_formatado || 'ver')}</a>` : esc(p.intimacao?.numero_formatado || '—'))}
+      ${campo('Órgão', esc([p.intimacao?.tribunal_sigla, p.intimacao?.orgao].filter(Boolean).join(' · ')))}
+      ${campo('Contagem', (p.dias ? p.dias + ' dias úteis' : '') + (m.regime ? ' · ' + esc(m.regime) : ''))}
+      ${campo('Publicação → início', m.publicacao ? br(m.publicacao) + ' → ' + br(m.inicioContagem) : '')}
+      ${campo('Confiança da leitura', p.confianca ? Math.round(p.confianca*100) + '%' : '')}
+    </div>
+    ${(m.alertas||[]).length ? `<div class="banda ser" style="margin:0 18px 12px">${m.alertas.map(a => '▲ ' + esc(a)).join('<br>')}</div>` : ''}
+    ${p.trecho_origem ? `<div style="margin:0 18px 14px"><div class="sub" style="margin:0 0 4px">Trecho lido da intimação</div>
+      <div class="q" style="font-size:13px;line-height:1.55;background:var(--s0);border:1px solid var(--ln);border-radius:8px;padding:10px 12px">“${esc(p.trecho_origem)}”</div></div>` : ''}
+    <div style="padding:0 18px 18px;display:flex;gap:7px;flex-wrap:wrap">
+      ${p.situacao === 'sugerido'
+        ? `<button class="btn ok" onclick="abrirConfirma('${p.id}')">Conferir e confirmar</button>
+           <button class="btn" onclick="descartar('${p.id}')">Não é prazo</button>`
+        : `<button class="btn ok" onclick="riscarPz('${p.id}', this)">Dar baixa — protocolei</button>
+           <button class="btn" onclick="abrirConfirma('${p.id}')">Editar</button>`}
+      ${p.intimacao?.link_pje ? `<a class="btn" href="${esc(p.intimacao.link_pje)}" target="_blank" rel="noreferrer" style="text-decoration:none">Abrir no PJe</a>` : ''}
+    </div>`;
+}
+/* Dar baixa pelo painel: some da lista e o painel passa para o próximo. */
+window.riscarPz = async (id, el) => {
+  el.disabled = true;
+  const { error } = await sb.from('prazo').update({ situacao:'cumprido', cumprido_em:new Date().toISOString() }).eq('id', id);
+  if (error) { el.disabled = false; return alert('Não foi possível: ' + error.message); }
+  const lin = document.querySelector(`.pzrow[data-id="${id}"]`);
+  const prox = lin?.nextElementSibling?.classList.contains('pzrow') ? lin.nextElementSibling.dataset.id
+    : document.querySelector('.pzrow:not([data-id="' + id + '"])')?.dataset.id;
+  PZLISTA = PZLISTA.filter(x => x.id !== id);
+  lin?.remove();
+  if (prox) selPz(prox); else telaPrazos();
+};
+document.addEventListener('keydown', ev => {
+  if (!document.getElementById('pzdet') || !PZSEL) return;
+  if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '')) return;
+  if (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp') return;
+  const rows = [...document.querySelectorAll('.pzrow')];
+  const i = rows.findIndex(x => x.dataset.id === PZSEL);
+  const alvo = rows[i + (ev.key === 'ArrowDown' ? 1 : -1)];
+  if (alvo) { ev.preventDefault(); selPz(alvo.dataset.id); alvo.scrollIntoView({ block:'nearest' }); }
+});
 
 /* --------------------------------------------------------------- processos */
 let PROCS = [];
@@ -2231,6 +2328,8 @@ async function telaAgenda(){
     id:'presc-'+c.id, tipo:'prescricao', data:c.prescricao_em, caso_id:c.id, caso_nome:c.titulo,
     titulo:`Prescrição — ${c.titulo}`, nome:'Prescrição', detalhe:c.prescricao_obs||'Prazo prescricional anotado no cadastro.', local:'' });
   AGE.sort((a,b)=>String(a.data).localeCompare(String(b.data)));
+  { const r = await sb.from('planejamento').select('id,inicio,fim,plano,feitos').gte('fim', hoje()).order('semana_de').limit(1);
+    AGPLANO = r.error ? null : ((r.data||[])[0] || null); }
 
   const futuros = AGE.filter(i => dias(String(i.data).slice(0,10)) >= 0);
   const passados = AGE.filter(i => dias(String(i.data).slice(0,10)) < 0);
@@ -2278,7 +2377,7 @@ async function telaAgenda(){
       <p class="meta">${sete.length} compromisso${sete.length===1?'':'s'} nos próximos 7 dias · ${futuros.length} à frente${
         passados.length ? ` · <b style="color:var(--crit)">${passados.length} já passaram e seguem abertos</b>` : ''}</p></div>
     <div class="acoesc">
-      <div class="vistas"><button class="${vista==='lista'?'on':''}" onclick="vistaAgenda('lista')">Lista</button><button class="${vista==='mes'?'on':''}" onclick="vistaAgenda('mes')">Mês</button></div>
+      <div class="vistas"><button data-v="dia" class="${vista==='dia'?'on':''}" onclick="vistaAgenda('dia')">Meu dia</button><button data-v="lista" class="${vista==='lista'?'on':''}" onclick="vistaAgenda('lista')">Lista</button><button data-v="mes" class="${vista==='mes'?'on':''}" onclick="vistaAgenda('mes')">Mês</button></div>
       <button class="btn ok" onclick="const f=document.getElementById('agform'); f.hidden=!f.hidden; if(!f.hidden) f.scrollIntoView({behavior:'smooth',block:'start'})">+ Compromisso</button>
     </div>
   </div>
@@ -2302,6 +2401,8 @@ async function telaAgenda(){
       <div class="dl">${porDia(futuros) || '<div class="vazio">Nada agendado.</div>'}</div></div>
   </div>
 
+  <div data-vista="dia"${vista==='dia'?'':' hidden'}><div id="meudia"></div></div>
+
   <div data-vista="mes"${vista==='mes'?'':' hidden'}>
     ${faixaProximos()}
     <div class="card"><h2>Calendário</h2>
@@ -2324,11 +2425,84 @@ async function telaAgenda(){
   const hj = new Date();
   CAL = { ano: hj.getUTCFullYear(), mes: hj.getUTCMonth(), sel: hoje() };
   pintaCalendario();
+  pintarMeuDia();
 }
 window.vistaAgenda = v => {
   try { localStorage.setItem('agvista', v); } catch {}
   document.querySelectorAll('[data-vista]').forEach(x => x.hidden = x.dataset.vista !== v);
-  document.querySelectorAll('.vistas button').forEach(b => b.classList.toggle('on', b.textContent.toLowerCase().startsWith(v === 'mes' ? 'm' : 'l')));
+  document.querySelectorAll('.vistas button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+};
+
+/* ---- Meu dia (11/2026): o plano da semana à esquerda, as horas do dia à direita.
+   Arrastar um item (ou clicar nele e depois na hora) cria uma tarefa na agenda naquele
+   horário, amarrada ao caso quando o item tem um. Assim o plano de domingo vira hora marcada.
+   A tarefa leva na descrição a marca do item do plano, e é por ela que o item sai da
+   coluna da esquerda depois de encaixado. */
+let AGPLANO = null, AGDIA = null, MDSEL = null;
+const MDHORAS = Array.from({ length: 14 }, (_, i) => 7 + i);   // 7h às 20h
+const marcaPlano = (P, it) => `(plano ${String(P.id).slice(0,8)} · ${it.id})`;
+function pintarMeuDia(){
+  const alvo = document.getElementById('meudia'); if (!alvo) return;
+  const h = hoje(); const D = AGDIA || h;
+  const P = AGPLANO, feitos = new Set(P?.feitos || []);
+  const doDia = AGE.filter(i => String(i.data).slice(0,10) === D);
+  const marcados = doDia.filter(i => i.qual === 'evento').map(i => i.detalhe || '').join(' ');
+  const pl = P?.plano || {};
+  const diaPl = (pl.dias || []).find(d => d.data === D);
+  const soltos = [...(diaPl?.itens || []).filter(i => !i.hora), ...(D === h ? (pl.adiantar || []) : [])]
+    .filter(i => !feitos.has(i.id) && !marcados.includes(marcaPlano(P, i)));
+  const comHora = (diaPl?.itens || []).filter(i => i.hora && !feitos.has(i.id));
+  const semHora = doDia.filter(i => !i.hora || i.hora === '00:00');
+  const nm = DIASEM[new Date(D+'T12:00:00Z').getUTCDay()];
+  const blocoEv = it => `<div class="md-ev ${it.tipo}" title="${esc(it.titulo)}">
+      <b>${it.hora}</b> ${it.caso_id ? `<a class="lnk" href="#/caso/${it.caso_id}">${esc(it.nome || it.titulo)}</a>` : esc(it.nome || it.titulo)}
+      ${it.ref ? `<button class="btn" style="font-size:10.6px;padding:1px 6px;margin-left:4px" onclick="riscar('evento','${it.ref}',this)">feito</button>` : ''}</div>`;
+  alvo.innerHTML = `
+  <div class="lado" style="grid-template-columns:minmax(0,1fr) minmax(0,1.5fr)">
+    <div class="card" style="margin-bottom:0"><h2>Para encaixar</h2>
+      <p class="nota">${P ? 'Do plano da semana. Arraste para uma hora — ou clique no item e depois na hora.' : 'Ainda não há plano para esta semana. Ele é montado no domingo; dá para montar agora pelo Início.'}</p>
+      <div class="dl">
+        ${soltos.map(i => `<div class="md-it${MDSEL===i.id?' sel':''}" draggable="true" data-id="${i.id}"
+            ondragstart="event.dataTransfer.setData('text/plain','${i.id}')" onclick="MDSEL = MDSEL==='${i.id}' ? null : '${i.id}'; pintarMeuDia()">
+            ${esc(i.texto)}${i.link ? ` <a class="lnk" href="${esc(i.link)}" onclick="event.stopPropagation()" style="font-size:11.4px">abrir</a>` : ''}</div>`).join('')
+          || (P ? '<div class="vazio" style="padding:16px">Tudo do dia já tem hora.</div>' : '')}
+        ${comHora.length ? `<div class="sub" style="margin:12px 0 4px">Já com hora no plano: ${comHora.map(i => esc(i.hora + ' ' + i.texto.slice(0,40))).join(' · ')}</div>` : ''}
+      </div></div>
+    <div class="card" style="margin-bottom:0">
+      <div style="display:flex;align-items:center;gap:8px;padding:14px 18px 6px">
+        <b style="font:600 16px Georgia,serif">${D === h ? 'Hoje' : nm[0].toUpperCase() + nm.slice(1)}, ${br(D)}</b>
+        <span style="margin-left:auto;display:flex;gap:5px">
+          <button class="btn" onclick="AGDIA = somaDia(AGDIA || hoje(), -1); pintarMeuDia()">‹</button>
+          <button class="btn" onclick="AGDIA = null; pintarMeuDia()">Hoje</button>
+          <button class="btn" onclick="AGDIA = somaDia(AGDIA || hoje(), 1); pintarMeuDia()">›</button></span>
+      </div>
+      ${semHora.length ? `<div style="padding:0 18px 8px">${semHora.map(i => `<span class="pill ${i.tipo==='prazo'?'ser':'cin'}" style="margin:0 4px 4px 0">${esc(i.nome || i.titulo)}</span>`).join('')}</div>` : ''}
+      <div class="md-grade">
+        ${MDHORAS.map(hr => { const hh = String(hr).padStart(2,'0');
+          const evs = doDia.filter(i => i.hora && i.hora !== '00:00' && Number(i.hora.slice(0,2)) === hr);
+          return `<div class="md-hora${MDSEL?' alvo':''}" data-h="${hh}" ondragover="event.preventDefault();this.classList.add('sobre')"
+              ondragleave="this.classList.remove('sobre')" ondrop="event.preventDefault();encaixarPlano(event.dataTransfer.getData('text/plain'),'${hh}')"
+              onclick="if(MDSEL && event.target===this) encaixarPlano(MDSEL,'${hh}')">
+            <span class="md-h">${hh}h</span><div class="md-c">${evs.map(blocoEv).join('')}</div></div>`; }).join('')}
+      </div></div>
+  </div>`;
+}
+const somaDia = (iso, n) => new Date(Date.parse(iso + 'T12:00:00Z') + n * 864e5).toISOString().slice(0,10);
+window.encaixarPlano = async (itemId, hh) => {
+  const P = AGPLANO; if (!P || !itemId) return;
+  const pl = P.plano || {};
+  const it = [...(pl.dias||[]).flatMap(d => d.itens||[]), ...(pl.adiantar||[])].find(i => i.id === itemId);
+  if (!it) return;
+  const D = AGDIA || hoje();
+  const caso = (String(it.link||'').match(/#\/caso\/([0-9a-f-]{36})/) || [])[1] || null;
+  const fimH = String(Math.min(Number(hh) + 1, 23)).padStart(2,'0');
+  const { error } = await sb.from('evento').insert({ escritorio_id: await escId(), tipo:'tarefa',
+    titulo: it.texto.slice(0, 140), descricao: 'Do plano da semana ' + marcaPlano(P, it),
+    inicio: D + 'T' + hh + ':00:00+00:00', fim: D + 'T' + fimH + ':00:00+00:00',
+    caso_id: caso, urgencia: 'normal', origem: 'plano' });
+  if (error) return alert('Não foi possível: ' + error.message);
+  MDSEL = null;
+  const dia = AGDIA; await telaAgenda(); AGDIA = dia; pintarMeuDia();
 };
 
 /* ------------------------------------------------- ficha completa e documentos */
@@ -3683,12 +3857,15 @@ function cartao(c){
   const k = d === null ? '' : (d < 0 ? 'crit' : (d <= 5 ? 'ser' : (d <= 15 ? 'warn' : 'good')));
   const parado = c.ultima_movimentacao
     ? Math.round((Date.now() - Date.parse(c.ultima_movimentacao))/864e5) : null;
-  return `<div class="cartao" data-caso="${c.id}" data-col="${c.coluna_id||''}">
+  const u = (typeof CASOURG !== 'undefined' && CASOURG[c.id]) || 'normal';
+  return `<div class="cartao" data-caso="${c.id}" data-col="${c.coluna_id||''}"${
+      u==='critica' ? ' style="border-left:4px solid var(--crit)"' : u==='alta' ? ' style="border-left:4px solid var(--ser)"' : ''}>
     <span class="pega" title="arraste para reordenar">⠿</span>
     <div class="tit"><a class="lnk" href="#/caso/${c.id}">${esc(c.cliente_nome || c.titulo || 'Sem cliente')}</a></div>
     <div class="sub" style="margin:2px 0 7px">${esc(c.area_nome || c.area || 'sem área')}${
       c.polo ? ' · ' + esc(c.polo) : ''} · ${c.processos} processo(s)</div>
     ${d !== null ? `<span class="pill ${k}">prazo ${br(c.proximo_prazo)}${d<0?' (vencido)':''}</span>` : ''}
+    ${u==='critica' || u==='alta' ? `<span class="pill ${URG[u][1]}">${URG[u][0]}</span>` : ''}
     ${parado !== null && parado > 90 ? `<span class="pill ser">parado há ${parado} dias</span>` : ''}
     ${pillsTag(c.id)}
     <div style="margin-top:9px;display:flex;gap:5px;flex-wrap:wrap">
@@ -3769,11 +3946,12 @@ window.abrirNovoCaso = () => {
   if (d.style.display !== 'none') d.querySelector('input[name="cliente"]')?.focus();
 };
 
+let CASOURG = {}, SOURGENTES = false;
 async function telaCasos(){
   const [q, co, od, ar, og] = await Promise.all([
     sb.from('caso_quadro').select('*'),
     sb.from('coluna_caso').select('*').order('ordem'),
-    sb.from('caso').select('id,ordem'),          /* a ordem manual mora em caso, não na view */
+    sb.from('caso').select('id,ordem,urgencia'), /* a ordem manual e a urgência moram em caso, não na view */
     sb.from('area_atuacao').select('id,nome').eq('ativo',true).order('ordem'),
     sb.from('origem_captacao').select('id,nome').eq('ativo',true).order('nome'),
   ]);
@@ -3782,11 +3960,13 @@ async function telaCasos(){
   await carregarClientes().catch(()=>{});
   if (q.error) return erro(q.error.message);
   QUADRO = q.data||[]; COLUNAS = co.data||[];
-  CASOORD = {}; (od.data||[]).forEach(x => { CASOORD[x.id] = x.ordem; });
+  CASOORD = {}; CASOURG = {}; (od.data||[]).forEach(x => { CASOORD[x.id] = x.ordem; CASOURG[x.id] = x.urgencia || 'normal'; });
   await carregarTags().catch(()=>{});
   if (TAGFILTRO && !TAGS.some(t=>t.id===TAGFILTRO)) TAGFILTRO = null;
   let abertos = QUADRO.filter(c=>!c.encerrado_em).sort(porOrdemCaso);
   if (TAGFILTRO) abertos = abertos.filter(c => tagsDoCaso(c.id).some(t => t.id === TAGFILTRO));
+  const urgentes = abertos.filter(c => ['alta','critica'].includes(CASOURG[c.id])).length;
+  if (SOURGENTES) abertos = abertos.filter(c => ['alta','critica'].includes(CASOURG[c.id]));
   const encerrados = QUADRO.filter(c=>c.encerrado_em)
     .sort((a,b)=>String(b.encerrado_em).localeCompare(String(a.encerrado_em)));
   const comPrazo = abertos.filter(c=>c.proximo_prazo && dias(c.proximo_prazo) <= 5).length;
@@ -3794,16 +3974,17 @@ async function telaCasos(){
     (Date.now()-Date.parse(c.ultima_movimentacao))/864e5 > 90).length;
 
   app.innerHTML = menu('casos') + `
-  <main><h1>Casos</h1>
-  <p class="meta">Cada caso numa etapa. Clique no nome do cliente para abrir o caso.
-    Para reordenar ou mudar de etapa, arraste pela alça <b>⠿</b> no canto do cartão —
-    a ordem fica gravada. As setas ▲▼ fazem o mesmo sem arrastar. Encerre com resultado registrado.</p>
-  <div class="kpis">
-    <div class="kpi"><div class="n">${abertos.length}</div><div class="l">casos abertos</div></div>
-    <div class="kpi ${comPrazo?'al':''}"><div class="n">${comPrazo}</div><div class="l">com prazo em até 5 dias</div></div>
-    <div class="kpi ${parados?'al':''}"><div class="n">${parados}</div><div class="l">parados há mais de 90 dias</div></div>
-    <div class="kpi"><div class="n">${encerrados.length}</div><div class="l">encerrados</div></div>
+  <main>
+  <div class="cab">
+    <div><h1>Casos</h1>
+      <p class="meta">${abertos.length} abertos${comPrazo ? ` · <b style="color:var(--crit)">${comPrazo} com prazo em até 5 dias</b>` : ''}${
+        parados ? ` · ${parados} parados há mais de 90 dias` : ''} · ${encerrados.length} encerrados</p></div>
+    <div class="acoesc">
+      <button class="btn ${SOURGENTES?'ok':''}" onclick="SOURGENTES=!SOURGENTES; telaCasos()" title="mostrar só os casos marcados como muito urgentes ou não pode esperar">Só urgentes${urgentes?' · '+urgentes:''}</button>
+    </div>
   </div>
+  <p class="nota" style="margin:0 0 12px">Arraste pela alça <b>⠿</b> para mudar de etapa ou reordenar. A cor da borda é a urgência que você marcou no caso:
+    <span style="color:var(--crit)">■</span> não pode esperar · <span style="color:var(--ser)">■</span> muito urgente.</p>
   <div class="card"><div style="padding:12px 18px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
     <button class="btn ok" onclick="abrirNovoCaso()">Abrir um caso</button>
     <span style="width:1px;height:22px;background:var(--ln)"></span>
