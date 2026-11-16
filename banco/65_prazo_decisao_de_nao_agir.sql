@@ -1,4 +1,4 @@
--- 64_prazo_decisao_de_nao_agir.sql — "não é prazo" e "é prazo, mas não vamos agir" são coisas diferentes
+-- 65_prazo_decisao_de_nao_agir.sql — "não é prazo" e "é prazo, mas não vamos agir" são coisas diferentes
 --
 -- Pedido do Breno em 15/11/2026, a partir do caso da Jamile: a decisão que indeferiu a tutela
 -- abria prazo de agravo, e a escolha foi não agravar. Descartar como "não é prazo" seria
