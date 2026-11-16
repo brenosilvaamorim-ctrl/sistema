@@ -91,6 +91,58 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.92em;background:var(--s
 .warn{color:var(--warn);border-color:var(--warn)}.good{color:var(--good);border-color:var(--good)}
 .cin{color:var(--i3);border-color:var(--ln)}.serie{color:var(--serie);border-color:var(--serie)}
 .taref{color:var(--taref);border-color:var(--taref)}
+/* ---- desenho de 11/2026: Início, Agenda e caso. Cabeçalho em serifa, blocos que dizem o
+   que pedem, e a semana como lista por dia — o Breno preferiu lista a grade de calendário. */
+.cab{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:14px}
+.cab h1{font-size:26px;margin:0 0 4px}.cab .meta{margin:0}
+.cab .acoesc{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.urgsel{display:flex;gap:4px;flex-wrap:wrap}
+.urgsel button{font:inherit;font-size:11.6px;padding:4px 10px;border-radius:99px;border:1px solid var(--ln);
+  background:var(--s1);color:var(--i3);cursor:pointer}
+.urgsel button:hover{border-color:var(--i3);color:var(--ink)}
+.urgsel button.on{font-weight:600}
+.urgsel button.on.baixa{color:var(--i2);border-color:var(--i2)}.urgsel button.on.normal{color:var(--serie);border-color:var(--serie)}
+.urgsel button.on.alta{color:var(--ser);border-color:var(--ser)}.urgsel button.on.critica{color:var(--s1);background:var(--crit);border-color:var(--crit)}
+.banda{display:flex;gap:12px;align-items:center;flex-wrap:wrap;border-radius:10px;padding:10px 14px;margin:0 0 14px;
+  font-size:13.4px;border:1px solid var(--ln);background:var(--s1)}
+.banda.crit{border-color:var(--crit);color:var(--crit)}.banda.ser{border-color:var(--ser);color:var(--ser)}
+.banda b{color:inherit}.banda .btn{margin-left:auto}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:0 0 6px}
+.tile{background:var(--s1);border:1px solid var(--ln);border-radius:10px;padding:10px 13px}
+.tile .r{font-size:11.3px;color:var(--i3)}.tile .v{font-size:17px;font-weight:600;margin-top:1px;font-variant-numeric:tabular-nums}
+.tile.al .v{color:var(--crit)}
+.abas{display:flex;gap:20px;flex-wrap:wrap;border-bottom:1px solid var(--ln);margin:14px 0 18px;position:sticky;top:50px;
+  background:var(--s0);z-index:5}
+.abas button{background:none;border:0;border-bottom:2px solid transparent;padding:10px 0 9px;font:inherit;font-size:13.6px;
+  color:var(--i2);cursor:pointer}
+.abas button:hover{color:var(--ink)}.abas button.on{color:var(--ink);border-bottom-color:var(--ink);font-weight:600}
+.abas button .n{font-size:11px;color:var(--i3);margin-left:4px;font-weight:400}
+.lado{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:18px;align-items:start}
+@media(max-width:900px){.lado{grid-template-columns:1fr}}
+.dl{padding:0 18px 14px}
+.dl-dia{display:flex;align-items:baseline;gap:8px;margin:16px 0 4px;font:600 13.6px/1.3 Georgia,serif;color:var(--ink)}
+.dl-dia:first-child{margin-top:4px}.dl-dia .sub{display:inline;font:400 11.6px ui-sans-serif,sans-serif;margin:0}
+.dl-dia.hj{color:var(--serie)}
+.dl-it{display:grid;grid-template-columns:48px minmax(0,1fr) auto;gap:10px;align-items:start;padding:8px 0;
+  border-top:1px solid var(--ln);font-size:13.4px}
+.dl-it .h{color:var(--i2);font-variant-numeric:tabular-nums;font-size:12.6px;padding-top:1px}
+.dl-it .t b{font-weight:600}.dl-it .t .sub{margin-top:1px}
+.dl-it .ac{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+.dl-it .ac .btn{font-size:11.4px;padding:3px 8px}
+.dl-it.feito{opacity:.45;text-decoration:line-through}
+.tipo{display:inline-block;width:8px;height:8px;border-radius:99px;margin-right:6px;vertical-align:1px;background:var(--i3)}
+.tipo.prazo{background:var(--ser)}.tipo.audiencia{background:var(--crit)}.tipo.pericia{background:var(--warn)}
+.tipo.reuniao{background:var(--serie)}.tipo.tarefa{background:var(--taref)}.tipo.prescricao{background:var(--serie)}
+.at{padding:0 18px 14px}
+.at-it{display:flex;gap:10px;align-items:baseline;padding:9px 0;border-top:1px solid var(--ln);font-size:13.4px;text-decoration:none;color:inherit}
+.at-it:first-child{border-top:0}.at-it:hover .rot{text-decoration:underline}
+.at-it .rot{flex:1}.at-it .num{font-weight:650;font-variant-numeric:tabular-nums}.at-it.al .num{color:var(--crit)}
+.marca-esq{border-left:3px solid var(--crit);padding-left:10px;margin:8px 0}
+.marca-esq.ser{border-left-color:var(--ser)}.marca-esq.warn{border-left-color:var(--warn)}
+.vistas{display:inline-flex;border:1px solid var(--ln);border-radius:8px;overflow:hidden}
+.vistas button{font:inherit;font-size:12.3px;padding:5px 11px;border:0;background:var(--s1);color:var(--i2);cursor:pointer}
+.vistas button.on{background:var(--ink);color:var(--s1);font-weight:600}
+.dl-it .h{white-space:nowrap}
 button,input,select,textarea{font:inherit}
 .btn{font-size:12.3px;font-weight:600;padding:5px 11px;border-radius:8px;border:1px solid var(--ln);
   background:var(--s0);color:var(--ink);cursor:pointer;white-space:nowrap}
@@ -161,6 +213,15 @@ const numOuNulo = v => { const t = String(v ?? '').replace(/\./g,'').replace(','
 const horaBr = t => t ? new Date(t).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
 function sit(r){ if(r<0) return ['crit','Vencido']; if(r<=2) return ['crit','Urgente'];
   if(r<=5) return ['ser','Atenção']; if(r<=10) return ['warn','Próximo']; return ['good','No prazo']; }
+
+/* Mesma escala de urgência e mesmos nomes de dia do sistema do escritório (11/2026). */
+const URG = { baixa:['Pouco urgente','cin'], normal:['Normal','ser'], alta:['Muito urgente','warn'], critica:['Não pode esperar','crit'] };
+const DIASEM = ['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
+const humano = n => n == null ? '—' : n < 1 ? 'hoje' : n === 1 ? '1 dia' : n < 60 ? n + ' dias' : Math.round(n/30) + ' meses';
+const horaLoc = t => t ? new Date(t).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : '';
+const diaLoc = t => { const d = new Date(t); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+const nomeDia = d => { const n = dias(d), nm = DIASEM[new Date(d+'T12:00:00Z').getUTCDay()];
+  return n === 0 ? 'Hoje' : n === 1 ? 'Amanhã' : nm[0].toUpperCase() + nm.slice(1); };
 
 let USER = null;
 let PAR = { id:null, nome:'Parceria', parceiro_id:null, membros:[], eu:null, esc:null };
@@ -273,11 +334,11 @@ const quemE = uid => { const m = PAR.membros.find(x => x.usuario_auth === uid); 
 async function telaInicio(){
   const limite = new Date(Date.now() + 30*864e5).toISOString().slice(0,10);
   const [cs, pz, ev, it, rc] = await Promise.all([
-    sb.from('caso').select('id,titulo,encerrado_em').eq('parceria_id', PAR.id),
-    sb.from('prazo').select('id,descricao,data_fatal,situacao,caso_id').eq('parceria_id', PAR.id)
+    sb.from('caso').select('id,titulo,encerrado_em,urgencia').eq('parceria_id', PAR.id),
+    sb.from('prazo').select('id,descricao,data_fatal,situacao,caso_id,regime').eq('parceria_id', PAR.id)
       .in('situacao',['sugerido','confirmado']).lte('data_fatal', limite).order('data_fatal'),
-    sb.from('evento').select('id,titulo,inicio,tipo,caso_id').eq('parceria_id', PAR.id)
-      .eq('situacao','aberta').gte('inicio', hoje()).order('inicio').limit(12),
+    sb.from('evento').select('id,titulo,inicio,tipo,caso_id,local').eq('parceria_id', PAR.id)
+      .eq('situacao','aberta').gte('inicio', new Date(Date.now() - 864e5).toISOString()).order('inicio').limit(40),
     sb.from('intimacao').select('id,data_disponibilizacao,tipo_comunicacao,numero_formatado,situacao')
       .eq('parceria_id', PAR.id).eq('situacao','nova').order('data_disponibilizacao',{ascending:false}),
     sb.from('parceria_recado').select('*').eq('parceria_id', PAR.id).order('criado_em',{ascending:false}).limit(5),
@@ -286,42 +347,73 @@ async function telaInicio(){
   const casos = cs.data || [], abertos = casos.filter(c => !c.encerrado_em);
   const prazos = pz.data || [], eventos = ev.data || [], novas = it.data || [], recados = rc.data || [];
   const tituloCaso = id => casos.find(c => c.id === id)?.titulo || '';
+  const h = hoje(), d7 = new Date(Date.now() + 7*864e5).toISOString().slice(0,10);
+  const vencidos = prazos.filter(p => p.data_fatal < h);
+  const protocolos = prazos.filter(p => p.regime === 'protocolo');
+  const urgentes = abertos.filter(c => ['alta','critica'].includes(c.urgencia))
+    .sort((a,b) => (a.urgencia==='critica'?0:1) - (b.urgencia==='critica'?0:1));
+  const it2 = [
+    ...prazos.filter(p => p.data_fatal <= d7).map(p => ({ d:p.data_fatal, h:'', t:'prazo', nome:p.descricao, caso:p.caso_id,
+        href:'#/prazos?abrir=' + p.id, nota: p.data_fatal < h ? '<span style="color:var(--crit)">venceu há ' + humano(-dias(p.data_fatal)) + '</span>' : 'prazo' })),
+    ...eventos.filter(e => diaLoc(e.inicio) <= d7 && diaLoc(e.inicio) >= h).map(e => ({ d:diaLoc(e.inicio), h:horaLoc(e.inicio), t:e.tipo, nome:e.titulo,
+        caso:e.caso_id, href:e.caso_id ? '#/caso/' + e.caso_id : '#/agenda', nota:[e.tipo, e.local].filter(Boolean).map(esc).join(' · ') })),
+  ];
+  /* Vencido de ontem ainda dá para correr atrás; o de julho é pendência de baixa e fica no contador. */
+  const d7atras = new Date(Date.now() - 7*864e5).toISOString().slice(0,10);
+  const hojeIt = it2.filter(i => i.d <= h && i.d >= d7atras), semana = it2.filter(i => i.d > h);
+  const linha = i => `<div class="dl-it">
+      <span class="h">${i.h || ''}</span>
+      <span class="t"><span class="tipo ${i.t}"></span><a class="lnk" href="${i.href}"><b>${esc(i.nome)}</b></a>
+        <span class="sub">${i.nota}${i.caso ? ' · ' + esc(tituloCaso(i.caso)) : ''}</span></span><span></span></div>`;
+  const porDia = l => { const g = {}; for (const i of l) (g[i.d] ||= []).push(i);
+    return Object.keys(g).sort().map(d => `<div class="dl-dia">${nomeDia(d)}<span class="sub">${br(d)}</span></div>` +
+      g[d].sort((a,b)=>(a.h||'').localeCompare(b.h||'')).map(linha).join('')).join(''); };
+  const dt = new Date(h+'T12:00:00Z'), nm = DIASEM[dt.getUTCDay()];
+  const extenso = nm[0].toUpperCase() + nm.slice(1) + ', ' + dt.getUTCDate() + ' de ' +
+    ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'][dt.getUTCMonth()];
+  const at = (rot, num, href, al) => `<a class="at-it${al && num ? ' al' : ''}" href="${href}"><span class="rot">${rot}</span><span class="num">${num}</span></a>`;
 
   app.innerHTML = menu('inicio') + `<main>
-  <h1>Início</h1>
-  <p class="meta">O que é nosso e o que vence. Tudo o que está aqui está também no sistema do
-    escritório, na mesma linha — não é cópia.</p>
-  <div class="kpis">
-    <div class="kpi"><div class="n">${abertos.length}</div><div class="l">casos abertos</div></div>
-    <div class="kpi ${prazos.filter(p=>dias(p.data_fatal)<=5).length?'al':''}">
-      <div class="n">${prazos.length}</div><div class="l">prazos em 30 dias</div></div>
-    <div class="kpi ${novas.length?'al':''}"><div class="n">${novas.length}</div><div class="l">publicações novas</div></div>
-    <div class="kpi"><div class="n">${eventos.length}</div><div class="l">compromissos à frente</div></div>
+  <div class="cab">
+    <div><h1>${extenso}</h1>
+      <p class="meta">O que é nosso e o que vence. Tudo aqui está também no sistema do escritório, na mesma linha — não é cópia.</p></div>
+    <div class="acoesc">
+      <a class="btn" style="text-decoration:none" href="#/agenda">Agenda</a>
+      <a class="btn" style="text-decoration:none" href="#/prazos">Prazos</a>
+      <a class="btn" style="text-decoration:none" href="#/recados">Recados</a>
+    </div>
   </div>
-
-  <div class="card"><h2>Prazos</h2>
-    ${prazos.length ? `<table><thead><tr><th>Fatal</th><th>Providência</th><th>Caso</th><th></th></tr></thead><tbody>
-      ${prazos.map(p => { const d = dias(p.data_fatal), [cor, rot] = sit(d);
-        return `<tr><td class="dt">${br(p.data_fatal)}<span class="sub">${d<0?Math.abs(d)+' dias atrás':d+' dias'}</span></td>
-        <td><a class="lnk" href="#/prazos?abrir=${p.id}">${esc(p.descricao)}</a></td>
-        <td>${p.caso_id ? `<a class="lnk" href="#/caso/${p.caso_id}">${esc(tituloCaso(p.caso_id))}</a>` : '—'}</td>
-        <td><span class="pill ${cor}">${rot}</span></td></tr>`; }).join('')}
-    </tbody></table>` : vazio('Nenhum prazo nos próximos 30 dias.')}
-  </div>
-
-  <div class="card"><h2>Próximos compromissos</h2>
-    ${eventos.length ? `<table><tbody>${eventos.map(e => `<tr>
-      <td class="dt" style="width:150px">${horaBr(e.inicio)}</td>
-      <td>${esc(e.titulo)}<span class="sub">${esc(e.tipo)}${e.caso_id?' · '+esc(tituloCaso(e.caso_id)):''}</span></td>
-    </tr>`).join('')}</tbody></table>` : vazio('Nada marcado.')}
-  </div>
-
-  <div class="card"><h2>Últimos recados</h2>
-    ${recados.length ? `<div style="padding:4px 18px 16px">${recados.map(r => `
-      <div class="bolha ${r.autor_auth===USER.id?'meu':''}">${esc(r.texto)}
-        <span class="quem">${esc(r.autor_nome)} · ${horaBr(r.criado_em)}</span></div>`).join('')}
-      <p style="margin:10px 0 0"><a class="lnk" href="#/recados">abrir os recados</a></p></div>`
-      : vazio('Nenhum recado ainda.')}
+  <div class="lado">
+    <div>
+      <div class="card"><h2>Hoje</h2>
+        <div class="dl">${hojeIt.sort((a,b)=>(a.d+(a.h||'')).localeCompare(b.d+(b.h||''))).map(linha).join('') || vazio('Nada para hoje e nada vencido. Bom sinal.')}</div></div>
+      <div class="card"><h2>Os próximos sete dias</h2>
+        <div class="dl">${porDia(semana) || vazio('Semana livre pela frente.')}</div></div>
+    </div>
+    <div>
+      <div class="card"><h2>Precisa de você</h2>
+        <div class="at">
+          ${protocolos.map(p => { const n = dias(p.data_fatal); return `<a class="at-it marca-esq ${n<=3?'':'ser'}" style="display:block;border-top:0;margin:6px 0" href="#/caso/${p.caso_id||''}">
+            <b>Protocolar — ${esc(tituloCaso(p.caso_id) || p.descricao)}</b>
+            <span class="sub" style="color:${n<=3?'var(--crit)':'var(--ser)'}">${n<0 ? 'passou da meta há ' + humano(-n) : n===0 ? 'a meta é hoje' : 'faltam ' + humano(n) + ' · até ' + br(p.data_fatal)}</span></a>`; }).join('')}
+          ${urgentes.slice(0,6).map(c => `<a class="at-it marca-esq ${c.urgencia==='critica'?'':'warn'}" style="display:block;border-top:0;margin:6px 0" href="#/caso/${c.id}">
+            <b>${esc(c.titulo)}</b><span class="sub">${esc(URG[c.urgencia]?.[0] || c.urgencia)}</span></a>`).join('')}
+          <div style="margin-top:${protocolos.length || urgentes.length ? '10px' : '0'}">
+          ${at('Prazos vencidos em aberto', vencidos.length, '#/prazos', true)}
+          ${at('Prazos nos próximos 30 dias', prazos.length, '#/prazos')}
+          ${at('Publicações novas', novas.length, '#/publicacoes', true)}
+          ${at('Compromissos à frente', eventos.filter(e => diaLoc(e.inicio) >= h).length, '#/agenda')}
+          ${at('Casos abertos', abertos.length, '#/casos')}
+          </div>
+        </div></div>
+      <div class="card"><h2>Últimos recados</h2>
+        ${recados.length ? `<div style="padding:4px 18px 16px">${recados.map(r => `
+          <div class="bolha ${r.autor_auth===USER.id?'meu':''}">${esc(r.texto)}
+            <span class="quem">${esc(r.autor_nome)} · ${horaBr(r.criado_em)}</span></div>`).join('')}
+          <p style="margin:10px 0 0"><a class="lnk" href="#/recados">abrir os recados</a></p></div>`
+          : vazio('Nenhum recado ainda.')}
+      </div>
+    </div>
   </div>
   </main>` + rodape();
 }
@@ -330,13 +422,14 @@ async function telaInicio(){
 
 let CASOBUSCA = '';
 
+let CASOURG = {}, SOURGENTES = false;
 async function telaCasos(){
   /* A visão caso_quadro não tem parceria_id, e deixar a RLS filtrar sozinha não
      serve: para um login do escritório ela devolve o escritório inteiro, e esta
      porta passaria a mostrar o que não é da parceria. Então a lista de casos vem
      primeiro, carimbada, e a visão é pedida só para esses. */
   const [od, cl] = await Promise.all([
-    sb.from('caso').select('id,ordem').eq('parceria_id', PAR.id),
+    sb.from('caso').select('id,ordem,urgencia').eq('parceria_id', PAR.id),
     sb.from('cliente').select('id,nome').eq('parceria_id', PAR.id).order('nome'),
   ]);
   if (od.error) return erro(od.error.message);
@@ -345,7 +438,7 @@ async function telaCasos(){
   if (q.error) return erro(q.error.message);
   QUADRO = q.data || [];
   const clientes = cl.data || [];
-  CASOORD = {}; (od.data || []).forEach(x => { CASOORD[x.id] = x.ordem; });
+  CASOORD = {}; CASOURG = {}; (od.data || []).forEach(x => { CASOORD[x.id] = x.ordem; CASOURG[x.id] = x.urgencia || 'normal'; });
   await carregarTags(meus).catch(()=>{});
   if (TAGFILTRO && !TAGS.some(t => t.id === TAGFILTRO)) TAGFILTRO = null;
 
@@ -353,6 +446,8 @@ async function telaCasos(){
   const casa = c => (!filtro || `${c.titulo||''} ${c.cliente_nome||''}`.toLowerCase().includes(filtro))
     && (!TAGFILTRO || tagsDoCaso(c.id).some(t => t.id === TAGFILTRO));
   let abertos = QUADRO.filter(c => !c.encerrado_em && casa(c)).sort(porOrdemCaso);
+  const urgentes = abertos.filter(c => ['alta','critica'].includes(CASOURG[c.id])).length;
+  if (SOURGENTES) abertos = abertos.filter(c => ['alta','critica'].includes(CASOURG[c.id]));
   const encerrados = QUADRO.filter(c => c.encerrado_em && casa(c))
     .sort((a,b) => String(b.encerrado_em).localeCompare(String(a.encerrado_em)));
   const comPrazo = abertos.filter(c => c.proximo_prazo && dias(c.proximo_prazo) <= 5).length;
@@ -360,16 +455,17 @@ async function telaCasos(){
     (Date.now() - Date.parse(c.ultima_movimentacao))/864e5 > 90).length;
 
   app.innerHTML = menu('casos') + `<main>
-  <h1>Casos</h1>
-  <p class="meta">O mesmo quadro do escritório, com o que é nosso. Cada caso numa etapa; clique
-    no nome para abrir. Para reordenar ou mudar de etapa, arraste pela alça <b>⠿</b> — a ordem
-    fica gravada, e é a mesma que o escritório vê. As setas ▲▼ fazem o mesmo sem arrastar.</p>
-  <div class="kpis">
-    <div class="kpi"><div class="n">${abertos.length}</div><div class="l">casos abertos</div></div>
-    <div class="kpi ${comPrazo?'al':''}"><div class="n">${comPrazo}</div><div class="l">com prazo em até 5 dias</div></div>
-    <div class="kpi ${parados?'al':''}"><div class="n">${parados}</div><div class="l">parados há mais de 90 dias</div></div>
-    <div class="kpi"><div class="n">${encerrados.length}</div><div class="l">encerrados</div></div>
+  <div class="cab">
+    <div><h1>Casos</h1>
+      <p class="meta">${abertos.length} abertos${comPrazo ? ` · <b style="color:var(--crit)">${comPrazo} com prazo em até 5 dias</b>` : ''}${
+        parados ? ` · ${parados} parados há mais de 90 dias` : ''} · ${encerrados.length} encerrados</p></div>
+    <div class="acoesc">
+      <button class="btn ${SOURGENTES?'ok':''}" onclick="SOURGENTES=!SOURGENTES; telaCasos()">Só urgentes${urgentes?' · '+urgentes:''}</button>
+    </div>
   </div>
+  <p class="nota" style="margin:0 0 12px">O mesmo quadro do escritório, com o que é nosso. Arraste pela alça <b>⠿</b> para mudar de etapa —
+    a ordem é a mesma que o escritório vê. A cor da borda é a urgência marcada no caso:
+    <span style="color:var(--crit)">■</span> não pode esperar · <span style="color:var(--ser)">■</span> muito urgente.</p>
   <div class="card">
     <div style="padding:12px 18px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <button class="btn ok" onclick="document.getElementById('nc').style.display='block'">Abrir um caso</button>
@@ -490,12 +586,15 @@ function cartao(c){
   const k = d === null ? '' : (d < 0 ? 'crit' : (d <= 5 ? 'ser' : (d <= 15 ? 'warn' : 'good')));
   const parado = c.ultima_movimentacao
     ? Math.round((Date.now() - Date.parse(c.ultima_movimentacao))/864e5) : null;
-  return `<div class="cartao" data-caso="${c.id}" data-col="${c.coluna_id||''}">
+  const u = CASOURG[c.id] || 'normal';
+  return `<div class="cartao" data-caso="${c.id}" data-col="${c.coluna_id||''}"${
+      u==='critica' ? ' style="border-left:4px solid var(--crit)"' : u==='alta' ? ' style="border-left:4px solid var(--ser)"' : ''}>
     <span class="pega" title="arraste para reordenar">⠿</span>
     <div class="tit"><a class="lnk" href="#/caso/${c.id}">${esc(c.titulo || c.cliente_nome || 'sem título')}</a></div>
     <div class="sub" style="margin:2px 0 7px">${esc(c.cliente_nome || 'sem cliente')} · ${
       esc(c.area_nome || c.area || 'sem área')}${c.polo ? ' · ' + esc(c.polo) : ''} · ${c.processos} processo(s)</div>
     ${d !== null ? `<span class="pill ${k}">prazo ${br(c.proximo_prazo)}${d<0?' (vencido)':''}</span>` : ''}
+    ${u==='critica' || u==='alta' ? `<span class="pill ${URG[u][1]}">${URG[u][0]}</span>` : ''}
     ${parado !== null && parado > 90 ? `<span class="pill ser">parado há ${parado} dias</span>` : ''}
     ${pillsTag(c.id)}
     <div style="margin-top:9px;display:flex;gap:5px;flex-wrap:wrap">
@@ -625,6 +724,20 @@ window.novoCaso = async (ev) => {
   } catch (e) { st.style.color = 'var(--crit)'; st.textContent = 'não deu certo: ' + e.message; }
 };
 
+/* Abas do caso e urgência — o mesmo desenho do sistema do escritório (11/2026). */
+const ABASCASO = [['geral','Visão geral'],['processos','Processos'],['fatos','Fatos e documentos'],
+  ['dinheiro','Dinheiro e horas'],['cadastro','Cadastro'],['historico','Movimentação']];
+let CASOABA = { id: null, aba: 'geral' };
+window.abaCaso = k => {
+  CASOABA.aba = k;
+  document.querySelectorAll('section.aba').forEach(x => x.hidden = x.dataset.aba !== k);
+  document.querySelectorAll('#abascaso button').forEach(b => b.classList.toggle('on', b.dataset.k === k));
+};
+window.urgenciaCaso = async (id, k) => {
+  const { error } = await sb.from('caso').update({ urgencia: k }).eq('id', id);
+  if (error) return alert('Não deu certo: ' + error.message);
+  document.querySelectorAll('#urgsel button').forEach(b => b.classList.toggle('on', b.classList.contains(k)));
+};
 async function telaCaso(id){
   const [c, pr, pz, ev, la, rc] = await Promise.all([
     sb.from('caso').select('*, cliente:cliente_id(id,nome,cpf_cnpj,telefone,whatsapp,email)').eq('id', id).maybeSingle(),
@@ -663,31 +776,42 @@ async function telaCaso(id){
   const aReceber = lancs.filter(l => l.tipo === 'entrada' && l.situacao !== 'pago')
     .reduce((t,l) => t + Number(l.valor||0), 0);
 
+  if (CASOABA.id !== id) CASOABA = { id, aba: 'geral' };
+  const protocolo = procs.length ? null
+    : prazos.find(p => p.regime === 'protocolo' && ['sugerido','confirmado'].includes(p.situacao)) || null;
+  const pzAb = prazos.filter(p => ['sugerido','confirmado'].includes(p.situacao));
+  const proximo = pzAb.map(p => p.data_fatal).sort()[0];
   app.innerHTML = menu('casos') + `<main>
   <a class="volta" href="#/casos">← Casos</a>
-  <h1>${esc(caso.titulo)}</h1>
-  <p class="meta">${esc(nomeArea(caso.area_id) || caso.area || 'sem área')}${caso.polo?' · '+esc(caso.polo):''}
-    ${caso.encerrado_em ? `· <span class="pill cin">encerrado em ${br(caso.encerrado_em)}</span>` : ''}</p>
-
-  <div class="card"><h2>Cliente</h2>
-    <div class="ficha">
-      <div><span class="r">nome</span>${cli ? `<a class="lnk" href="#/cliente/${cli.id}">${esc(cli.nome)}</a>` : '—'}</div>
-      <div><span class="r">CPF/CNPJ</span>${esc(cli?.cpf_cnpj || '—')}</div>
-      <div><span class="r">telefone</span>${esc(cli?.whatsapp || cli?.telefone || '—')}</div>
-      <div><span class="r">e-mail</span>${esc(cli?.email || '—')}</div>
-    </div>
-    ${caso.descricao ? `<p class="nota">${esc(caso.descricao)}</p>` : ''}
+  <div class="cab">
+    <div style="min-width:0"><h1>${esc(caso.titulo)}</h1>
+      <p class="meta">${esc(cli?.nome || 'sem cliente')} · ${esc(nomeArea(caso.area_id) || caso.area || 'sem área')}${caso.polo?' · '+esc(caso.polo):''}
+        ${caso.encerrado_em ? `· <span class="pill cin">encerrado em ${br(caso.encerrado_em)}</span>` : ''}</p></div>
+    ${caso.urgencia !== undefined ? `<div>
+      <div class="sub" style="margin:0 0 4px;text-align:right">Urgência deste caso</div>
+      <div class="urgsel" id="urgsel">${Object.entries(URG).map(([k,[r]]) =>
+        `<button class="${k}${(caso.urgencia||'normal')===k?' on':''}" onclick="urgenciaCaso('${caso.id}','${k}')">${r}</button>`).join('')}</div>
+    </div>` : ''}
   </div>
-
-  <div class="card"><h2>Processos</h2>
-    ${procs.length ? `<table><tbody>${procs.map(p => `<tr>
-      <td><a class="lnk" href="#/processo/${p.id}"><span class="proc">${esc(p.numero_formatado || p.numero_cnj)}</span></a>
-        <span class="sub">${esc([p.tribunal_sigla, p.orgao, p.classe].filter(Boolean).join(' · ') || '—')}</span></td>
-      <td style="width:120px">${esc(p.fase || '—')}</td></tr>`).join('')}</tbody></table>`
-      : vazio('Nenhum processo. Cadastre em Processos e amarre a este caso.')}
-    <div style="padding:0 18px 16px"><a class="lnk" href="#/processos?caso=${caso.id}">cadastrar um processo neste caso</a></div>
+  ${protocolo ? `<div class="banda ${dias(protocolo.data_fatal) <= 3 ? 'crit' : 'ser'}">
+    <span><b>Protocolar até ${br(protocolo.data_fatal)}</b> — ${dias(protocolo.data_fatal) < 0
+      ? 'passou da meta há ' + humano(-dias(protocolo.data_fatal))
+      : dias(protocolo.data_fatal) === 0 ? 'a meta é hoje' : 'faltam ' + humano(dias(protocolo.data_fatal))}.
+      <span class="sub" style="display:inline;color:var(--i2)">Meta de 15 dias úteis desde que virou caso, em ${br(protocolo.data_inicio)}. Some sozinha quando o processo for cadastrado.</span></span>
+    <a class="btn" style="text-decoration:none" href="#/processos?caso=${caso.id}">Cadastrar o processo</a>
+  </div>` : ''}
+  <div class="tiles">
+    <div class="tile ${proximo && dias(proximo)<=5 ? 'al':''}"><div class="r">Próximo prazo</div><div class="v">${proximo ? br(proximo) : '—'}</div></div>
+    <div class="tile"><div class="r">Prazos em aberto</div><div class="v">${pzAb.length}</div></div>
+    <div class="tile"><div class="r">Processos</div><div class="v">${procs.length}</div></div>
+    <div class="tile"><div class="r">Documentos recebidos</div><div class="v">${docs.length ? docs.filter(d=>d.recebido_em).length + ' de ' + docs.length : '—'}</div></div>
+    <div class="tile"><div class="r">A receber</div><div class="v">${rs(aReceber)}</div></div>
   </div>
+  <div class="abas" id="abascaso">${ABASCASO.map(([k,r]) => {
+    const n = k==='fatos' ? fatos.length : k==='processos' ? procs.length : k==='geral' ? pzAb.length : 0;
+    return `<button data-k="${k}" class="${CASOABA.aba===k?'on':''}" onclick="abaCaso('${k}')">${r}${n?`<span class="n">${n}</span>`:''}</button>`; }).join('')}</div>
 
+  <section class="aba" data-aba="geral"${CASOABA.aba==='geral'?'':' hidden'}>
   <div class="card"><h2>Prazos</h2>
     ${prazos.length ? `<table><tbody>${prazos.map(p => { const d = dias(p.data_fatal), [cor, rot] = sit(d);
       return `<tr><td class="dt" style="width:110px">${br(p.data_fatal)}</td>
@@ -701,18 +825,6 @@ async function telaCaso(id){
       </tr>`; }).join('')}</tbody></table>` : vazio('Sem prazos.')}
     <div style="padding:0 18px 16px"><a class="lnk" href="#/prazos">lançar ou conferir prazos</a></div>
   </div>
-
-  <div class="card"><h2>Dinheiro deste caso</h2>
-    ${lancs.length ? `<table><thead><tr><th>Vencimento</th><th>O quê</th><th>Valor</th><th>Situação</th></tr></thead><tbody>
-      ${lancs.map(l => `<tr><td class="dt">${br(l.vencimento)}</td>
-        <td>${esc(l.descricao||'—')}${l.parcela?`<span class="sub">parcela ${l.parcela}/${l.total_parcelas}</span>`:''}</td>
-        <td class="dt">${rs(l.valor)}</td>
-        <td>${l.situacao==='pago'?'<span class="pill good">pago</span>':'<span class="pill cin">'+esc(l.situacao)+'</span>'}</td>
-      </tr>`).join('')}</tbody></table>
-      <p class="nota" style="margin-top:10px">A receber neste caso: <b>${rs(aReceber)}</b>.</p>`
-      : vazio('Nada lançado.')}
-  </div>
-
   <div class="card"><h2>Agenda deste caso</h2>
     ${eventos.length ? `<ul class="tl">${eventos.map(e => `<li>
       <span class="d">${horaBr(e.inicio)}</span><b>${esc(e.titulo)}</b>
@@ -720,7 +832,6 @@ async function telaCaso(id){
       : vazio('Nada marcado.')}
     <div style="padding:0 18px 16px"><a class="lnk" href="#/agenda?caso=${caso.id}">marcar algo neste caso</a></div>
   </div>
-
   <div class="card"><h2>Recados sobre este caso</h2>
     <div class="fio" id="fio">${recados.length ? recados.map(r => `
       <div class="bolha ${r.autor_auth===USER.id?'meu':''}">${esc(r.texto)}
@@ -732,18 +843,25 @@ async function telaCaso(id){
       <span id="rec-st" class="sub" style="margin:0"></span>
     </form>
   </div>
-
-  <div class="card"><h2>Etiquetas</h2>
-    <p class="nota">O vocabulário é o do escritório — criar etiqueta nova continua sendo de lá.
-      Aqui se pendura e se tira nos casos que são nossos.</p>
-    <div style="padding:0 18px 16px;display:flex;gap:6px;flex-wrap:wrap">
-      ${etiquetas.length ? etiquetas.map(t => `<button class="btn ${minhasTags.has(t.id)?'ok':''}"
-        style="font-size:11.8px;padding:5px 10px"
-        onclick="porTagNoCaso('${caso.id}','${t.id}',${!minhasTags.has(t.id)})">${esc(t.nome)}</button>`).join('')
-        : '<span class="sub" style="margin:0">nenhuma etiqueta criada no escritório ainda</span>'}
+  <div class="card"><h2>Cliente</h2>
+    <div class="ficha">
+      <div><span class="r">nome</span>${cli ? `<a class="lnk" href="#/cliente/${cli.id}">${esc(cli.nome)}</a>` : '—'}</div>
+      <div><span class="r">CPF/CNPJ</span>${esc(cli?.cpf_cnpj || '—')}</div>
+      <div><span class="r">telefone</span>${esc(cli?.whatsapp || cli?.telefone || '—')}</div>
+      <div><span class="r">e-mail</span>${esc(cli?.email || '—')}</div>
     </div>
+    ${caso.descricao ? `<p class="nota">${esc(caso.descricao)}</p>` : ''}
   </div>
-
+  </section>
+  <section class="aba" data-aba="processos"${CASOABA.aba==='processos'?'':' hidden'}>
+  <div class="card"><h2>Processos</h2>
+    ${procs.length ? `<table><tbody>${procs.map(p => `<tr>
+      <td><a class="lnk" href="#/processo/${p.id}"><span class="proc">${esc(p.numero_formatado || p.numero_cnj)}</span></a>
+        <span class="sub">${esc([p.tribunal_sigla, p.orgao, p.classe].filter(Boolean).join(' · ') || '—')}</span></td>
+      <td style="width:120px">${esc(p.fase || '—')}</td></tr>`).join('')}</tbody></table>`
+      : vazio('Nenhum processo. Cadastre em Processos e amarre a este caso.')}
+    <div style="padding:0 18px 16px"><a class="lnk" href="#/processos?caso=${caso.id}">cadastrar um processo neste caso</a></div>
+  </div>
   <div class="card"><h2>Partes do processo — ${partes.length}</h2>
     <p class="nota">Quem está de cada lado. É daqui que a peça tira a qualificação.</p>
     ${partes.length ? `<table><thead><tr><th>Nome</th><th>Polo</th><th>CPF/CNPJ</th><th>Advogado</th></tr></thead>
@@ -765,7 +883,8 @@ async function telaCaso(id){
       <span id="pt-st" class="sub" style="margin:0"></span>
     </form>
   </div>
-
+  </section>
+  <section class="aba" data-aba="fatos"${CASOABA.aba==='fatos'?'':' hidden'}>
   <div class="card"><h2>Fatos — ${fatos.length}</h2>
     <p class="nota">A linha do tempo do caso, com a prova de cada fato ao lado. É esta lista que
       vira a narrativa da inicial — e é por isso que ela se escreve antes da peça, não depois.</p>
@@ -782,7 +901,6 @@ async function telaCaso(id){
       <span id="ft-st" class="sub" style="margin:0"></span>
     </form>
   </div>
-
   <div class="card"><h2>Documentos pedidos — ${docs.length}</h2>
     <p class="nota">A lista do que o caso precisa, e o que já chegou. O arquivo em si fica no
       sistema do escritório; aqui é o controle.</p>
@@ -798,23 +916,6 @@ async function telaCaso(id){
       <span id="dc-st" class="sub" style="margin:0"></span>
     </form>
   </div>
-
-  ${hon ? `<div class="card"><h2>Honorário combinado</h2>
-    <div class="ficha" style="padding:0 18px 16px">
-      <div><span class="sub">Modalidade</span>${esc(hon.modalidade || '—')}</div>
-      <div><span class="sub">Valor fixo</span>${hon.valor_fixo != null ? rs(hon.valor_fixo) : '—'}</div>
-      <div><span class="sub">Êxito</span>${hon.percentual_exito != null ? hon.percentual_exito + '%' : '—'}</div>
-      <div><span class="sub">Assinado em</span>${hon.assinado_em ? br(hon.assinado_em) : '—'}</div>
-    </div>
-    ${hon.observacoes ? `<p class="nota">${esc(hon.observacoes)}</p>` : ''}
-    <div style="padding:0 18px 16px">
-      ${hon.arquivo_path
-        ? `<button class="btn" onclick="verArquivo('contratos','${esc(hon.arquivo_path)}')">Abrir o contrato${
-            hon.arquivo_nome ? ' — ' + esc(hon.arquivo_nome) : ''}</button>`
-        : '<span class="sub" style="margin:0">Sem o arquivo do contrato guardado.</span>'}
-    </div>
-  </div>` : ''}
-
   ${fichas.length ? `<div class="card"><h2>Ficha de atendimento — ${fichas.length}</h2>
     <p class="nota">O relato completo, do jeito que foi colhido. É daqui que saem os fatos da
       inicial. Preencher continua sendo no sistema do escritório, onde o formulário vive;
@@ -831,7 +932,6 @@ async function telaCaso(id){
     </tr>`).join('')}</tbody></table>
     <div id="ficha-corpo" style="display:none;padding:0 18px 16px"></div>
   </div>` : ''}
-
   ${minutas.length ? `<div class="card"><h2>Peças — ${minutas.length}</h2>
     <p class="nota">As minutas deste caso. Gerar peça nova continua sendo do escritório: a
       redação passa pela API, e a conta é de lá.</p>
@@ -843,7 +943,33 @@ async function telaCaso(id){
     </tr>`).join('')}</tbody></table>
     <div id="minuta-corpo" style="display:none;padding:0 18px 16px"></div>
   </div>` : ''}
-
+  </section>
+  <section class="aba" data-aba="dinheiro"${CASOABA.aba==='dinheiro'?'':' hidden'}>
+  <div class="card"><h2>Dinheiro deste caso</h2>
+    ${lancs.length ? `<table><thead><tr><th>Vencimento</th><th>O quê</th><th>Valor</th><th>Situação</th></tr></thead><tbody>
+      ${lancs.map(l => `<tr><td class="dt">${br(l.vencimento)}</td>
+        <td>${esc(l.descricao||'—')}${l.parcela?`<span class="sub">parcela ${l.parcela}/${l.total_parcelas}</span>`:''}</td>
+        <td class="dt">${rs(l.valor)}</td>
+        <td>${l.situacao==='pago'?'<span class="pill good">pago</span>':'<span class="pill cin">'+esc(l.situacao)+'</span>'}</td>
+      </tr>`).join('')}</tbody></table>
+      <p class="nota" style="margin-top:10px">A receber neste caso: <b>${rs(aReceber)}</b>.</p>`
+      : vazio('Nada lançado.')}
+  </div>
+  ${hon ? `<div class="card"><h2>Honorário combinado</h2>
+    <div class="ficha" style="padding:0 18px 16px">
+      <div><span class="sub">Modalidade</span>${esc(hon.modalidade || '—')}</div>
+      <div><span class="sub">Valor fixo</span>${hon.valor_fixo != null ? rs(hon.valor_fixo) : '—'}</div>
+      <div><span class="sub">Êxito</span>${hon.percentual_exito != null ? hon.percentual_exito + '%' : '—'}</div>
+      <div><span class="sub">Assinado em</span>${hon.assinado_em ? br(hon.assinado_em) : '—'}</div>
+    </div>
+    ${hon.observacoes ? `<p class="nota">${esc(hon.observacoes)}</p>` : ''}
+    <div style="padding:0 18px 16px">
+      ${hon.arquivo_path
+        ? `<button class="btn" onclick="verArquivo('contratos','${esc(hon.arquivo_path)}')">Abrir o contrato${
+            hon.arquivo_nome ? ' — ' + esc(hon.arquivo_nome) : ''}</button>`
+        : '<span class="sub" style="margin:0">Sem o arquivo do contrato guardado.</span>'}
+    </div>
+  </div>` : ''}
   <div class="card"><h2>Horas — ${Math.floor(totalMin/60)}h${String(totalMin%60).padStart(2,'0')}</h2>
     <p class="nota">O tempo gasto no caso. Serve para a conta do rateio e para saber se o
       honorário combinado fez sentido.</p>
@@ -860,7 +986,18 @@ async function telaCaso(id){
       <span id="ts-st" class="sub" style="margin:0"></span>
     </form>
   </div>
-
+  </section>
+  <section class="aba" data-aba="cadastro"${CASOABA.aba==='cadastro'?'':' hidden'}>
+  <div class="card"><h2>Etiquetas</h2>
+    <p class="nota">O vocabulário é o do escritório — criar etiqueta nova continua sendo de lá.
+      Aqui se pendura e se tira nos casos que são nossos.</p>
+    <div style="padding:0 18px 16px;display:flex;gap:6px;flex-wrap:wrap">
+      ${etiquetas.length ? etiquetas.map(t => `<button class="btn ${minhasTags.has(t.id)?'ok':''}"
+        style="font-size:11.8px;padding:5px 10px"
+        onclick="porTagNoCaso('${caso.id}','${t.id}',${!minhasTags.has(t.id)})">${esc(t.nome)}</button>`).join('')
+        : '<span class="sub" style="margin:0">nenhuma etiqueta criada no escritório ainda</span>'}
+    </div>
+  </div>
   ${caso.encerrado_em ? '' : `<div class="card"><h2>Encerrar</h2>
     <form class="form" onsubmit="encerrarCaso(event,'${caso.id}')">
       <label class="larga"><span class="sub">Resultado</span>
@@ -868,11 +1005,13 @@ async function telaCaso(id){
       <button class="btn" type="submit">Encerrar o caso</button>
       <span id="enc-st" class="sub" style="margin:0"></span>
     </form></div>`}
-
+  </section>
+  <section class="aba" data-aba="historico"${CASOABA.aba==='historico'?'':' hidden'}>
   <div class="card"><h2>Movimentação deste caso</h2>
     <p class="nota">Quem incluiu, alterou, cumpriu ou apagou o quê neste caso, dos dois lados.
       <a class="lnk" href="#/movimentacao">Ver a da parceria inteira</a>.</p>
     <div id="mov-caso" style="padding:0 18px 14px" class="sub">carregando…</div></div>
+  </section>
   </main>` + rodape();
   const f = document.getElementById('fio'); if (f) f.scrollTop = f.scrollHeight;
   movimentacaoDoCaso(caso.id, caso.titulo, procs);
@@ -1306,11 +1445,13 @@ async function telaAgenda(casoPre, mes){
   mes = mes || hoje().slice(0,7);
   const [ano, m] = mes.split('-').map(Number);
   const de = `${mes}-01`, ate = `${m === 12 ? ano+1 : ano}-${String(m === 12 ? 1 : m+1).padStart(2,'0')}-01`;
-  const [ev, cs, pz] = await Promise.all([
+  const [ev, cs, pz, pa] = await Promise.all([
     sb.from('evento').select('*').eq('parceria_id', PAR.id).order('inicio',{ascending:false}).limit(200),
     sb.from('caso').select('id,titulo').eq('parceria_id', PAR.id).order('titulo'),
     sb.from('prazo').select('id,descricao,data_fatal,situacao').eq('parceria_id', PAR.id)
       .gte('data_fatal', de).lt('data_fatal', ate),
+    sb.from('prazo').select('id,descricao,data_fatal,situacao,caso_id').eq('parceria_id', PAR.id)
+      .in('situacao',['sugerido','confirmado']).order('data_fatal'),
   ]);
   if (ev.error) return erro(ev.error.message);
   const eventos = ev.data || [], casos = cs.data || [], prazos = pz.data || [];
@@ -1320,12 +1461,42 @@ async function telaAgenda(casoPre, mes){
   const passados = eventos.filter(e => e.inicio < agora);
   const emails = PAR.membros.filter(m => m.ativo).map(m => m.email);
 
+  /* Lista por dia como padrão (11/2026), o mês a um clique. Prazos em aberto entram na lista
+     junto com os compromissos; os vencidos ficam recolhidos no topo. */
+  const vista = (() => { try { return localStorage.getItem('pagvista') || 'lista'; } catch { return 'lista'; } })();
+  const h = hoje();
+  const abertosPz = pa.data || [];
+  const itens = [
+    ...futuros.filter(e => e.situacao !== 'concluida' && e.situacao !== 'cancelada').map(e => ({ d:diaLoc(e.inicio), h:horaLoc(e.inicio), t:e.tipo, nome:e.titulo,
+        caso:e.caso_id, nota:[e.tipo, e.local].filter(Boolean).map(esc).join(' · '), ev:e.id })),
+    ...abertosPz.filter(p => p.data_fatal >= h).map(p => ({ d:p.data_fatal, h:'', t:'prazo', nome:p.descricao, caso:p.caso_id,
+        nota: p.situacao === 'sugerido' ? 'prazo · a conferir' : 'prazo', pz:p.id })),
+  ];
+  const vencidosPz = abertosPz.filter(p => p.data_fatal < h);
+  const linha = i => `<div class="dl-it">
+      <span class="h">${i.h || ''}</span>
+      <span class="t"><span class="tipo ${i.t}"></span>${i.pz ? `<a class="lnk" href="#/prazos?abrir=${i.pz}"><b>${esc(i.nome)}</b></a>`
+          : i.caso ? `<a class="lnk" href="#/caso/${i.caso}"><b>${esc(i.nome)}</b></a>` : `<b>${esc(i.nome)}</b>`}
+        <span class="sub">${i.nota}${i.caso ? ' · ' + esc(tituloCaso(i.caso)) : ''}</span></span>
+      <span class="ac">${i.ev ? `<button class="btn ok" onclick="concluirEvento('${i.ev}')">Concluir</button>` : ''}</span></div>`;
+  const porDia = l => { const g = {}; for (const i of l) (g[i.d] ||= []).push(i);
+    return Object.keys(g).sort().map(d => { const n = dias(d);
+      return `<div class="dl-dia${n===0?' hj':''}">${nomeDia(d)}<span class="sub">${br(d)}${n > 1 ? ' · em ' + n + ' dias' : ''}</span></div>` +
+        g[d].sort((a,b)=>(a.h||'').localeCompare(b.h||'')).map(linha).join(''); }).join(''); };
+  const sete = itens.filter(i => dias(i.d) <= 7).length;
+
   app.innerHTML = menu('agenda') + `<main>
-  <h1>Agenda</h1>
-  <p class="meta">Audiências, perícias e reuniões dos casos em parceria, com os prazos do mês no
-    mesmo quadro. O convite vai por e-mail para quem você marcar — é assim que o compromisso entra
-    na agenda de cada um, sem que um precise abrir a conta do outro.</p>
-  <div class="card"><h2>O mês</h2>${calendario(mes, eventos, prazos)}</div>
+  <div class="cab">
+    <div><h1>Agenda</h1>
+      <p class="meta">${sete} compromisso${sete===1?'':'s'} e prazo${sete===1?'':'s'} nos próximos 7 dias${
+        vencidosPz.length ? ` · <b style="color:var(--crit)">${vencidosPz.length} prazo${vencidosPz.length>1?'s':''} vencido${vencidosPz.length>1?'s':''} em aberto</b>` : ''}.
+        O convite vai por e-mail para quem você marcar.</p></div>
+    <div class="acoesc">
+      <div class="vistas"><button data-v="lista" class="${vista==='lista'?'on':''}" onclick="vistaAgendaP('lista')">Lista</button><button data-v="mes" class="${vista==='mes'?'on':''}" onclick="vistaAgendaP('mes')">Mês</button></div>
+      <button class="btn ok" onclick="const f=document.getElementById('agform'); f.hidden=!f.hidden">+ Compromisso</button>
+    </div>
+  </div>
+  <div id="agform" hidden>
   <div class="card"><h2>Marcar</h2>
     <form class="form" onsubmit="novoEvento(event)">
       <label class="larga"><span class="sub">O quê</span><input name="titulo" required></label>
@@ -1345,20 +1516,30 @@ async function telaAgenda(casoPre, mes){
       <span id="ev-st" class="sub" style="margin:0"></span>
     </form>
   </div>
-  <div class="card"><h2>À frente — ${futuros.length}</h2>
-    ${futuros.length ? `<table><tbody>${futuros.map(e=>`<tr>
-      <td class="dt" style="width:160px">${horaBr(e.inicio)}</td>
-      <td>${esc(e.titulo)}<span class="sub">${esc(e.tipo)}${e.local?' · '+esc(e.local):''}${e.caso_id?' · '+esc(tituloCaso(e.caso_id)):''}</span></td>
-      <td style="width:120px">${e.situacao==='concluida'?'<span class="pill good">concluída</span>'
-        :`<button class="btn" onclick="concluirEvento('${e.id}')">Concluir</button>`}</td>
-      </tr>`).join('')}</tbody></table>` : vazio('Nada marcado.')}
   </div>
-  ${passados.length ? `<div class="card"><h2>Passados</h2><table><tbody>${passados.slice(0,25).map(e=>`<tr>
-    <td class="dt" style="width:160px">${horaBr(e.inicio)}</td>
-    <td>${esc(e.titulo)}<span class="sub">${esc(e.tipo)}${e.caso_id?' · '+esc(tituloCaso(e.caso_id)):''}</span></td>
-    </tr>`).join('')}</tbody></table></div>` : ''}
+  <div data-vista="lista"${vista==='lista'?'':' hidden'}>
+    ${vencidosPz.length ? `<div class="card" style="border-left:3px solid var(--crit);border-radius:0 12px 12px 0">
+      <details><summary style="cursor:pointer;padding:14px 18px;font-weight:600;font-size:14px">Prazos vencidos e ainda abertos
+        <span class="sub" style="display:inline;font-weight:400">· ${vencidosPz.length}</span></summary>
+        <div class="dl">${vencidosPz.map(p => linha({ d:p.data_fatal, h:br(p.data_fatal).slice(0,5), t:'prazo', nome:p.descricao, caso:p.caso_id, nota:'venceu há ' + humano(-dias(p.data_fatal)), pz:p.id })).join('')}</div></details></div>` : ''}
+    <div class="card"><h2>Pela frente</h2>
+      <div class="dl">${porDia(itens) || vazio('Nada marcado.')}</div></div>
+    ${passados.length ? `<div class="card"><details><summary style="cursor:pointer;padding:14px 18px;font-weight:600;font-size:14px">Compromissos passados</summary>
+      <table><tbody>${passados.slice(0,25).map(e=>`<tr>
+      <td class="dt" style="width:160px">${horaBr(e.inicio)}</td>
+      <td>${esc(e.titulo)}<span class="sub">${esc(e.tipo)}${e.caso_id?' · '+esc(tituloCaso(e.caso_id)):''}</span></td>
+      </tr>`).join('')}</tbody></table></details></div>` : ''}
+  </div>
+  <div data-vista="mes"${vista==='mes'?'':' hidden'}>
+    <div class="card"><h2>O mês</h2>${calendario(mes, eventos, prazos)}</div>
+  </div>
   </main>` + rodape();
 }
+window.vistaAgendaP = v => {
+  try { localStorage.setItem('pagvista', v); } catch {}
+  document.querySelectorAll('[data-vista]').forEach(x => x.hidden = x.dataset.vista !== v);
+  document.querySelectorAll('.vistas button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+};
 
 window.novoEvento = async (ev) => {
   ev.preventDefault();
