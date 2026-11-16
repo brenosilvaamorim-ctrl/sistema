@@ -3172,7 +3172,7 @@ function verboMov(a){
   if (a.tabela === 'prazo' && x.situacao !== y.situacao) {
     if (y.situacao === 'confirmado') return x.situacao === 'cumprido' ? 'desfez o cumprimento' : 'confirmou';
     if (y.situacao === 'cumprido') return 'marcou como cumprido';
-    if (y.situacao === 'cancelado') return y.decisao_nao_agir ? 'decidiu não agir em' : 'descartou';
+    if (y.situacao === 'cancelado') return y.decisao_nao_agir ? 'decidiu não agir' : 'descartou';
     if (y.situacao === 'sugerido') return 'reabriu';
   }
   if (a.tabela === 'caso' && !x.encerrado_em && y.encerrado_em) return 'encerrou';
@@ -3192,7 +3192,7 @@ function descreverMov(a, op = {}){
   const tab = ROT_TAB[a.tabela] || a.tabela;
   const verbo = verboMov(a);
   /* O artigo concorda com o nome: "a parte", "a peça", "as horas". */
-  const art = verbo === 'desfez o cumprimento' ? 'do'
+  const art = verbo === 'desfez o cumprimento' ? 'do' : verbo === 'decidiu não agir' ? 'no'
     : a.tabela === 'timesheet' ? 'as' : ['parte','minuta','ficha'].includes(a.tabela) ? 'a' : 'o';
   const alvo = op.semAlvo ? '' : ` ${art} ${tab}`
     + (a.descricao ? ` <b>${esc(a.descricao.length > 80 ? a.descricao.slice(0,80) + '…' : a.descricao)}</b>` : '');
