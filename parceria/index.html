@@ -693,9 +693,9 @@ async function telaCaso(id){
       return `<tr><td class="dt" style="width:110px">${br(p.data_fatal)}</td>
       <td><a class="lnk" href="#/prazos?abrir=${p.id}" title="abrir para conferir, corrigir ou descartar">${esc(p.descricao)}</a>
         ${p.providencia?`<span class="sub">${esc(p.providencia)}</span>`:''}
-        ${p.situacao==='cancelado'&&p.motivo_descarte?`<span class="sub">descartado: ${esc(p.motivo_descarte)}</span>`:''}</td>
+        ${p.situacao==='cancelado'&&p.motivo_descarte?`<span class="sub">${p.decisao_nao_agir?'decidimos não agir':'descartado'}: ${esc(p.motivo_descarte)}</span>`:''}</td>
       <td style="width:120px">${p.situacao==='cumprido'?'<span class="pill good">cumprido</span>'
-        :p.situacao==='cancelado'?'<span class="pill cin">descartado</span>'
+        :p.situacao==='cancelado'?`<span class="pill cin">${p.decisao_nao_agir?'não vamos agir':'descartado'}</span>`
         :p.situacao==='sugerido'?'<span class="pill warn">a conferir</span>'
         :`<span class="pill ${cor}">${rot}</span>`}</td>
       </tr>`; }).join('')}</tbody></table>` : vazio('Sem prazos.')}
@@ -2651,7 +2651,7 @@ function desenharPrazos(){
   } else {
     const lista = { conferir: sugeridos, cumpridos, descartados, todos }[PZ.filtro].filter(casa);
     const notas = { conferir: 'Prazos que o robô leu e ninguém conferiu ainda. Abra cada um, leia o trecho da publicação e confirme, corrija ou descarte.',
-      descartados: 'O que alguém marcou como "não é prazo", com o motivo. Se o descarte foi engano, reabra.',
+      descartados: 'O que alguém marcou como "não é prazo", e os prazos em que decidimos não agir — cada um com o porquê. Se foi engano, reabra.',
       cumpridos: 'Marcado cumprido por engano? Abra e desfaça.' };
     corpo = lista.length ? blocoPz(abas.find(x => x[0] === PZ.filtro)[1], lista, notas[PZ.filtro])
       : `<div class="card">${vazio(termo ? 'Nada com esse termo.' : 'Nada aqui.')}</div>`;
@@ -2726,7 +2726,7 @@ function blocoPz(titulo, lista, nota){
 
 function seloPz(z){
   if (z.situacao === 'cumprido')  return `<span class="pill good">cumprido ${br(z.cumprido_em)}</span>`;
-  if (z.situacao === 'cancelado') return `<span class="pill cin">descartado</span>`;
+  if (z.situacao === 'cancelado') return z.decisao_nao_agir ? `<span class="pill cin">não vamos agir</span>` : `<span class="pill cin">descartado</span>`;
   if (z.situacao === 'sugerido')  return `<span class="pill warn">a conferir</span>`;
   return `<span class="pill good">confirmado</span>`;
 }
@@ -2742,7 +2742,7 @@ function linhaPz(z){
       <span class="sub">${[z.providencia ? esc(z.providencia) : '',
         z.caso_id ? `<a class="lnk" href="#/caso/${z.caso_id}">${esc(tituloCasoPz(z.caso_id))}</a>` : '<span style="color:var(--ser)">sem caso</span>',
         z.processo_id ? esc(numeroPz(z.processo_id)) : ''].filter(Boolean).join(' · ')}</span>
-      ${z.situacao === 'cancelado' && z.motivo_descarte ? `<span class="sub">motivo: ${esc(z.motivo_descarte)}</span>` : ''}</td>
+      ${z.situacao === 'cancelado' && z.motivo_descarte ? `<span class="sub">${z.decisao_nao_agir ? 'decisão' : 'motivo'}: ${esc(z.motivo_descarte)}</span>` : ''}</td>
     <td style="width:110px">${vivo(z) ? `<span class="pill ${cor}">${rot}</span>` : ''}</td>
     <td style="width:150px">${seloPz(z)}
       ${z.confianca != null && z.situacao === 'sugerido' ? `<span class="sub">leitura do robô ${Math.round(z.confianca*100)}%</span>` : ''}</td>
@@ -2772,16 +2772,22 @@ window.abrirPz = async (id, redesenhando) => {
   if (z.situacao === 'sugerido') acoes = `
       <button class="btn ok" onclick="salvarPz('${id}','confirmar')">Confirmar o prazo</button>
       <button class="btn" onclick="salvarPz('${id}')">Só guardar as correções</button>
-      <button class="btn" onclick="mostrarDescarte('${id}')">Não é prazo…</button>`;
+      <button class="btn" onclick="mostrarDescarte('${id}')">Não é prazo…</button>
+      <button class="btn" onclick="mostrarDescarte('${id}','naoagir')">Decidimos não agir…</button>`;
   else if (z.situacao === 'confirmado') acoes = `
       <button class="btn ok" onclick="salvarPz('${id}')">Guardar as correções</button>
       <button class="btn" onclick="cumprirPz('${id}')">Cumprido</button>
-      <button class="btn" onclick="mostrarDescarte('${id}')">Descartar…</button>`;
+      <button class="btn" onclick="mostrarDescarte('${id}')">Não é prazo…</button>
+      <button class="btn" onclick="mostrarDescarte('${id}','naoagir')">Decidimos não agir…</button>`;
   else if (z.situacao === 'cumprido') acoes = `
       <button class="btn ok" onclick="salvarPz('${id}')">Guardar as correções</button>
       <button class="btn" onclick="desfazerCumprido('${id}')">Desfazer o cumprimento</button>`;
   else acoes = `
       <button class="btn ok" onclick="reabrirPz('${id}')">Reabrir — volta para a conferir</button>`;
+  /* Reabrir um prazo dispensado por decisão o devolve como confirmado: ele já foi
+     conferido, o que mudou foi a decisão de agir. */
+  if (z.situacao === 'cancelado' && z.decisao_nao_agir) acoes = `
+      <button class="btn ok" onclick="reabrirPz('${id}', true)">Mudamos de ideia — voltar a valer</button>`;
 
   const linha = document.createElement('tr');
   linha.id = 'pzp-' + id;
@@ -2799,7 +2805,9 @@ window.abrirPz = async (id, redesenhando) => {
           : `<div class="sub">Sem trecho guardado${z.origem === 'manual' ? ' — lançado à mão' : ''}.</div>`}
         ${z.intimacao_id ? `<div style="margin-top:8px"><a class="lnk" onclick="verPublicacaoPz('${id}','${z.intimacao_id}')">ler a publicação inteira</a></div>
           <div id="pz-${id}-pub"></div>` : ''}
-        ${z.situacao === 'cancelado' ? `<p style="font-size:12.8px;margin:12px 0 0"><b>Descartado.</b> Motivo: ${esc(z.motivo_descarte || 'não informado')}</p>` : ''}
+        ${z.situacao === 'cancelado' ? `<p style="font-size:12.8px;margin:12px 0 0">${z.decisao_nao_agir
+          ? '<b>É prazo, mas decidimos não agir.</b> Por quê'
+          : '<b>Descartado — não é prazo.</b> Motivo'}: ${esc(z.motivo_descarte || 'não informado')}</p>` : ''}
       </div>
       <div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px 12px">
@@ -2813,15 +2821,7 @@ window.abrirPz = async (id, redesenhando) => {
           ${campo('Caso', `<select id="pz-${id}-caso" onchange="trocarCasoPz('${id}')"><option value="">— sem caso —</option>${opcoesCasoPz(z.caso_id)}</select>`)}
           ${campo('Processo', `<select id="pz-${id}-proc">${opcoesProcPz(z.caso_id || null, z.processo_id || null)}</select>`)}
         </div>
-        <div id="pz-${id}-desc-box" style="display:none;margin-top:10px">
-          ${campo('Por que não é prazo — fica registrado para o outro lado ver',
-            `<input type="text" id="pz-${id}-mot" placeholder="Ex.: mero expediente; prazo é da outra parte; publicação repetida">`, true)}
-          <div style="margin-top:7px;display:flex;gap:6px;flex-wrap:wrap">
-            ${['publicação repetida','prazo da outra parte','mero expediente, sem prazo','já cumprido antes','não é deste processo']
-              .map(t => `<button class="btn" type="button" onclick="document.getElementById('pz-${id}-mot').value='${t}'">${t}</button>`).join('')}
-          </div>
-          <button class="btn" style="margin-top:8px;border-color:var(--crit);color:var(--crit)" onclick="descartarPz('${id}')">Descartar o prazo</button>
-        </div>
+        <div id="pz-${id}-desc-box" style="display:none;margin-top:10px"></div>
         <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">${acoes}
           <span class="sub" id="pz-${id}-st" style="margin:0"></span></div>
       </div>
@@ -2853,10 +2853,32 @@ window.verPublicacaoPz = async (id, intimacaoId) => {
 ${esc(data.texto)}</div>${data.link_pje ? `<a class="lnk" href="${esc(data.link_pje)}" target="_blank" rel="noopener">abrir no PJe</a>` : ''}`;
 };
 
-window.mostrarDescarte = (id) => {
+/* Duas saídas que parecem iguais e não são. "Não é prazo" diz que o robô leu errado.
+   "Decidimos não agir" diz que o prazo existe e a escolha foi deixá-lo correr — não
+   recorrer, esperar a contestação. Sem essa diferença, quem olha depois não sabe se o
+   prazo passou por esquecimento ou por decisão. */
+const SAIDAS = {
+  descartar: { rot: 'Por que não é prazo — fica registrado para o outro lado ver',
+    ex: 'Ex.: mero expediente; prazo é da outra parte; publicação repetida', botao: 'Descartar o prazo',
+    sugestoes: ['publicação repetida','prazo da outra parte','mero expediente, sem prazo','já cumprido antes','não é deste processo'] },
+  naoagir: { rot: 'Por que não vamos agir — fica registrado para o outro lado ver',
+    ex: 'Ex.: não vamos agravar; aguardar a contestação para pedir de novo', botao: 'Registrar a decisão',
+    sugestoes: ['não vamos recorrer','aguardar a manifestação da outra parte','o cliente decidiu não prosseguir','sem interesse estratégico'] },
+};
+window.mostrarDescarte = (id, modo = 'descartar') => {
   const b = document.getElementById('pz-' + id + '-desc-box');
-  b.style.display = b.style.display === 'none' ? 'block' : 'none';
-  if (b.style.display === 'block') document.getElementById('pz-' + id + '-mot').focus();
+  if (b.style.display === 'block' && b.dataset.modo === modo) { b.style.display = 'none'; return; }
+  const m = SAIDAS[modo];
+  b.dataset.modo = modo; b.style.display = 'block';
+  b.innerHTML = `<label style="display:flex;flex-direction:column;gap:3px">
+      <span class="sub" style="margin:0">${m.rot}</span>
+      <input type="text" id="pz-${id}-mot" placeholder="${m.ex}"></label>
+    <div style="margin-top:7px;display:flex;gap:6px;flex-wrap:wrap">
+      ${m.sugestoes.map(t => `<button class="btn" type="button" onclick="document.getElementById('pz-${id}-mot').value='${t}'">${t}</button>`).join('')}
+    </div>
+    <button class="btn" style="margin-top:8px;border-color:var(--crit);color:var(--crit)"
+      onclick="descartarPz('${id}', ${modo === 'naoagir'})">${m.botao}</button>`;
+  document.getElementById('pz-' + id + '-mot').focus();
 };
 
 async function gravarPz(id, campos){
@@ -2890,13 +2912,18 @@ window.salvarPz = async (id, modo) => {
 };
 window.cumprirPz = (id) => gravarPz(id, { situacao: 'cumprido', cumprido_em: new Date().toISOString() });
 window.desfazerCumprido = (id) => gravarPz(id, { situacao: 'confirmado', cumprido_em: null });
-window.descartarPz = (id) => {
+window.descartarPz = (id, naoAgir) => {
   const mot = (document.getElementById('pz-' + id + '-mot')?.value || '').trim();
   if (!mot) { const st = document.getElementById('pz-' + id + '-st'); st.style.color = 'var(--crit)';
-    return st.textContent = 'diga em poucas palavras por que não é prazo'; }
-  gravarPz(id, { situacao: 'cancelado', motivo_descarte: mot });
+    return st.textContent = naoAgir ? 'diga em poucas palavras por que não vamos agir' : 'diga em poucas palavras por que não é prazo'; }
+  /* O campo só vai quando é usado: assim descartar continua funcionando mesmo onde o
+     banco/65 ainda não rodou. */
+  gravarPz(id, naoAgir ? { situacao: 'cancelado', motivo_descarte: mot, decisao_nao_agir: true }
+                       : { situacao: 'cancelado', motivo_descarte: mot });
 };
-window.reabrirPz = (id) => gravarPz(id, { situacao: 'sugerido', motivo_descarte: null });
+window.reabrirPz = (id, valer) => gravarPz(id, valer
+  ? { situacao: 'confirmado', motivo_descarte: null, decisao_nao_agir: false }
+  : { situacao: 'sugerido', motivo_descarte: null });
 
 window.novoPrazo = async (ev) => {
   ev.preventDefault();
@@ -2925,7 +2952,7 @@ const ROT_TAB = { prazo:'prazo', caso:'caso', cliente:'cliente', processo:'proce
   timesheet:'horas', interacao:'contato', parceria_recado:'recado' };
 const ROT_CAMPO = { descricao:'descrição', providencia:'providência', data_fatal:'vencimento', situacao:'situação',
   caso_id:'caso', processo_id:'processo', titulo:'título', nome:'nome', etapa:'etapa', dias:'dias', dias_uteis:'dias úteis',
-  motivo_descarte:'motivo', valor:'valor', vencimento:'vencimento', inicio:'início', fim:'fim', local:'local',
+  motivo_descarte:'motivo', decisao_nao_agir:'decidimos não agir', valor:'valor', vencimento:'vencimento', inicio:'início', fim:'fim', local:'local',
   telefone:'telefone', whatsapp:'WhatsApp', email:'e-mail', cpf_cnpj:'CPF/CNPJ', resumo:'resumo', obs:'observação',
   recebido_em:'recebido em', minutos:'minutos', data:'data', status:'status', corpo:'texto', tipo:'tipo', area_id:'área',
   coluna_id:'etapa', encerrado_em:'encerrado em', resultado:'resultado', fase:'fase', respostas:'respostas', texto:'texto',
@@ -2955,7 +2982,7 @@ function verboMov(a){
   if (a.tabela === 'prazo' && x.situacao !== y.situacao) {
     if (y.situacao === 'confirmado') return x.situacao === 'cumprido' ? 'desfez o cumprimento' : 'confirmou';
     if (y.situacao === 'cumprido') return 'marcou como cumprido';
-    if (y.situacao === 'cancelado') return 'descartou';
+    if (y.situacao === 'cancelado') return y.decisao_nao_agir ? 'decidiu não agir em' : 'descartou';
     if (y.situacao === 'sugerido') return 'reabriu';
   }
   if (a.tabela === 'caso' && !x.encerrado_em && y.encerrado_em) return 'encerrou';
