@@ -88,6 +88,10 @@ Como planejar:
 - Prazo vencido e ainda aberto: ou foi cumprido e falta dar baixa, ou precisa de decisão hoje.
   Diga qual das duas coisas fazer, sem alarde.
 - Publicações a conferir entram cedo na semana, num bloco só.
+- Caso marcado pelo advogado como "não pode esperar" ou "muito urgente" tem prioridade sobre o
+  resto do que não for prazo fatal: o próximo passo dele entra cedo na semana.
+- Prazo de regime "Protocolar a ação" é meta interna de 15 dias úteis para ajuizar caso novo:
+  não é fatal, mas a peça precisa ser feita antes dele.
 - Peças e estudo vão nos dias com menos compromisso. Não encha um dia com mais de 4 ou 5 itens
   de trabalho; o que não couber vai para "adiantar".
 - Retorno a lead e cobrança a cliente são tarefas curtas: agrupe num bloco do dia.
@@ -237,6 +241,11 @@ Deno.serve(async (req) => {
 
   const parados = CS.filter((c: any) => !(c.processo ?? []).length).slice(0, 15);
 
+  // Urgência do caso (banco/64): juízo do advogado. Se a coluna ainda não existir, segue sem ela.
+  const { data: URG } = await adm.from('caso')
+    .select('id,titulo,urgencia,cliente:cliente_id(nome),processo(id)')
+    .eq('escritorio_id', esc).is('encerrado_em', null).in('urgencia', ['alta', 'critica']).limit(20);
+
   /* ------------------------------------------------------------ referências
      Cada registro ganha um apelido curto (R1, R2…) para o Claude citar sem gastar com
      uuids; depois o apelido vira o link da tela. */
@@ -294,6 +303,10 @@ Deno.serve(async (req) => {
     `- [${ref('#/caso/' + c.id)}] ${c.cliente?.nome ?? ''} · ${corta(c.titulo, 100)}${c.area ? ' · ' + c.area : ''}` +
     ` · última mexida ${String(c.atualizado_em).slice(0, 10)}`));
 
+  sec('Casos marcados como urgentes pelo advogado', (URG ?? []).map((c: any) =>
+    `- [${ref('#/caso/' + c.id)}] ${c.urgencia === 'critica' ? 'NÃO PODE ESPERAR' : 'muito urgente'} · ${c.cliente?.nome ?? ''} · ${corta(c.titulo, 100)}` +
+    `${(c.processo ?? []).length ? '' : ' · ainda sem processo'}`));
+
   sec('Minutas em rascunho', MN.map((m: any) =>
     `- [${ref(linkCaso(m.caso, '#/minutas'))}] ${m.tipo} · ${m.caso?.titulo ?? ''} · criada ${String(m.criado_em).slice(0, 10)}`));
 
@@ -331,7 +344,7 @@ Deno.serve(async (req) => {
     esperas: PRO.length, casos_parados: parados.length, minutas: MN.length, leads: LD.length,
     a_receber: LC.filter((l: any) => l.tipo === 'entrada').length,
     a_pagar: LC.filter((l: any) => l.tipo === 'saida').length,
-    assinaturas: AS.length, projetos: PJ.length, sobra_semana_anterior: sobra.length,
+    assinaturas: AS.length, projetos: PJ.length, urgentes: (URG ?? []).length, sobra_semana_anterior: sobra.length,
   };
 
   if (seco) return json({ semana_de, inicio, fim, dados, contexto });

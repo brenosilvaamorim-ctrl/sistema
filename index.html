@@ -117,6 +117,57 @@ textarea{width:100%;resize:vertical;line-height:1.45}
 .calnav .nav button:hover{border-color:var(--i3);color:var(--ink)}
 .calmes{display:grid;grid-template-columns:1.6fr 1fr;gap:16px;align-items:start}
 @media(max-width:860px){.calmes{grid-template-columns:1fr}}
+/* ---- desenho de 11/2026: Início, Agenda e caso. Cabeçalho em serifa, blocos que dizem o
+   que pedem, e a semana como lista por dia — o Breno preferiu lista a grade de calendário. */
+.cab{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:14px}
+.cab h1{font-size:26px;margin:0 0 4px}.cab .meta{margin:0}
+.cab .acoesc{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.urgsel{display:flex;gap:4px;flex-wrap:wrap}
+.urgsel button{font:inherit;font-size:11.6px;padding:4px 10px;border-radius:99px;border:1px solid var(--ln);
+  background:var(--s1);color:var(--i3);cursor:pointer}
+.urgsel button:hover{border-color:var(--i3);color:var(--ink)}
+.urgsel button.on{font-weight:600}
+.urgsel button.on.baixa{color:var(--i2);border-color:var(--i2)}.urgsel button.on.normal{color:var(--serie);border-color:var(--serie)}
+.urgsel button.on.alta{color:var(--ser);border-color:var(--ser)}.urgsel button.on.critica{color:var(--s1);background:var(--crit);border-color:var(--crit)}
+.banda{display:flex;gap:12px;align-items:center;flex-wrap:wrap;border-radius:10px;padding:10px 14px;margin:0 0 14px;
+  font-size:13.4px;border:1px solid var(--ln);background:var(--s1)}
+.banda.crit{border-color:var(--crit);color:var(--crit)}.banda.ser{border-color:var(--ser);color:var(--ser)}
+.banda b{color:inherit}.banda .btn{margin-left:auto}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:0 0 6px}
+.tile{background:var(--s1);border:1px solid var(--ln);border-radius:10px;padding:10px 13px}
+.tile .r{font-size:11.3px;color:var(--i3)}.tile .v{font-size:17px;font-weight:600;margin-top:1px;font-variant-numeric:tabular-nums}
+.tile.al .v{color:var(--crit)}
+.abas{display:flex;gap:20px;flex-wrap:wrap;border-bottom:1px solid var(--ln);margin:14px 0 18px;position:sticky;top:50px;
+  background:var(--s0);z-index:5}
+.abas button{background:none;border:0;border-bottom:2px solid transparent;padding:10px 0 9px;font:inherit;font-size:13.6px;
+  color:var(--i2);cursor:pointer}
+.abas button:hover{color:var(--ink)}.abas button.on{color:var(--ink);border-bottom-color:var(--ink);font-weight:600}
+.abas button .n{font-size:11px;color:var(--i3);margin-left:4px;font-weight:400}
+.lado{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:18px;align-items:start}
+@media(max-width:900px){.lado{grid-template-columns:1fr}}
+.dl{padding:0 18px 14px}
+.dl-dia{display:flex;align-items:baseline;gap:8px;margin:16px 0 4px;font:600 13.6px/1.3 Georgia,serif;color:var(--ink)}
+.dl-dia:first-child{margin-top:4px}.dl-dia .sub{display:inline;font:400 11.6px ui-sans-serif,sans-serif;margin:0}
+.dl-dia.hj{color:var(--serie)}
+.dl-it{display:grid;grid-template-columns:48px minmax(0,1fr) auto;gap:10px;align-items:start;padding:8px 0;
+  border-top:1px solid var(--ln);font-size:13.4px}
+.dl-it .h{color:var(--i2);font-variant-numeric:tabular-nums;font-size:12.6px;padding-top:1px}
+.dl-it .t b{font-weight:600}.dl-it .t .sub{margin-top:1px}
+.dl-it .ac{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+.dl-it .ac .btn{font-size:11.4px;padding:3px 8px}
+.dl-it.feito{opacity:.45;text-decoration:line-through}
+.tipo{display:inline-block;width:8px;height:8px;border-radius:99px;margin-right:6px;vertical-align:1px;background:var(--i3)}
+.tipo.prazo{background:var(--ser)}.tipo.audiencia{background:var(--crit)}.tipo.pericia{background:var(--warn)}
+.tipo.reuniao{background:var(--serie)}.tipo.tarefa{background:var(--taref)}.tipo.prescricao{background:var(--presc)}
+.at{padding:0 18px 14px}
+.at-it{display:flex;gap:10px;align-items:baseline;padding:9px 0;border-top:1px solid var(--ln);font-size:13.4px;text-decoration:none;color:inherit}
+.at-it:first-child{border-top:0}.at-it:hover .rot{text-decoration:underline}
+.at-it .rot{flex:1}.at-it .num{font-weight:650;font-variant-numeric:tabular-nums}.at-it.al .num{color:var(--crit)}
+.marca-esq{border-left:3px solid var(--crit);padding-left:10px;margin:8px 0}
+.marca-esq.ser{border-left-color:var(--ser)}.marca-esq.warn{border-left-color:var(--warn)}
+.vistas{display:inline-flex;border:1px solid var(--ln);border-radius:8px;overflow:hidden}
+.vistas button{font:inherit;font-size:12.3px;padding:5px 11px;border:0;background:var(--s1);color:var(--i2);cursor:pointer}
+.vistas button.on{background:var(--ink);color:var(--s1);font-weight:600}
 .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--ln);
   border:1px solid var(--ln);border-radius:10px;overflow:hidden}
 .cabdia{background:var(--s0);padding:7px 8px;font-size:10.4px;color:var(--i3);
@@ -617,27 +668,26 @@ function quadroPlano(h){
       com prazos, agenda, publicações, leads e financeiro — e chega também por e-mail.</p>
     <div style="padding:0 18px 18px"><button class="btn ok" onclick="refazerPlano(this)">Montar agora</button></div>`;
   const pl = P.plano || {}, feitos = new Set(P.feitos || []);
-  const item = i => `<label class="item" style="display:flex;gap:8px;align-items:flex-start;margin:4px 0;cursor:pointer;${feitos.has(i.id)?'opacity:.45;text-decoration:line-through':''}">
-      <input type="checkbox" ${feitos.has(i.id)?'checked':''} onchange="planoFeito('${i.id}',this)" style="margin-top:4px">
-      <span>${i.hora?`<b>${esc(i.hora)}</b> · `:''}${esc(i.texto)}${i.link?` <a class="lnk" href="${esc(i.link)}" onclick="event.stopPropagation()">abrir</a>`:''}</span></label>`;
-  const dias = (pl.dias||[]).map(d => {
-    const passou = d.data < h, eHoje = d.data === h;
-    const nome = DIASEM[new Date(d.data+'T12:00:00Z').getUTCDay()];
-    const corpo = `${d.foco?`<div class="sub" style="margin-bottom:4px">${esc(d.foco)}</div>`:''}
-      ${(d.itens||[]).map(item).join('') || '<div class="sub">Livre.</div>'}`;
+  const item = i => `<label class="dl-it${feitos.has(i.id)?' feito':''}" style="cursor:pointer;grid-template-columns:74px minmax(0,1fr) auto">
+      <span class="h"><input type="checkbox" ${feitos.has(i.id)?'checked':''} onchange="planoFeito('${i.id}',this)" style="margin:2px 6px 0 0;vertical-align:-1px">${i.hora?esc(i.hora):''}</span>
+      <span class="t">${esc(i.texto)}</span>
+      <span class="ac">${i.link?`<a class="btn" href="${esc(i.link)}" onclick="event.stopPropagation()" style="text-decoration:none">abrir</a>`:''}</span></label>`;
+  const nomeDia = d => { const n = dias(d); const nm = DIASEM[new Date(d+'T12:00:00Z').getUTCDay()];
+    return n === 0 ? 'Hoje' : n === 1 ? 'Amanhã' : nm[0].toUpperCase() + nm.slice(1); };
+  const ds = (pl.dias||[]).map(d => {
+    const passou = d.data < h;
     const feitosDia = (d.itens||[]).filter(i => feitos.has(i.id)).length;
+    const corpo = (d.itens||[]).map(item).join('') || '<div class="sub" style="padding:6px 0">Livre.</div>';
     return passou
-      ? `<details style="margin:10px 0"><summary class="sub" style="cursor:pointer">${nome}, ${br(d.data)} — ${feitosDia} de ${(d.itens||[]).length} feitos</summary>${corpo}</details>`
-      : `<div style="margin:12px 0;${eHoje?'border-left:3px solid var(--good);padding-left:10px':''}">
-          <b>${nome}, ${br(d.data)}${eHoje?' — hoje':''}</b>${corpo}</div>`;
+      ? `<details style="margin:8px 0"><summary class="sub" style="cursor:pointer">${nomeDia(d.data)}, ${br(d.data)} — ${feitosDia} de ${(d.itens||[]).length} feitos</summary>${corpo}</details>`
+      : `<div class="dl-dia${d.data===h?' hj':''}">${nomeDia(d.data)}<span class="sub">${br(d.data)}${d.foco?' · '+esc(d.foco):''}</span></div>${corpo}`;
   }).join('');
-  return `<h2>A semana, de ${br(P.inicio)} a ${br(P.fim)}</h2>
+  return `<h2>A semana <span class="sub" style="display:inline;font-weight:400">· ${br(P.inicio).slice(0,5)} a ${br(P.fim).slice(0,5)}</span></h2>
     ${pl.resumo?`<p class="nota">${esc(pl.resumo)}</p>`:''}
-    <div style="padding:0 18px 18px">
-      ${(pl.alertas||[]).length?`<div style="border-left:3px solid var(--crit);padding:2px 10px;margin-bottom:10px">
-        <b style="color:var(--crit)">Não pode escorregar</b>${pl.alertas.map(item).join('')}</div>`:''}
-      ${dias}
-      ${(pl.adiantar||[]).length?`<details style="margin-top:10px"><summary style="cursor:pointer"><b>Se sobrar tempo, adiantar</b> <span class="sub" style="display:inline">(${pl.adiantar.length})</span></summary>${pl.adiantar.map(item).join('')}</details>`:''}
+    <div class="dl">
+      ${(pl.alertas||[]).length?`<div class="marca-esq" style="margin:4px 0 6px"><b style="color:var(--crit);font-size:13px">Não pode escorregar</b>${pl.alertas.map(item).join('')}</div>`:''}
+      ${ds}
+      ${(pl.adiantar||[]).length?`<details style="margin-top:12px"><summary style="cursor:pointer"><b>Se sobrar tempo, adiantar</b> <span class="sub" style="display:inline">(${pl.adiantar.length})</span></summary>${pl.adiantar.map(item).join('')}</details>`:''}
       <p class="sub" style="margin-top:12px">Montado em ${br(P.gerado_em)} às ${String(new Date(P.gerado_em).toLocaleTimeString('pt-BR')).slice(0,5)}. É sugestão: marcar aqui não dá baixa em prazo nem em compromisso.
         <button class="btn" style="margin-left:6px" onclick="refazerPlano(this)">Refazer com os dados de agora</button></p>
     </div>`;
@@ -650,8 +700,7 @@ window.planoFeito = async (itemId, el) => {
   const { error } = await sb.from('planejamento').update({ feitos }).eq('id', P.id);
   if (error){ el.checked = !el.checked; return alert('Não foi possível: ' + error.message); }
   P.feitos = feitos;
-  const lb = el.closest('.item');
-  if (lb){ lb.style.opacity = el.checked ? '.45' : ''; lb.style.textDecoration = el.checked ? 'line-through' : ''; }
+  el.closest('.dl-it')?.classList.toggle('feito', el.checked);
 };
 window.refazerPlano = async (btn) => {
   if (INIPLANO && !confirm('Refazer o plano com os dados de agora? As marcações de feito desta versão se perdem.')) return;
@@ -675,8 +724,8 @@ async function telaInicio(){
   const d7  = new Date(Date.now() + 7*864e5).toISOString().slice(0,10);
   const d30 = new Date(Date.now() - 30*864e5).toISOString().slice(0,10);
   const mes = h.slice(0,7);
-  const [pz, ev, itm, lc, cs, asn, pla] = await Promise.all([
-    sb.from('prazo').select('id,descricao,data_fatal,situacao,caso:caso_id(id,titulo)')
+  const [pz, ev, itm, lc, cs, asn, pla, urg, lds] = await Promise.all([
+    sb.from('prazo').select('id,descricao,data_fatal,situacao,regime,data_inicio,caso:caso_id(id,titulo)')
       .in('situacao',['sugerido','confirmado']).order('data_fatal'),
     sb.from('evento').select('id,titulo,tipo,inicio,local,link_sala,situacao,caso:caso_id(id,titulo),cliente:cliente_id(nome)')
       .not('situacao','in','("concluida","cancelada")').order('inicio'),
@@ -688,6 +737,10 @@ async function telaInicio(){
       .is('assinado_em', null).order('enviado_em'),
     sb.from('planejamento').select('id,semana_de,inicio,fim,plano,feitos,gerado_em')
       .gte('fim', h).order('semana_de').limit(1),
+    /* urgência do caso: banco/64. Antes de ele rodar a consulta falha e o quadro só fica sem ela. */
+    sb.from('caso').select('id,titulo,urgencia,cliente:cliente_id(nome)').in('urgencia',['alta','critica'])
+      .is('encerrado_em', null).order('urgencia'),
+    sb.from('lead').select('id').not('etapa','in','("fechado","perdido")').lte('proximo_contato', h),
   ]);
   if (pz.error) return erro(pz.error.message);
   /* Se a tabela ainda não existir (banco/62 não rodado), o quadro só não aparece. */
@@ -715,49 +768,91 @@ async function telaInicio(){
   const entra = LC.filter(x=>x.tipo==='entrada').reduce((a,b)=>a+Number(b.valor||0),0);
   const sai   = LC.filter(x=>x.tipo==='saida').reduce((a,b)=>a+Number(b.valor||0),0);
 
-  const linhaPz = p => `<div class="tl"><div class="tldata"><b>${br(p.data_fatal)}</b>
-      <span class="sub">${dias(p.data_fatal)===0?'hoje':(dias(p.data_fatal)<0?'venceu':'em '+dias(p.data_fatal)+'d')}</span></div>
-    <div class="tlponto"></div><div class="tlcorpo"><span class="pill ${p.data_fatal<h?'crit':'ser'}">Prazo</span>
-      <b>${esc(p.descricao)}</b>${p.caso?`<span class="sub"><a class="lnk" href="#/caso/${p.caso.id}">${esc(p.caso.titulo)}</a></span>`:''}</div></div>`;
-  const linhaEv = e => `<div class="tl"><div class="tldata"><b>${br(dia(e))}</b>
-      <span class="sub">${String(e.inicio).slice(11,16)}</span></div>
-    <div class="tlponto"></div><div class="tlcorpo">
-      <span class="pill ${e.tipo==='audiencia'?'crit':'cin'}">${esc(TIPOLINHA[e.tipo]?.[0]||e.tipo)}</span>
-      <b>${esc(e.titulo)}</b>
-      <span class="sub">${esc(e.cliente?.nome || e.caso?.titulo || '')}${e.local?' · '+esc(e.local):''}</span>
-      ${e.link_sala?`<span class="sub">${botaoSala(e.link_sala)}</span>`:''}</div></div>`;
+  const protocolos = PZ.filter(p => p.regime === 'protocolo');
+  const URGS = urg.error ? [] : (urg.data||[]).sort((a,b) => (a.urgencia==='critica'?0:1) - (b.urgencia==='critica'?0:1));
+  const leadsHoje = lds.error ? 0 : (lds.data||[]).length;
+  /* "Hoje" é o que tem dia marcado para hoje, mais o que venceu na última semana — esse ainda
+     dá para resolver. Cada linha com a hora à esquerda, como a Agenda. */
+  const hojeIt = [
+    ...vencNovos.map(p => ({ h:'', q:'prazo', id:p.id, t:'prazo', nome:p.descricao, caso:p.caso, nota:'<span style="color:var(--crit)">venceu há ' + humano(-dias(p.data_fatal)) + '</span>' })),
+    ...prHoje.map(p => ({ h:'', q:'prazo', id:p.id, t:'prazo', nome:p.descricao, caso:p.caso, nota:'prazo vence hoje' })),
+    ...evHoje.map(e => ({ h:String(e.inicio).slice(11,16), q:'evento', id:e.id, t:e.tipo, nome:e.titulo,
+        caso:e.caso, nota:[(TIPOLINHA[e.tipo]||[e.tipo])[0], e.cliente?.nome, e.local].filter(Boolean).map(esc).join(' · '), sala:e.link_sala })),
+  ].sort((a,b) => (a.h||'00').localeCompare(b.h||'00'));
+  const linhaHoje = i => `<div class="dl-it">
+      <span class="h">${i.h && i.h !== '00:00' ? i.h : ''}</span>
+      <span class="t"><span class="tipo ${i.t}"></span>${i.caso ? `<a class="lnk" href="#/caso/${i.caso.id}"><b>${esc(i.nome)}</b></a>` : `<b>${esc(i.nome)}</b>`}
+        <span class="sub">${i.nota}${i.caso && i.t !== 'audiencia' ? ' · ' + esc(i.caso.titulo) : ''}</span></span>
+      <span class="ac">${i.sala ? botaoSala(i.sala) : ''}<button class="btn ok" onclick="riscar('${i.q}','${i.id}',this)">Dar baixa</button></span></div>`;
+  const proxSete = [
+    ...pr7.map(p => ({ d:p.data_fatal, h:'', q:'prazo', id:p.id, t:'prazo', nome:p.descricao, caso:p.caso, nota:'prazo' })),
+    ...ev7.map(e => ({ d:dia(e), h:String(e.inicio).slice(11,16), q:'evento', id:e.id, t:e.tipo, nome:e.titulo, caso:e.caso,
+        nota:[(TIPOLINHA[e.tipo]||[e.tipo])[0], e.cliente?.nome, e.local].filter(Boolean).map(esc).join(' · '), sala:e.link_sala })),
+  ];
+  const semanaSemPlano = () => {
+    const g = {}; for (const i of proxSete) (g[i.d] ||= []).push(i);
+    return Object.keys(g).sort().map(d => { const n = dias(d), nm = DIASEM[new Date(d+'T12:00:00Z').getUTCDay()];
+      return `<div class="dl-dia">${n===1?'Amanhã':nm[0].toUpperCase()+nm.slice(1)}<span class="sub">${br(d)}</span></div>` +
+        g[d].sort((a,b)=>(a.h||'').localeCompare(b.h||'')).map(linhaHoje).join(''); }).join('')
+      || '<div class="vazio">Semana livre pela frente.</div>';
+  };
+  const extenso = (() => { const d = new Date(h+'T12:00:00Z'); const nm = DIASEM[d.getUTCDay()];
+    return nm[0].toUpperCase() + nm.slice(1) + ', ' + d.getUTCDate() + ' de ' +
+      ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'][d.getUTCMonth()]; })();
+  const resumoDia = [
+    evHoje.filter(e=>e.tipo==='audiencia').length ? evHoje.filter(e=>e.tipo==='audiencia').length + ' audiência' + (evHoje.filter(e=>e.tipo==='audiencia').length>1?'s':'') : '',
+    prHoje.length ? prHoje.length + ' prazo' + (prHoje.length>1?'s':'') + ' vencendo' : '',
+    evHoje.filter(e=>e.tipo!=='audiencia').length ? evHoje.filter(e=>e.tipo!=='audiencia').length + ' compromisso' + (evHoje.filter(e=>e.tipo!=='audiencia').length>1?'s':'') : '',
+  ].filter(Boolean);
+  const at = (rot, num, href, al) => `<a class="at-it${al && num ? ' al' : ''}" href="${href}"><span class="rot">${rot}</span><span class="num">${num}</span></a>`;
 
   app.innerHTML = menu('inicio') + `
-  <main><h1>Bom dia, ${esc((ESC_NOME||'').split(' ')[0] || 'Breno')}</h1>
-  <p class="meta">O que precisa da sua atenção hoje, ${br(h)}.</p>
-  <div class="kpis">
-    <div class="kpi ${vencidos.length?'al':''}"${vencidos.length
-      ? ' onclick="location.hash=\'#/prazos\'" style="cursor:pointer" title="abrir a lista completa em Prazos e publicações"'
-      : ''}><div class="n">${vencidos.length}</div><div class="l">prazos já vencidos</div></div>
-    <div class="kpi ${prHoje.length?'al':''}"><div class="n">${prHoje.length}</div><div class="l">prazos hoje</div></div>
-    <div class="kpi"><div class="n">${pr7.length}</div><div class="l">prazos nos próximos 7 dias</div></div>
-    <div class="kpi"><div class="n">${aud7.length}</div><div class="l">audiências na semana</div></div>
-    <div class="kpi ${conferir?'al':''}"><div class="n">${conferir}</div><div class="l">publicações a conferir</div></div>
-    <div class="kpi ${paradas.length?'al':''}"><div class="n">${paradas.length}</div><div class="l">assinaturas paradas</div></div>
-    <div class="kpi"><div class="n">${abertos}</div><div class="l">casos abertos</div></div>
-  </div>
-  <div class="card"><h2>Começar alguma coisa</h2>
-    <div style="padding:0 18px 18px;display:flex;gap:8px;flex-wrap:wrap">
+  <main>
+  <div class="cab">
+    <div><h1>${extenso}</h1>
+      <p class="meta">Bom dia, ${esc((ESC_NOME||'').split(' ')[0] || 'Breno')}. ${resumoDia.length ? 'Hoje: ' + resumoDia.join(', ') + '.' : 'Nada marcado para hoje.'}
+        ${vencidos.length ? ` <a class="lnk" href="#/prazos" style="color:var(--crit)">${vencidos.length} prazo${vencidos.length>1?'s':''} vencido${vencidos.length>1?'s':''} em aberto</a>.` : ''}</p></div>
+    <div class="acoesc">
       <a class="btn ok" style="text-decoration:none" href="#/captacao">Novo atendimento</a>
-      <a class="btn" style="text-decoration:none" href="#/casos">Casos</a>
-      <a class="btn" style="text-decoration:none" href="#/agenda">Marcar compromisso</a>
-      <a class="btn" style="text-decoration:none" href="#/prazos">Prazos e publicações</a>
+      <a class="btn" style="text-decoration:none" href="#/agenda">Agenda</a>
+      <a class="btn" style="text-decoration:none" href="#/financeiro">Financeiro</a>
+      <a class="btn" style="text-decoration:none" href="#/minutas">Minutar</a>
       <a class="btn" style="text-decoration:none" href="#/mensageria">Escrever ao cliente</a>
-      <a class="btn" style="text-decoration:none" href="#/financeiro">Lançar no financeiro</a>
-      <a class="btn" style="text-decoration:none" href="#/minutas">Minutar uma peça</a>
-    </div></div>
-  <div class="card"><h2>Hoje</h2>
-    <p class="nota">Prazo que vence hoje, compromisso do dia e o que venceu na última semana —
-      esse ainda dá para resolver.</p>
-    <div style="padding:0 18px 18px">
-      ${(vencNovos.map(linhaPz).join('') + prHoje.map(linhaPz).join('') + evHoje.map(linhaEv).join(''))
-        || '<div class="vazio">Nada marcado para hoje e nada vencido na semana. Bom sinal.</div>'}
-    </div></div>
+    </div>
+  </div>
+  <div class="lado">
+    <div>
+      <div class="card"><h2>Hoje</h2>
+        <div class="dl">${hojeIt.map(linhaHoje).join('') || '<div class="vazio">Nada marcado para hoje e nada vencido na semana. Bom sinal.</div>'}</div></div>
+      ${INIPLANO === undefined ? '' : `<div class="card" id="iniplano">${quadroPlano(h)}</div>`}
+      ${INIPLANO ? '' : `<div class="card"><h2>Os próximos sete dias</h2><div class="dl">${semanaSemPlano()}</div></div>`}
+    </div>
+    <div>
+      <div class="card"><h2>Precisa de você</h2>
+        <div class="at">
+          ${protocolos.map(p => { const n = dias(p.data_fatal); return `<a class="at-it marca-esq ${n<=3?'':'ser'}" style="display:block;border-top:0;margin:6px 0" href="#/caso/${p.caso?.id||''}">
+            <b>Protocolar — ${esc(p.caso?.titulo || p.descricao)}</b>
+            <span class="sub" style="color:${n<=3?'var(--crit)':'var(--ser)'}">${n<0 ? 'passou da meta há ' + humano(-n) : n===0 ? 'a meta é hoje' : 'faltam ' + humano(n) + ' · até ' + br(p.data_fatal)}</span></a>`; }).join('')}
+          ${URGS.slice(0,6).map(c => `<a class="at-it marca-esq ${c.urgencia==='critica'?'':'warn'}" style="display:block;border-top:0;margin:6px 0" href="#/caso/${c.id}">
+            <b>${esc(c.cliente?.nome || c.titulo)}</b><span class="sub">${esc(URG[c.urgencia]?.[0] || c.urgencia)}${c.cliente?.nome && c.titulo !== c.cliente.nome ? ' · ' + esc(c.titulo) : ''}</span></a>`).join('')}
+          <div style="margin-top:${protocolos.length || URGS.length ? '10px' : '0'}">
+          ${at('Prazos vencidos em aberto', vencidos.length, '#/prazos', true)}
+          ${at('Publicações a conferir', conferir, '#/prazos', true)}
+          ${at('Prazos nos próximos 7 dias', pr7.length, '#/agenda')}
+          ${at('Audiências na semana', aud7.length, '#/agenda')}
+          ${at('Leads com retorno para hoje', leadsHoje, '#/captacao', true)}
+          ${at('Assinaturas paradas', paradas.length, '#/inicio', true)}
+          ${at('Casos abertos', abertos, '#/casos')}
+          </div>
+        </div></div>
+      <div class="card"><h2>O mês no dinheiro</h2>
+        <div class="at">
+          ${at('A receber no mês', rs(entra), '#/financeiro')}
+          ${at('A pagar no mês', rs(sai), '#/financeiro')}
+          ${at('Resultado previsto', rs(entra-sai), '#/financeiro')}
+        </div></div>
+    </div>
+  </div>
   ${vencVelhos.length?`<div class="card" style="border-left:3px solid var(--warn)"><h2>Ficou para trás</h2>
     <p class="nota"><b>${vencVelhos.length}</b> prazo(s) venceram há mais de uma semana e continuam abertos —
       o mais antigo em <b>${br(vencVelhos[0].data_fatal)}</b>. Saíram do quadro de cima para ele voltar a ser lido,
@@ -776,12 +871,6 @@ async function telaInicio(){
                    :'<span class="sub" style="display:inline">sem caso vinculado</span>'}</td>
       </tr>`).join('')}</tbody></table>
     </details></div>`:''}
-  ${INIPLANO === undefined ? '' : `<div class="card" id="iniplano">${quadroPlano(h)}</div>`}
-  <div class="card"><h2>Os próximos sete dias</h2>
-    <div style="padding:0 18px 18px">
-      ${(pr7.map(linhaPz).join('') + ev7.map(linhaEv).join(''))
-        || '<div class="vazio">Semana livre pela frente.</div>'}
-    </div></div>
   ${INIASSIN.length ? `<div class="card"${paradas.length?' style="border-left:3px solid var(--warn)"':''}>
     <h2>Documentos esperando assinatura</h2>
     <p class="nota">${paradas.length
@@ -808,13 +897,6 @@ async function telaInicio(){
     </tr>`; }).join('')}
     </tbody></table></div>` : ''}
 
-  <div class="card"><h2>O mês no dinheiro</h2>
-    <div class="kpis" style="padding-top:0">
-      <div class="kpi"><div class="n" style="font-size:19px">${rs(entra)}</div><div class="l">a receber no mês</div></div>
-      <div class="kpi"><div class="n" style="font-size:19px">${rs(sai)}</div><div class="l">a pagar no mês</div></div>
-      <div class="kpi"><div class="n" style="font-size:19px">${rs(entra-sai)}</div><div class="l">resultado previsto</div></div>
-    </div>
-    <p class="nota">Detalhe e baixa dos lançamentos no menu Financeiro.</p></div>
   </main>` + rodape();
 }
 
@@ -1894,7 +1976,7 @@ window.riscar = async (qual, id, el) => {
     if (eraTexto !== null) el.textContent = eraTexto; else el.checked = false;
     return alert('Não foi possível: ' + error.message);
   }
-  const bloco = el.closest('tr') || el.closest('.item');
+  const bloco = el.closest('tr') || el.closest('.dl-it') || el.closest('.item');
   if (bloco){ bloco.style.opacity = '.45'; bloco.style.textDecoration = 'line-through'; }
   const diaAberto = CAL?.sel;
   setTimeout(() => {
@@ -2127,7 +2209,7 @@ async function telaAgenda(){
     convidado:p.convidado_email,
     caso_id:p.caso_id||null, caso_nome:p.caso?.titulo||null,
     cliente_id:p.caso?.cliente?.id||null, cliente_nome:p.caso?.cliente?.nome||null,
-    titulo:`Prazo: ${p.descricao}${p.caso?.titulo ? ' — '+p.caso.titulo : ''}`,
+    titulo:`Prazo: ${p.descricao}${p.caso?.titulo ? ' — '+p.caso.titulo : ''}`, nome:p.descricao,
     detalhe:`${p.dias||''} dias úteis · situação: ${p.situacao}\n${p.intimacao?.numero_formatado||''}`,
     local:p.intimacao?.orgao||'' });
   for (const e of (ev.data||[])) AGE.push({
@@ -2144,10 +2226,10 @@ async function telaAgenda(){
       : e.projeto_id ? `Tarefa: ${e.titulo} — projeto ${e.projeto?.titulo || ''}`
       : `${e.tipo === 'audiencia' ? 'Audiência' : e.tipo}: ${e.titulo}`) +
       (e.cliente?.nome ? ' — '+e.cliente.nome : (e.caso?.titulo ? ' — '+e.caso.titulo : '')),
-    detalhe:e.descricao||'', local:e.local||'', sala:e.link_sala||'' });
+    nome:e.titulo, detalhe:e.descricao||'', local:e.local||'', sala:e.link_sala||'' });
   for (const c of (cs.data||[])) AGE.push({
     id:'presc-'+c.id, tipo:'prescricao', data:c.prescricao_em, caso_id:c.id, caso_nome:c.titulo,
-    titulo:`Prescrição — ${c.titulo}`, detalhe:c.prescricao_obs||'Prazo prescricional anotado no cadastro.', local:'' });
+    titulo:`Prescrição — ${c.titulo}`, nome:'Prescrição', detalhe:c.prescricao_obs||'Prazo prescricional anotado no cadastro.', local:'' });
   AGE.sort((a,b)=>String(a.data).localeCompare(String(b.data)));
 
   const futuros = AGE.filter(i => dias(String(i.data).slice(0,10)) >= 0);
@@ -2155,69 +2237,81 @@ async function telaAgenda(){
   /* Uma cor por tipo, e a mesma cor na tabela, no calendário e na faixa. */
   const cor = { prazo:'ser', audiencia:'crit', prescricao:'presc', pericia:'warn',
                 reuniao:'serie', tarefa:'taref', outro:'cin' };
-  const linha = it => {
-    const d = dias(String(it.data).slice(0,10));
-    return `<tr>
-      <td>${it.ref
-        ? `<button class="btn" style="font-size:11.6px;padding:4px 9px;white-space:nowrap"
-             title="${it.qual==='prazo'?'marcar este prazo como cumprido':'marcar como realizado'} — sai da agenda"
-             onclick="riscar('${it.qual}','${it.ref}',this)">Dar baixa</button>`
-        : '<span class="sub" style="margin:0">—</span>'}</td>
-      <td class="dt"><b>${br(it.data)}</b>${it.hora?' '+it.hora:''}
-        <span class="sub">${d===0?'hoje':(d<0?'há '+(-d)+'d':'em '+d+' dias')}</span></td>
-      <td><span class="pill ${cor[it.tipo]||'cin'}">${it.tipo}${
-        it.subtipo?' · '+esc(it.subtipo):''}</span>${subtipoAudiencia(it)}</td>
-      <td>${it.caso_id ? `<a class="lnk" href="#/caso/${it.caso_id}"><b>${esc(it.titulo)}</b></a>` : `<b>${esc(it.titulo)}</b>`}
-        ${it.local?`<span class="sub">${esc(it.local)}</span>`:''}
-        ${it.urgencia && it.urgencia!=='normal' ? `<span class="pill ${URG[it.urgencia]?.[1]||'cin'}">${URG[it.urgencia]?.[0]||it.urgencia}</span>` : ''}</td>
-      <td>${vinculoAgenda(it)}</td>
-      <td>${botaoSala(it.sala)}
-        <a class="btn" href="${linkGoogle(it)}" target="_blank" rel="noreferrer" style="text-decoration:none">Google Agenda</a>
+  /* Uma linha por compromisso, agrupada por dia (11/2026). A tabela de seis colunas virou lista:
+     o que importa — quando, o quê, de quem — fica à esquerda; os botões, à direita. */
+  const item = it => `<div class="dl-it">
+      <span class="h">${it.hora && it.hora !== '00:00' ? it.hora : ''}</span>
+      <span class="t"><span class="tipo ${it.tipo}"></span>${it.caso_id
+          ? `<a class="lnk" href="#/caso/${it.caso_id}"><b>${esc(it.nome || it.titulo)}</b></a>` : `<b>${esc(it.nome || it.titulo)}</b>`}
+        ${it.urgencia && it.urgencia!=='normal' ? ` <span class="pill ${URG[it.urgencia]?.[1]||'cin'}" style="font-size:10.6px;padding:1px 7px">${URG[it.urgencia]?.[0]||it.urgencia}</span>` : ''}
+        <span class="sub">${[it.tipo === 'prescricao' ? 'prescrição' : (TIPOLINHA[it.tipo]||[it.tipo])[0] + (it.subtipo ? ' · ' + esc(it.subtipo) : ''),
+          it.local ? esc(it.local) : ''].filter(Boolean).join(' · ')}</span>
+        <span class="sub" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${vinculoAgenda(it, 'mini')}${subtipoAudiencia(it)}</span></span>
+      <span class="ac">
+        ${it.ref ? `<button class="btn ok" title="${it.qual==='prazo'?'marcar este prazo como cumprido':'marcar como realizado'} — sai da agenda"
+             onclick="riscar('${it.qual}','${it.ref}',this)">Dar baixa</button>` : ''}
+        ${botaoSala(it.sala)}
+        ${it.ref ? `<button class="btn" onclick="editarItem('${it.qual}','${it.ref}')">Editar</button>` : ''}
+        <a class="btn" href="${linkGoogle(it)}" target="_blank" rel="noreferrer" style="text-decoration:none" title="abrir no Google Agenda">Google</a>
         ${it.convidado ? `<a class="btn" style="text-decoration:none" href="${linkEmail(it)}">Avisar ${esc(it.convidado.split('@')[0])}</a>` : ''}
-        ${it.ref ? `<button class="btn" title="mudar data, hora, caso, processo ou situação — sem criar outro item"
-             onclick="editarItem('${it.qual}','${it.ref}')">Editar</button>` : ''}
-        ${it.qual === 'evento' ? `<button class="btn" onclick="cancelarEvento('${it.ref}')">Cancelar</button>` : ''}</td>
-    </tr>`;
+        ${it.qual === 'evento' ? `<button class="btn" onclick="cancelarEvento('${it.ref}')">Cancelar</button>` : ''}
+      </span></div>`;
+  const porDia = lista => {
+    const g = {};
+    for (const it of lista) (g[String(it.data).slice(0,10)] ||= []).push(it);
+    return Object.keys(g).sort().map(d => {
+      const n = dias(d);
+      const nome = DIASEM[new Date(d+'T12:00:00Z').getUTCDay()];
+      const rot = n === 0 ? 'Hoje' : n === 1 ? 'Amanhã' : nome[0].toUpperCase() + nome.slice(1);
+      return `<div class="dl-dia${n===0?' hj':''}">${rot}<span class="sub">${br(d)}${n > 1 ? ' · em ' + n + ' dias' : ''}</span></div>` +
+        g[d].sort((a,b)=>String(a.hora||'').localeCompare(String(b.hora||''))).map(item).join('');
+    }).join('');
   };
+  const vista = (() => { try { return localStorage.getItem('agvista') || 'lista'; } catch { return 'lista'; } })();
+  const soltos = AGE.filter(i=>i.ref && !i.caso_id && !i.lead_id && !i.projeto_id).length;
+  const semTipo = AGE.filter(i=>i.tipo==='audiencia' && i.ref && !i.subtipo).length;
+  const sete = futuros.filter(i=>dias(String(i.data).slice(0,10))<=7);
   app.innerHTML = menu('agenda') + `
-  <main><h1>Agenda</h1>
-  ${AGDIV ? `<div class="card" style="border-left:3px solid var(--crit)"><div style="padding:12px 18px">
-    <b>${AGDIV} divergência${AGDIV>1?'s':''} com o Google Agenda.</b>
-    <span class="sub" style="margin:4px 0 0">Alguém mudou ou apagou no Google um item que o sistema não deixa o
-    Google mandar. Aqui nada mudou — as datas abaixo continuam valendo.</span>
-    <div style="margin-top:8px"><a class="btn" href="#/config">Ver em Configurações</a></div>
-  </div></div>` : ''}
-  <p class="meta">Prazos, audiências, tarefas e prescrições no mesmo lugar. <b>Dar baixa</b> é o clique que você
-    dá <i>depois</i> de protocolar ou realizar: o item some da agenda e entra no histórico. Enquanto o botão
-    estiver ali, o compromisso continua em aberto. Prescrição não tem baixa — ela vive no cadastro do caso.</p>
-  <div style="display:flex;gap:7px;flex-wrap:wrap;margin:-4px 0 14px">
-    ${[['prazo','ser'],['audiência','crit'],['perícia','warn'],['prescrição','presc'],
-       ['reunião','serie'],['tarefa','taref']].map(([r,c])=>
-      `<span class="pill ${c}">${r}</span>`).join('')}
+  <main>
+  <div class="cab">
+    <div><h1>Agenda</h1>
+      <p class="meta">${sete.length} compromisso${sete.length===1?'':'s'} nos próximos 7 dias · ${futuros.length} à frente${
+        passados.length ? ` · <b style="color:var(--crit)">${passados.length} já passaram e seguem abertos</b>` : ''}</p></div>
+    <div class="acoesc">
+      <div class="vistas"><button class="${vista==='lista'?'on':''}" onclick="vistaAgenda('lista')">Lista</button><button class="${vista==='mes'?'on':''}" onclick="vistaAgenda('mes')">Mês</button></div>
+      <button class="btn ok" onclick="const f=document.getElementById('agform'); f.hidden=!f.hidden; if(!f.hidden) f.scrollIntoView({behavior:'smooth',block:'start'})">+ Compromisso</button>
+    </div>
   </div>
-  ${(()=>{ const n = AGE.filter(i=>i.ref && !i.caso_id && !i.lead_id && !i.projeto_id).length;
-    return n ? `<p class="nota"><b>${n} ${n>1?'itens estão soltos':'item está solto'}</b> — sem caso vinculado.
-      Na coluna <b>Cliente / caso</b> há um seletor amarelo em cada um: escolha o caso e ele passa a
-      aparecer na ficha do cliente, na linha do tempo e nas métricas.</p>` : ''; })()}
-  ${(()=>{ const n = AGE.filter(i=>i.tipo==='audiencia' && i.ref && !i.subtipo).length;
-    return n ? `<p class="nota"><b>${n} audiência${n>1?'s':''} sem tipo.</b> Una, inicial, instrução e
-      conciliação exigem preparação diferente — quem leva testemunha para uma inicial perde a viagem.
-      O tipo não vem na lista do PJe: só na tela do processo, no alto, ao lado da data.</p>` : ''; })()}
-  <div class="kpis">
-    <div class="kpi"><div class="n">${futuros.length}</div><div class="l">compromissos à frente</div></div>
-    <div class="kpi"><div class="n">${futuros.filter(i=>dias(String(i.data).slice(0,10))<=7).length}</div><div class="l">nos próximos 7 dias</div></div>
-    <div class="kpi"><div class="n">${AGE.filter(i=>i.tipo==='audiencia').length}</div><div class="l">audiências</div></div>
-    <div class="kpi ${passados.length?'al':''}"><div class="n">${passados.length}</div><div class="l">já passaram e seguem abertos</div></div>
-  </div>
-  ${faixaProximos()}
-  ${formEvento()}
-  <div class="card"><h2>Calendário</h2>
-    <div style="padding:4px 18px 18px" id="cal"></div></div>
+  ${AGDIV ? `<div class="banda crit"><span><b>${AGDIV} divergência${AGDIV>1?'s':''} com o Google Agenda.</b>
+    Alguém mudou ou apagou no Google um item que o sistema não deixa o Google mandar. Aqui nada mudou.</span>
+    <a class="btn" href="#/config">Ver em Configurações</a></div>` : ''}
+  ${soltos ? `<div class="banda ser"><span><b>${soltos} ${soltos>1?'itens estão soltos':'item está solto'}</b> — sem caso vinculado.
+    Escolha o caso no seletor amarelo de cada um e ele passa a aparecer na ficha, na linha do tempo e nas métricas.</span></div>` : ''}
+  ${semTipo ? `<div class="banda ser"><span><b>${semTipo} audiência${semTipo>1?'s':''} sem tipo.</b>
+    Una, inicial, instrução e conciliação pedem preparação diferente. O tipo está na tela do processo no PJe, ao lado da data.</span></div>` : ''}
+  <div id="agform" hidden>${formEvento()}</div>
 
-  <div class="card"><h2>Levar tudo para o Google Agenda</h2>
+  <div data-vista="lista"${vista==='lista'?'':' hidden'}>
+    ${passados.length ? `<div class="card" style="border-left:3px solid var(--crit);border-radius:0 12px 12px 0">
+      <details><summary style="cursor:pointer;padding:14px 18px;font-weight:600;font-size:14px">
+        Vencidos e ainda abertos <span class="sub" style="display:inline;font-weight:400">· ${passados.length} — se já foi feito, dê baixa: é esse clique que alimenta a Métrica</span></summary>
+        <div class="dl">${porDia(passados)}</div></details></div>` : ''}
+    <div class="card"><h2>Pela frente</h2>
+      <p class="nota"><b>Dar baixa</b> é o clique de depois de protocolar ou realizar: o item sai da agenda e entra no histórico.
+        Prescrição não tem baixa — ela vive no cadastro do caso.</p>
+      <div class="dl">${porDia(futuros) || '<div class="vazio">Nada agendado.</div>'}</div></div>
+  </div>
+
+  <div data-vista="mes"${vista==='mes'?'':' hidden'}>
+    ${faixaProximos()}
+    <div class="card"><h2>Calendário</h2>
+      <div style="padding:4px 18px 18px" id="cal"></div></div>
+  </div>
+
+  <div class="card"><details><summary style="cursor:pointer;padding:14px 18px;font-weight:600;font-size:14px">Levar tudo para o Google Agenda</summary>
     ${ESC_TOKEN ? `<p class="nota"><b>Assinatura automática.</b> No Google Agenda, em
       <b>Outras agendas → + → De URL</b>, cole o endereço abaixo. A partir daí tudo o que você marcar aqui
-      aparece lá sozinho, sem precisar importar de novo. O Google atualiza algumas vezes por dia.
+      aparece lá sozinho. O Google atualiza algumas vezes por dia.
       <b>Esse endereço é a chave da sua agenda: não repasse.</b></p>
     <div style="padding:0 18px 18px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <input type="text" id="icsurl" readonly value="${SB_URL}/functions/v1/agenda-ics?t=${esc(ESC_TOKEN)}" style="flex:1;min-width:320px">
@@ -2225,20 +2319,17 @@ async function telaAgenda(){
       <button class="btn" onclick="baixarIcs()">Baixar .ics avulso</button>
       <span class="sub" id="ics-st" style="margin:0"></span></div>`
     : `<p class="nota">Baixe o arquivo e importe uma vez em <b>Google Agenda → Configurações → Importar e exportar</b>.</p>
-    <div style="padding:0 18px 18px"><button class="btn ok" onclick="baixarIcs()">Baixar agenda (.ics)</button></div>`}</div>
-  <div class="card"><h2>Pela frente</h2>
-    <table><thead><tr><th style="width:118px">Dar baixa</th><th>Quando</th><th>Tipo</th><th>O quê</th><th>Cliente / caso</th><th></th></tr></thead>
-    <tbody>${futuros.map(linha).join('') || '<tr><td colspan="5" class="vazio">Nada agendado.</td></tr>'}</tbody></table></div>
-  ${passados.length?`<div class="card"><h2>Vencidos e ainda abertos</h2>
-    <p class="meta">Já passou da data e continua aberto. Se foi protocolado ou realizado, dê baixa aqui —
-      é esse clique que alimenta a Métrica e a Jurimetria.</p>
-    <table><thead><tr><th style="width:118px">Dar baixa</th><th>Quando</th><th>Tipo</th><th>O quê</th><th>Cliente / caso</th><th></th></tr></thead>
-    <tbody>${passados.map(linha).join('')}</tbody></table></div>`:''}
+    <div style="padding:0 18px 18px"><button class="btn ok" onclick="baixarIcs()">Baixar agenda (.ics)</button></div>`}</details></div>
   </main>` + rodape();
   const hj = new Date();
   CAL = { ano: hj.getUTCFullYear(), mes: hj.getUTCMonth(), sel: hoje() };
   pintaCalendario();
 }
+window.vistaAgenda = v => {
+  try { localStorage.setItem('agvista', v); } catch {}
+  document.querySelectorAll('[data-vista]').forEach(x => x.hidden = x.dataset.vista !== v);
+  document.querySelectorAll('.vistas button').forEach(b => b.classList.toggle('on', b.textContent.toLowerCase().startsWith(v === 'mes' ? 'm' : 'l')));
+};
 
 /* ------------------------------------------------- ficha completa e documentos */
 window.ficha = async (id) => {
@@ -4213,6 +4304,43 @@ function blocoParceria(c){
     <span class="sub" id="pc-st" style="display:inline;margin:0"></span></p>`;
 }
 
+/* Abas do caso (11/2026). Antes eram quinze quadros um embaixo do outro; agora a visão geral
+   traz o que pede ação e o resto fica a um clique. A aba escolhida vale enquanto se está no
+   mesmo caso: salvar alguma coisa redesenha a tela sem jogar o Breno de volta para o começo. */
+const ABASCASO = [['geral','Visão geral'],['fatos','Fatos e provas'],['processos','Processos e prazos'],
+  ['docs','Documentos'],['contrato','Contrato'],['cadastro','Cadastro'],['historico','Histórico']];
+let CASOABA = { id: null, aba: 'geral' };
+window.abaCaso = k => {
+  CASOABA.aba = k;
+  document.querySelectorAll('section.aba').forEach(x => x.hidden = x.dataset.aba !== k);
+  document.querySelectorAll('#abascaso button').forEach(b => b.classList.toggle('on', b.dataset.k === k));
+};
+window.urgenciaCaso = async (id, k) => {
+  const { error } = await sb.from('caso').update({ urgencia: k }).eq('id', id);
+  if (error) return alert('Não foi possível: ' + error.message);
+  if (CASO && CASO.id === id) CASO.urgencia = k;
+  document.querySelectorAll('#urgsel button').forEach(b => b.classList.toggle('on', b.classList.contains(k)));
+};
+/* O que está para acontecer neste caso, na ordem — o topo da visão geral. */
+function proximosCaso(){
+  const h = hoje();
+  const itens = [
+    ...CASOPZ.filter(p => ['sugerido','confirmado'].includes(p.situacao))
+      .map(p => ({ q:'prazo', id:p.id, d:p.data_fatal, hr:'', t:'prazo', nome:p.descricao })),
+    ...CASOEV.filter(e => e.situacao === 'aberta')
+      .map(e => ({ q:'evento', id:e.id, d:String(e.inicio).slice(0,10), hr:String(e.inicio).slice(11,16), t:e.tipo, nome:e.titulo })),
+  ].sort((a,b) => (a.d+a.hr).localeCompare(b.d+b.hr));
+  return `<div class="card"><h2>O que vem por aí</h2>
+    ${itens.length ? `<div class="dl">${itens.map(i => `<div class="dl-it">
+      <span class="h">${br(i.d).slice(0,5)}${i.hr && i.hr !== '00:00' ? '<br>'+i.hr : ''}</span>
+      <span class="t"><span class="tipo ${i.t}"></span><b>${esc(i.nome||'')}</b>
+        <span class="sub">${(TIPOLINHA[i.t]||[i.t])[0]} · ${i.d < h ? '<span style="color:var(--crit)">venceu há ' + humano(-dias(i.d)) + '</span>'
+          : i.d === h ? 'hoje' : 'em ' + humano(dias(i.d))}</span></span>
+      <span class="ac"><button class="btn" onclick="riscar('${i.q}','${i.id}',this)">Dar baixa</button>
+        <button class="btn" onclick="editarItem('${i.q}','${i.id}')">Editar</button></span></div>`).join('')}</div>`
+    : '<div class="vazio">Nada marcado para este caso. Use o quadro abaixo para registrar o próximo passo.</div>'}</div>`;
+}
+
 async function telaCaso(id){
   await carregarParcerias().catch(()=>{});
   const [cs, pr, pz, ev, it, hn, dc, mn, cd, cm, tpc, ftx, asg, dlg, og] = await Promise.all([
@@ -4308,78 +4436,88 @@ async function telaCaso(id){
 
   /* caso previdenciário: atalho para a análise (Previdenciário) */
   const prevAn = ((await sb.from('prev_analise').select('id').eq('caso_id', id).limit(1)).data || [])[0] || null;
+  if (CASOABA.id !== id) CASOABA = { id, aba: 'geral' };
+  const protocolo = CASOPROC.length ? null
+    : (pz.data||[]).find(p => p.regime === 'protocolo' && ['sugerido','confirmado'].includes(p.situacao)) || null;
   const ehPrev = prevAn || /previd|inss|aposent|benef|loas|bpc|pens[ãa]o|aux[ií]lio/i.test((c.area||'') + ' ' + c.titulo);
   app.innerHTML = menu('casos') + `
   <main>
-  <p class="meta"><a class="lnk" href="#/casos">← voltar para os casos</a></p>
-  <h1>${esc(c.titulo)}</h1>
-  <p class="meta">${esc(c.cliente?.nome || 'sem cliente vinculado')}${c.area?' · '+esc(c.area):''}${c.polo?' · '+esc(c.polo):''}
-    ${c.responsavel?.nome ? ' · responsável: '+esc(c.responsavel.nome) : ''}
-    ${c.encerrado_em ? ' · <b>encerrado em '+br(c.encerrado_em)+'</b>' : ''}</p>
-  ${ehPrev ? `<p style="margin:-8px 0 16px"><button class="btn ${prevAn ? '' : 'ok'}"
+  <p class="meta" style="margin-bottom:10px"><a class="lnk" href="#/casos">← voltar para os casos</a></p>
+  <div class="cab">
+    <div style="min-width:0">
+      <h1>${esc(c.titulo)}</h1>
+      <p class="meta">${esc(c.cliente?.nome || 'sem cliente vinculado')}${c.area?' · '+esc(c.area):''}${c.polo?' · '+esc(c.polo):''}
+        ${c.responsavel?.nome ? ' · responsável: '+esc(c.responsavel.nome) : ''}
+        ${c.encerrado_em ? ' · <b>encerrado em '+br(c.encerrado_em)+'</b>' : ''}</p>
+    </div>
+    ${c.urgencia !== undefined ? `<div>
+      <div class="sub" style="margin:0 0 4px;text-align:right">Urgência deste caso</div>
+      <div class="urgsel" id="urgsel">${Object.entries(URG).map(([k,[r]]) =>
+        `<button class="${k}${(c.urgencia||'normal')===k?' on':''}" onclick="urgenciaCaso('${c.id}','${k}')">${r}</button>`).join('')}</div>
+    </div>` : ''}
+  </div>
+  ${protocolo ? `<div class="banda ${dias(protocolo.data_fatal) < 0 || dias(protocolo.data_fatal) <= 3 ? 'crit' : 'ser'}">
+    <span><b>Protocolar até ${br(protocolo.data_fatal)}</b> — ${dias(protocolo.data_fatal) < 0
+      ? 'passou da meta há ' + humano(-dias(protocolo.data_fatal))
+      : dias(protocolo.data_fatal) === 0 ? 'a meta é hoje' : 'faltam ' + humano(dias(protocolo.data_fatal))}.
+      <span class="sub" style="display:inline;color:var(--i2)">Meta de 15 dias úteis desde que virou caso, em ${br(protocolo.data_inicio)}. Some sozinha quando o processo for cadastrado.</span></span>
+    <button class="btn" onclick="abaCaso('processos'); setTimeout(()=>document.querySelector('form[onsubmit^=addProcesso] input[name=numero]')?.focus(), 50)">Cadastrar o processo</button>
+  </div>` : ''}
+  <div class="tiles">
+    <div class="tile ${proximo && dias(proximo)<=5 ? 'al':''}"><div class="r">Próximo prazo</div><div class="v">${proximo ? br(proximo) : '—'}</div></div>
+    <div class="tile"><div class="r">Prazos em aberto</div><div class="v">${pzAbertos.length}</div></div>
+    <div class="tile"><div class="r">Processos</div><div class="v">${CASOPROC.length}</div></div>
+    <div class="tile"><div class="r">Documentos recebidos</div><div class="v">${CASODOCS.length ? CASODOCS.filter(d=>d.recebido_em).length + ' de ' + CASODOCS.length : '—'}</div></div>
+    <div class="tile"><div class="r">Em trâmite</div><div class="v">${humano(idade)}</div></div>
+    <div class="tile ${paradoMais>=90?'al':''}"><div class="r">Parado há</div><div class="v">${paradoMais!=null?humano(paradoMais):'—'}</div></div>
+  </div>
+  ${ehPrev ? `<p style="margin:10px 0 0"><button class="btn ${prevAn ? '' : 'ok'}"
     onclick="${prevAn ? `location.hash='#/prev/${prevAn.id}'` : `prevNova('${c.id}')`}">${prevAn ? 'Abrir a análise previdenciária' : '+ Análise previdenciária'}</button></p>` : ''}
   ${blocoParceria(c)}
+  <div class="abas" id="abascaso">${ABASCASO.map(([k,r]) => {
+    const n = k==='fatos' ? CASOFATOS.length : k==='processos' ? CASOPROC.length
+      : k==='docs' && CASODOCS.length ? CASODOCS.filter(d=>!d.recebido_em).length : k==='historico' ? L.length : 0;
+    return `<button data-k="${k}" class="${CASOABA.aba===k?'on':''}" onclick="abaCaso('${k}')">${r}${n?`<span class="n">${n}</span>`:''}</button>`; }).join('')}</div>
 
-  <div class="kpis">
-    <div class="kpi"><div class="n">${CASOPROC.length}</div><div class="l">processos</div></div>
-    <div class="kpi ${proximo && dias(proximo)<=5 ? 'al':''}"><div class="n">${pzAbertos.length}</div><div class="l">prazos em aberto</div></div>
-    <div class="kpi"><div class="n">${(ev.data||[]).filter(x=>x.tipo==='audiencia').length}</div><div class="l">audiências</div></div>
-    <div class="kpi"><div class="n">${L.length}</div><div class="l">registros no caso</div></div>
-    <div class="kpi"><div class="n" style="font-size:19px">${humano(idade)}</div><div class="l">em trâmite</div></div>
-    <div class="kpi ${paradoMais>=90?'al':''}"><div class="n" style="font-size:19px">${paradoMais!=null?humano(paradoMais):'—'}</div><div class="l">parado há</div></div>
-  </div>
-
-  <div class="card"><h2>Tipo do caso, origem e etiquetas</h2>
-    <p class="nota">Escolher o tipo traz de uma vez a lista de documentos, as primeiras tarefas e os campos
-      próprios daquele tipo de ação. Nada é apagado: só se acrescenta o que ainda não existe.</p>
-    <!-- De onde veio o cliente. Quando o caso nasce de um lead, a origem vem junto;
-         quando é cadastrado direto aqui, ninguém informava — e sem isso não dá para
-         saber qual canal paga as contas. Grava na hora, sem botão. -->
-    <div style="padding:0 18px 12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <span class="sub" style="margin:0">Origem do lead:</span>
-      <select onchange="mudarOrigemCaso('${c.id}', this.value, this, 'origem_id')" style="min-width:230px">
-        <option value="">— não informada —</option>
-        ${ORIGENS.map(o=>`<option value="${o.id}" ${o.id===c.origem_id?'selected':''}>${esc(o.nome)}</option>`).join('')}
-      </select>
-      <span class="sub" style="margin:0">e também:</span>
-      <select onchange="mudarOrigemCaso('${c.id}', this.value, this, 'origem2_id')" style="min-width:200px"
-        title="quando foram dois: o canal e quem indicou">
-        <option value="">— só uma —</option>
-        ${ORIGENS.map(o=>`<option value="${o.id}" ${o.id===c.origem2_id?'selected':''}>${esc(o.nome)}</option>`).join('')}
-      </select>
-      <span class="sub" id="og-st" style="margin:0"></span>
-      <span class="sub" style="margin:0">A lista sai de Escritório → Origens de captação.</span>
-    </div>
-    <div style="padding:0 18px 10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <select id="tipocaso" style="min-width:320px">
-        <option value="">— escolha o tipo —</option>
-        ${CASOTIPOS.map(t=>`<option value="${t.id}" ${t.id===c.tipo_caso_id?'selected':''}>${esc(t.nome)}</option>`).join('')}
-      </select>
-      <button class="btn ok" onclick="aplicarTipo('${c.id}')">Aplicar o tipo</button>
-      <span class="sub" id="tp-st" style="margin:0"></span>
-    </div>
-    ${tipoAtual(c) && (tipoAtual(c).campos||[]).length ? `
-    <div style="padding:0 18px 14px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
-      ${(tipoAtual(c).campos||[]).map(f=>`
-        <label style="display:flex;flex-direction:column;gap:3px;min-width:190px">
-          <span class="sub" style="margin:0">${esc(f.r)}</span>
-          <input data-campo="${esc(f.k)}" type="${f.tipo==='date'?'date':'text'}"
-                 value="${esc((c.dados||{})[f.k] || '')}"></label>`).join('')}
-      <button class="btn" onclick="salvarCampos('${c.id}')">Guardar os dados</button>
-      <span class="sub" id="cp-st" style="margin:0"></span>
-    </div>` : ''}
-    <div style="padding:0 18px 18px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <span class="sub" style="margin:0">Etiquetas:</span>
-      ${tagsDoCaso(c.id).map(t=>`<span class="pill" style="background:${esc(t.cor||'#eceae4')};color:#1b1a17">${esc(t.nome)}
-        <a href="javascript:void(0)" onclick="tirarTagCaso('${c.id}','${t.id}')" style="text-decoration:none">&times;</a></span>`).join('')
-        || '<span class="sub" style="margin:0">nenhuma</span>'}
-      <select id="tagsel" style="min-width:170px"><option value="">— etiqueta existente —</option>
-        ${TAGS.filter(t=>!tagsDoCaso(c.id).some(x=>x.id===t.id)).map(t=>`<option value="${t.id}">${esc(t.nome)}</option>`).join('')}</select>
-      <input id="tagnova" placeholder="ou crie uma nova" style="min-width:170px">
-      <button class="btn" onclick="novaTagCaso('${c.id}')">Etiquetar</button>
-      <span class="sub" id="tag-st" style="margin:0"></span>
-    </div></div>
-
+  <section class="aba" data-aba="geral"${CASOABA.aba==='geral'?'':' hidden'}>
+  ${proximosCaso()}
+  <div class="card"><h2>Registrar atividade neste caso</h2>
+    <form onsubmit="addAtividade(event)" style="display:flex;gap:9px;flex-wrap:wrap;padding:0 18px 18px;align-items:flex-end">
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:145px">
+        <span class="sub" style="margin:0">O que é</span>
+        <select name="tipo"><option value="prazo">Prazo</option><option value="audiencia">Audiência</option>
+          <option value="pericia">Perícia</option><option value="reuniao">Reunião</option>
+          <option value="tarefa">Tarefa</option><option value="contato">Contato com o cliente</option></select></label>
+      <label style="display:flex;flex-direction:column;gap:3px;flex:2;min-width:250px">
+        <span class="sub" style="margin:0">O quê</span>
+        <input name="titulo" required placeholder="Ex.: contrarrazões ao recurso ordinário"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:145px">
+        <span class="sub" style="margin:0">Quando</span>
+        <input name="data" type="date" required value="${hoje()}"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:105px">
+        <span class="sub" style="margin:0">Hora</span>
+        <input name="hora" type="time" value="09:00"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:160px">
+        <span class="sub" style="margin:0">Urgência</span>
+        <select name="urgencia">${Object.entries(URG).map(([k,[r]])=>
+          `<option value="${k}" ${k==='normal'?'selected':''}>${r}</option>`).join('')}</select></label>
+      ${CASOPROC.length ? `<label style="display:flex;flex-direction:column;gap:3px;min-width:250px">
+        <span class="sub" style="margin:0">De qual processo</span>
+        ${seletorProcesso('processo', CASOPROC.length===1 ? CASOPROC[0].id : '')}</label>` : ''}
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:180px">
+        <span class="sub" style="margin:0">Onde</span>
+        <input name="local" placeholder="Vara, sala, endereço"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;min-width:220px">
+        <span class="sub" style="margin:0">Link da sala (se for por vídeo)</span>
+        <input name="sala" type="url" placeholder="Zoom, Meet ou PJe"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:220px">
+        <span class="sub" style="margin:0">Observações</span>
+        <input name="obs" placeholder="o que precisa ser feito"></label>
+      <button class="btn ok" type="submit">Registrar</button>
+      <span class="sub" id="at-st" style="margin:0"></span>
+    </form></div>
+  </section>
+  <section class="aba" data-aba="fatos"${CASOABA.aba==='fatos'?'':' hidden'}>
   <div class="card"><h2>Ler um documento</h2>
     <p class="nota">Mande a CTPS, o TRCT, o contracheque, o cartão de ponto, o laudo ou o edital em PDF ou foto.
       O sistema lê e devolve os campos e os fatos com a página onde cada um aparece. Ele só extrai o que está
@@ -4391,7 +4529,6 @@ async function telaCaso(id){
       <span class="sub" id="ld-st" style="margin:0"></span>
     </div>
     <div id="ldres" style="padding:0 18px 18px"></div></div>
-
   <div class="card"><h2>Linha do tempo dos fatos, com a prova de cada um</h2>
     <p class="nota">Um fato por linha, na ordem em que aconteceu, dizendo qual documento prova aquilo.
       É daqui que sai a narrativa da inicial — e é isto que evita alegar o que não se consegue provar.</p>
@@ -4424,7 +4561,6 @@ async function telaCaso(id){
       <button class="btn ok" type="submit">Registrar o fato</button>
       <span class="sub" id="ft-st" style="margin:0"></span>
     </form></div>
-
   <div class="card"><h2>Onde isto está provado?</h2>
     <p class="nota">Escreva a afirmação que você quer colocar na peça — "trabalhava aos domingos", "recebia por fora",
       "foi dispensado sem justa causa" — e o sistema procura nos documentos já lidos deste caso, devolvendo o trecho
@@ -4435,7 +4571,8 @@ async function telaCaso(id){
       <button class="btn ok" onclick="buscarProva()">Procurar na prova</button>
     </div>
     <div id="pvres" style="padding:0 18px 18px"><div class="vazio">Escreva a afirmação e eu procuro nos documentos deste caso.</div></div></div>
-
+  </section>
+  <section class="aba" data-aba="processos"${CASOABA.aba==='processos'?'':' hidden'}>
   <div class="card"><h2>Processos</h2>
     <p class="nota">Cadastre o número assim que protocolar — não precisa esperar o diário publicar.
       A partir daí o robô do DataJud passa a acompanhar os andamentos sozinho.</p>
@@ -4491,7 +4628,6 @@ async function telaCaso(id){
       <button class="btn ok" type="submit">Cadastrar processo</button>
       <span class="sub" id="pr-st" style="margin:0"></span>
     </form></div>
-
   ${(CASOPZ.length + CASOEV.length) ? `
   <div class="card"><h2>Prazos, audiências e tarefas deste caso</h2>
     <p class="sub" style="margin:-4px 18px 0">${CASOPROC.length > 1
@@ -4523,76 +4659,26 @@ async function telaCaso(id){
             title="mudar data, hora, processo ou situação deste item"
             onclick="editarItem('${i.q}','${i.id}')">Editar</button></td></tr>`).join('')}
     </tbody></table></div>` : ''}
-
-  <div class="card"><h2>Registrar atividade neste caso</h2>
-    <form onsubmit="addAtividade(event)" style="display:flex;gap:9px;flex-wrap:wrap;padding:0 18px 18px;align-items:flex-end">
-      <label style="display:flex;flex-direction:column;gap:3px;min-width:145px">
-        <span class="sub" style="margin:0">O que é</span>
-        <select name="tipo"><option value="prazo">Prazo</option><option value="audiencia">Audiência</option>
-          <option value="pericia">Perícia</option><option value="reuniao">Reunião</option>
-          <option value="tarefa">Tarefa</option><option value="contato">Contato com o cliente</option></select></label>
-      <label style="display:flex;flex-direction:column;gap:3px;flex:2;min-width:250px">
-        <span class="sub" style="margin:0">O quê</span>
-        <input name="titulo" required placeholder="Ex.: contrarrazões ao recurso ordinário"></label>
-      <label style="display:flex;flex-direction:column;gap:3px;min-width:145px">
-        <span class="sub" style="margin:0">Quando</span>
-        <input name="data" type="date" required value="${hoje()}"></label>
-      <label style="display:flex;flex-direction:column;gap:3px;min-width:105px">
-        <span class="sub" style="margin:0">Hora</span>
-        <input name="hora" type="time" value="09:00"></label>
-      <label style="display:flex;flex-direction:column;gap:3px;min-width:160px">
-        <span class="sub" style="margin:0">Urgência</span>
-        <select name="urgencia">${Object.entries(URG).map(([k,[r]])=>
-          `<option value="${k}" ${k==='normal'?'selected':''}>${r}</option>`).join('')}</select></label>
-      ${CASOPROC.length ? `<label style="display:flex;flex-direction:column;gap:3px;min-width:250px">
-        <span class="sub" style="margin:0">De qual processo</span>
-        ${seletorProcesso('processo', CASOPROC.length===1 ? CASOPROC[0].id : '')}</label>` : ''}
-      <label style="display:flex;flex-direction:column;gap:3px;min-width:180px">
-        <span class="sub" style="margin:0">Onde</span>
-        <input name="local" placeholder="Vara, sala, endereço"></label>
-      <label style="display:flex;flex-direction:column;gap:3px;min-width:220px">
-        <span class="sub" style="margin:0">Link da sala (se for por vídeo)</span>
-        <input name="sala" type="url" placeholder="Zoom, Meet ou PJe"></label>
-      <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:220px">
-        <span class="sub" style="margin:0">Observações</span>
-        <input name="obs" placeholder="o que precisa ser feito"></label>
-      <button class="btn ok" type="submit">Registrar</button>
-      <span class="sub" id="at-st" style="margin:0"></span>
-    </form></div>
-
-  <div class="card"><h2>Nome do cliente e título do caso</h2>
-    <p class="nota">Corrigir o <b>nome do cliente</b> aqui muda o cadastro dele — o nome novo aparece
-      no menu Clientes, nas mensagens e em todos os outros casos dessa mesma pessoa. O <b>título do caso</b>
-      é o rótulo deste caso só; quando os dois estão iguais, mudar o nome muda o título junto.</p>
-    <div style="padding:0 18px 14px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
-      ${c.cliente_id ? `<label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:260px">
-        <span class="sub" style="margin:0">Nome do cliente</span>
-        <input id="ed-cliente" value="${esc(c.cliente?.nome || '')}"></label>` : ''}
-      <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:260px">
-        <span class="sub" style="margin:0">Título do caso</span>
-        <input id="ed-titulo" value="${esc(c.titulo || '')}"></label>
-      <button class="btn ok" onclick="salvarNomes('${c.id}', ${c.cliente_id ? `'${c.cliente_id}'` : 'null'})">Guardar</button>
-      <span class="sub" id="ed-st" style="margin:0"></span>
+  </section>
+  <section class="aba" data-aba="docs"${CASOABA.aba==='docs'?'':' hidden'}>
+  <div class="card"><h2>Documentos do cliente</h2>
+    <p class="nota">Aplique a lista da área e vá marcando o que já chegou. O botão do WhatsApp cobra só o que falta.</p>
+    <div style="padding:0 18px 12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <span class="sub" style="margin:0">Aplicar lista:</span>
+      ${CASOMODELOS.map(m=>`<button class="btn" onclick="aplicarLista('${m.id}')">${esc(m.nome)}</button>`).join('')
+        || '<span class="sub" style="margin:0">nenhuma lista cadastrada — veja o menu Documentos</span>'}
+      <span class="sub" id="dc-st" style="margin:0"></span>
     </div>
-    <div style="padding:0 18px 18px;display:flex;gap:9px;align-items:center;flex-wrap:wrap">
-      <span class="sub" style="margin:0">Cliente amarrado:</span>
-      ${seletorCliente(c.id, c.cliente_id)}
-      <a class="btn" href="#/semcliente">Ver todos os casos sem cliente</a>
-    </div></div>
-
-  <div class="card"><h2>Delegado a parceiro</h2>
-    ${(dlg.data||[]).length ? `<table><thead><tr><th>Parceiro</th><th>O quê</th><th>Quando</th>
-      <th>Situação</th><th>Honorário</th></tr></thead><tbody>
-      ${(dlg.data||[]).map(g=>{ const sd = semDel(g); return `<tr>
-        <td><b>${esc(g.parceiro?.nome || '—')}</b><span class="sub">${esc(g.parceiro?.cidade || '')}</span></td>
-        <td>${esc(g.titulo)}<span class="sub">${esc(TIPODEL[g.tipo]||g.tipo)}</span></td>
-        <td class="dt">${g.data_ato ? br(String(g.data_ato).slice(0,10)) : (g.prazo_retorno ? br(g.prazo_retorno) : '—')}</td>
-        <td><span class="pill ${sd.cor}">${esc(sd.texto)}</span></td>
-        <td class="proc">${esc(valorDel(g))}</td>
-      </tr>`; }).join('')}</tbody></table>` : '<div class="vazio">Nada delegado neste caso.</div>'}
-    <p class="nota">Para delegar uma audiência, diligência ou peça deste caso, abra o menu
-      <a class="lnk" href="#/parceiros">Parceiros</a> — lá o caso já aparece na lista.</p></div>
-
+    <div id="docscaso"></div>
+    <form onsubmit="addDocCaso(event)" style="display:flex;gap:9px;flex-wrap:wrap;padding:12px 18px 18px;align-items:flex-end">
+      <label style="display:flex;flex-direction:column;gap:3px;flex:2;min-width:240px">
+        <span class="sub" style="margin:0">Pedir outro documento</span>
+        <input name="descricao" required placeholder="Ex.: recibo de aluguel de 2024"></label>
+      <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:200px">
+        <span class="sub" style="margin:0">Onde consigo / observação</span>
+        <input name="obs" placeholder="opcional"></label>
+      <button class="btn" type="submit">Acrescentar</button>
+    </form></div>
   <div class="card"><h2>Assinatura de documentos</h2>
     <p class="nota">Gere a procuração já preenchida com a qualificação do cliente, suba na ZapSign e cole aqui o link.
       O sistema guarda o registro, mostra há quanto tempo está esperando e manda a cobrança pelo WhatsApp
@@ -4626,40 +4712,105 @@ async function telaCaso(id){
         <input name="enviado_em" type="date" value="${hoje()}"></label>
       <button class="btn" type="submit">Registrar envio</button>
     </form></div>
-
-  <div class="card"><h2>Contrato e honorários</h2>
-    <p class="nota">Anexe o contrato assinado. O sistema lê as cláusulas de honorário e mostra o que entendeu,
-      rubrica por rubrica, com a cláusula de onde tirou cada uma. Cada rubrica tem o seu botão de lançar no
-      <a class="lnk" href="#/financeiro">Financeiro</a>, e sai quando for devida: a entrada agora, a condicional
-      quando o fato ocorrer, o êxito quando a posse ou o proveito chegar. O lançamento nasce amarrado a este caso.</p>
-    <div id="honcard"></div></div>
-
-  <div class="card"><h2>Documentos do cliente</h2>
-    <p class="nota">Aplique a lista da área e vá marcando o que já chegou. O botão do WhatsApp cobra só o que falta.</p>
-    <div style="padding:0 18px 12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <span class="sub" style="margin:0">Aplicar lista:</span>
-      ${CASOMODELOS.map(m=>`<button class="btn" onclick="aplicarLista('${m.id}')">${esc(m.nome)}</button>`).join('')
-        || '<span class="sub" style="margin:0">nenhuma lista cadastrada — veja o menu Documentos</span>'}
-      <span class="sub" id="dc-st" style="margin:0"></span>
-    </div>
-    <div id="docscaso"></div>
-    <form onsubmit="addDocCaso(event)" style="display:flex;gap:9px;flex-wrap:wrap;padding:12px 18px 18px;align-items:flex-end">
-      <label style="display:flex;flex-direction:column;gap:3px;flex:2;min-width:240px">
-        <span class="sub" style="margin:0">Pedir outro documento</span>
-        <input name="descricao" required placeholder="Ex.: recibo de aluguel de 2024"></label>
-      <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:200px">
-        <span class="sub" style="margin:0">Onde consigo / observação</span>
-        <input name="obs" placeholder="opcional"></label>
-      <button class="btn" type="submit">Acrescentar</button>
-    </form></div>
-
   <div class="card"><h2>Relatórios deste caso</h2>
     <p class="nota">O PDF sai pronto para enviar ao cliente. A planilha abre no Excel.</p>
     <div style="padding:0 18px 18px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn ok" onclick="relatorioCasoPdf()">Relatório em PDF</button>
       <button class="btn" onclick="relatorioCasoXlsx()">Planilha (Excel)</button>
     </div></div>
-
+  </section>
+  <section class="aba" data-aba="contrato"${CASOABA.aba==='contrato'?'':' hidden'}>
+  <div class="card"><h2>Contrato e honorários</h2>
+    <p class="nota">Anexe o contrato assinado. O sistema lê as cláusulas de honorário e mostra o que entendeu,
+      rubrica por rubrica, com a cláusula de onde tirou cada uma. Cada rubrica tem o seu botão de lançar no
+      <a class="lnk" href="#/financeiro">Financeiro</a>, e sai quando for devida: a entrada agora, a condicional
+      quando o fato ocorrer, o êxito quando a posse ou o proveito chegar. O lançamento nasce amarrado a este caso.</p>
+    <div id="honcard"></div></div>
+  <div class="card"><h2>Delegado a parceiro</h2>
+    ${(dlg.data||[]).length ? `<table><thead><tr><th>Parceiro</th><th>O quê</th><th>Quando</th>
+      <th>Situação</th><th>Honorário</th></tr></thead><tbody>
+      ${(dlg.data||[]).map(g=>{ const sd = semDel(g); return `<tr>
+        <td><b>${esc(g.parceiro?.nome || '—')}</b><span class="sub">${esc(g.parceiro?.cidade || '')}</span></td>
+        <td>${esc(g.titulo)}<span class="sub">${esc(TIPODEL[g.tipo]||g.tipo)}</span></td>
+        <td class="dt">${g.data_ato ? br(String(g.data_ato).slice(0,10)) : (g.prazo_retorno ? br(g.prazo_retorno) : '—')}</td>
+        <td><span class="pill ${sd.cor}">${esc(sd.texto)}</span></td>
+        <td class="proc">${esc(valorDel(g))}</td>
+      </tr>`; }).join('')}</tbody></table>` : '<div class="vazio">Nada delegado neste caso.</div>'}
+    <p class="nota">Para delegar uma audiência, diligência ou peça deste caso, abra o menu
+      <a class="lnk" href="#/parceiros">Parceiros</a> — lá o caso já aparece na lista.</p></div>
+  </section>
+  <section class="aba" data-aba="cadastro"${CASOABA.aba==='cadastro'?'':' hidden'}>
+  <div class="card"><h2>Tipo do caso, origem e etiquetas</h2>
+    <p class="nota">Escolher o tipo traz de uma vez a lista de documentos, as primeiras tarefas e os campos
+      próprios daquele tipo de ação. Nada é apagado: só se acrescenta o que ainda não existe.</p>
+    <!-- De onde veio o cliente. Quando o caso nasce de um lead, a origem vem junto;
+         quando é cadastrado direto aqui, ninguém informava — e sem isso não dá para
+         saber qual canal paga as contas. Grava na hora, sem botão. -->
+    <div style="padding:0 18px 12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <span class="sub" style="margin:0">Origem do lead:</span>
+      <select onchange="mudarOrigemCaso('${c.id}', this.value, this, 'origem_id')" style="min-width:230px">
+        <option value="">— não informada —</option>
+        ${ORIGENS.map(o=>`<option value="${o.id}" ${o.id===c.origem_id?'selected':''}>${esc(o.nome)}</option>`).join('')}
+      </select>
+      <span class="sub" style="margin:0">e também:</span>
+      <select onchange="mudarOrigemCaso('${c.id}', this.value, this, 'origem2_id')" style="min-width:200px"
+        title="quando foram dois: o canal e quem indicou">
+        <option value="">— só uma —</option>
+        ${ORIGENS.map(o=>`<option value="${o.id}" ${o.id===c.origem2_id?'selected':''}>${esc(o.nome)}</option>`).join('')}
+      </select>
+      <span class="sub" id="og-st" style="margin:0"></span>
+      <span class="sub" style="margin:0">A lista sai de Escritório → Origens de captação.</span>
+    </div>
+    <div style="padding:0 18px 10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <select id="tipocaso" style="min-width:320px">
+        <option value="">— escolha o tipo —</option>
+        ${CASOTIPOS.map(t=>`<option value="${t.id}" ${t.id===c.tipo_caso_id?'selected':''}>${esc(t.nome)}</option>`).join('')}
+      </select>
+      <button class="btn ok" onclick="aplicarTipo('${c.id}')">Aplicar o tipo</button>
+      <span class="sub" id="tp-st" style="margin:0"></span>
+    </div>
+    ${tipoAtual(c) && (tipoAtual(c).campos||[]).length ? `
+    <div style="padding:0 18px 14px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+      ${(tipoAtual(c).campos||[]).map(f=>`
+        <label style="display:flex;flex-direction:column;gap:3px;min-width:190px">
+          <span class="sub" style="margin:0">${esc(f.r)}</span>
+          <input data-campo="${esc(f.k)}" type="${f.tipo==='date'?'date':'text'}"
+                 value="${esc((c.dados||{})[f.k] || '')}"></label>`).join('')}
+      <button class="btn" onclick="salvarCampos('${c.id}')">Guardar os dados</button>
+      <span class="sub" id="cp-st" style="margin:0"></span>
+    </div>` : ''}
+    <div style="padding:0 18px 18px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <span class="sub" style="margin:0">Etiquetas:</span>
+      ${tagsDoCaso(c.id).map(t=>`<span class="pill" style="background:${esc(t.cor||'#eceae4')};color:#1b1a17">${esc(t.nome)}
+        <a href="javascript:void(0)" onclick="tirarTagCaso('${c.id}','${t.id}')" style="text-decoration:none">&times;</a></span>`).join('')
+        || '<span class="sub" style="margin:0">nenhuma</span>'}
+      <select id="tagsel" style="min-width:170px"><option value="">— etiqueta existente —</option>
+        ${TAGS.filter(t=>!tagsDoCaso(c.id).some(x=>x.id===t.id)).map(t=>`<option value="${t.id}">${esc(t.nome)}</option>`).join('')}</select>
+      <input id="tagnova" placeholder="ou crie uma nova" style="min-width:170px">
+      <button class="btn" onclick="novaTagCaso('${c.id}')">Etiquetar</button>
+      <span class="sub" id="tag-st" style="margin:0"></span>
+    </div></div>
+  <div class="card"><h2>Nome do cliente e título do caso</h2>
+    <p class="nota">Corrigir o <b>nome do cliente</b> aqui muda o cadastro dele — o nome novo aparece
+      no menu Clientes, nas mensagens e em todos os outros casos dessa mesma pessoa. O <b>título do caso</b>
+      é o rótulo deste caso só; quando os dois estão iguais, mudar o nome muda o título junto.</p>
+    <div style="padding:0 18px 14px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+      ${c.cliente_id ? `<label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:260px">
+        <span class="sub" style="margin:0">Nome do cliente</span>
+        <input id="ed-cliente" value="${esc(c.cliente?.nome || '')}"></label>` : ''}
+      <label style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:260px">
+        <span class="sub" style="margin:0">Título do caso</span>
+        <input id="ed-titulo" value="${esc(c.titulo || '')}"></label>
+      <button class="btn ok" onclick="salvarNomes('${c.id}', ${c.cliente_id ? `'${c.cliente_id}'` : 'null'})">Guardar</button>
+      <span class="sub" id="ed-st" style="margin:0"></span>
+    </div>
+    <div style="padding:0 18px 18px;display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+      <span class="sub" style="margin:0">Cliente amarrado:</span>
+      ${seletorCliente(c.id, c.cliente_id)}
+      <a class="btn" href="#/semcliente">Ver todos os casos sem cliente</a>
+    </div></div>
+  </section>
+  <section class="aba" data-aba="historico"${CASOABA.aba==='historico'?'':' hidden'}>
   <div class="card"><h2>Linha do tempo</h2>
     <p class="nota">Tudo o que aconteceu neste caso, do mais recente para o mais antigo.
       Clique nos botões para ver só o que interessa. <span id="fcont" class="sub" style="display:inline"></span></p>
@@ -4668,6 +4819,7 @@ async function telaCaso(id){
       <button class="fchip" onclick="limparFiltro()">mostrar tudo</button>
     </div>
     <div id="linha" style="padding:0 18px 18px"></div></div>
+  </section>
   </main>` + rodape();
   carregarSoltos().then(() => filtrarSoltos(c.id)).catch(()=>{});
   carregarClientes().catch(()=>{});
