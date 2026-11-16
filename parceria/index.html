@@ -175,6 +175,11 @@ textarea{width:100%;resize:vertical;line-height:1.45}
 .bolha .quem{display:block;font-size:11px;opacity:.75;margin-top:3px;color:inherit}
 .mov{list-style:none;margin:0;padding:0;color:var(--ink)}
 .pzpainel input,.pzpainel select{width:100%;min-width:0}
+tr.critica>td{background:color-mix(in srgb,var(--crit) 6%,transparent)}tr.critica>td:first-child{box-shadow:inset 4px 0 0 var(--crit)}
+.critico-bloco{border:2px solid var(--crit);border-radius:12px;background:color-mix(in srgb,var(--crit) 7%,var(--s1));margin:0 0 18px;padding:14px 18px}
+.critico-bloco .tit{font:600 17px/1.3 Georgia,serif;color:var(--crit);margin-bottom:6px}
+.critico-bloco .it{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;padding:8px 0;border-top:1px solid color-mix(in srgb,var(--crit) 25%,transparent);font-size:13.6px}
+.critico-bloco .it:first-of-type{border-top:0}
 .mov li{padding:7px 0;border-bottom:1px solid var(--ln);font-size:13.2px;line-height:1.45}
 .mov li:last-child{border-bottom:0}
 .mov .q{font-weight:600}
@@ -215,6 +220,11 @@ function sit(r){ if(r<0) return ['crit','Vencido']; if(r<=2) return ['crit','Urg
   if(r<=5) return ['ser','Atenção']; if(r<=10) return ['warn','Próximo']; return ['good','No prazo']; }
 
 /* Mesma escala de urgência e mesmos nomes de dia do sistema do escritório (11/2026). */
+/* Ato crítico (banco/67): sentença, acórdão, liminar… A coluna intimacao.critico diz qual;
+   os mesmos rótulos e o mesmo selo do sistema do escritório. */
+const ATOCRIT = { sentenca:'Sentença', acordao:'Acórdão', monocratica:'Decisão monocrática',
+  embargos:'Embargos de declaração julgados', tutela:'Tutela / liminar', homologacao:'Homologação' };
+const pillCrit = k => k ? `<span class="pill" style="background:var(--crit);border-color:var(--crit);color:#fff">▲ ${esc(ATOCRIT[k] || k)}</span>` : '';
 const URG = { baixa:['Pouco urgente','cin'], normal:['Normal','ser'], alta:['Muito urgente','warn'], critica:['Não pode esperar','crit'] };
 const DIASEM = ['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
 const humano = n => n == null ? '—' : n < 1 ? 'hoje' : n === 1 ? '1 dia' : n < 60 ? n + ' dias' : Math.round(n/30) + ' meses';
@@ -333,7 +343,7 @@ const quemE = uid => { const m = PAR.membros.find(x => x.usuario_auth === uid); 
 
 async function telaInicio(){
   const limite = new Date(Date.now() + 30*864e5).toISOString().slice(0,10);
-  const [cs, pz, ev, it, rc] = await Promise.all([
+  const [cs, pz, ev, it, rc, crt] = await Promise.all([
     sb.from('caso').select('id,titulo,encerrado_em,urgencia').eq('parceria_id', PAR.id),
     sb.from('prazo').select('id,descricao,data_fatal,situacao,caso_id,regime').eq('parceria_id', PAR.id)
       .in('situacao',['sugerido','confirmado']).lte('data_fatal', limite).order('data_fatal'),
@@ -342,8 +352,16 @@ async function telaInicio(){
     sb.from('intimacao').select('id,data_disponibilizacao,tipo_comunicacao,numero_formatado,situacao')
       .eq('parceria_id', PAR.id).eq('situacao','nova').order('data_disponibilizacao',{ascending:false}),
     sb.from('parceria_recado').select('*').eq('parceria_id', PAR.id).order('criado_em',{ascending:false}).limit(5),
+    sb.from('intimacao').select('id,critico,data_disponibilizacao,numero_formatado,tribunal_sigla,situacao,caso_id,prazo(id,data_fatal,situacao)')
+      .eq('parceria_id', PAR.id).not('critico','is',null)
+      .gte('data_disponibilizacao', new Date(Date.now() - 45*864e5).toISOString().slice(0,10))
+      .order('data_disponibilizacao', { ascending:false }),
   ]);
   if (cs.error) return erro(cs.error.message);
+  /* Ato crítico fica no topo até ser tratado — prazo cumprido ou descartado, ou a publicação
+     baixada —, como no Início do escritório. Se a coluna não existir, o bloco só não aparece. */
+  const CRIT = (crt.error ? [] : (crt.data||[])).filter(i =>
+    !['sem_providencia','cumprida'].includes(i.situacao) && !(i.prazo||[]).some(p => ['cumprido','cancelado'].includes(p.situacao)));
   const casos = cs.data || [], abertos = casos.filter(c => !c.encerrado_em);
   const prazos = pz.data || [], eventos = ev.data || [], novas = it.data || [], recados = rc.data || [];
   const tituloCaso = id => casos.find(c => c.id === id)?.titulo || '';
@@ -383,6 +401,17 @@ async function telaInicio(){
       <a class="btn" style="text-decoration:none" href="#/recados">Recados</a>
     </div>
   </div>
+  ${CRIT.length ? `<div class="critico-bloco">
+    <div class="tit">▲ ${CRIT.length === 1 ? 'Ato crítico publicado — não pode passar' : CRIT.length + ' atos críticos publicados — não podem passar'}</div>
+    ${CRIT.map(i => { const pz = (i.prazo||[]).filter(p => ['sugerido','confirmado'].includes(p.situacao)).sort((a,b)=>a.data_fatal.localeCompare(b.data_fatal))[0];
+      return `<div class="it">${pillCrit(i.critico)}
+        <span style="flex:1;min-width:220px">${i.caso_id ? `<a class="lnk" href="#/caso/${i.caso_id}"><b>${esc(tituloCaso(i.caso_id) || 'caso')}</b></a>` : `<b>${esc(i.numero_formatado || 'processo não cadastrado')}</b>`}
+          <span class="sub">publicada em ${br(i.data_disponibilizacao)} · ${esc(i.tribunal_sigla || '')} ${esc(i.numero_formatado || '')}</span></span>
+        <span>${pz ? `<b style="color:var(--crit)">prazo ${dias(pz.data_fatal) < 0 ? 'venceu em' : 'até'} ${br(pz.data_fatal)}</b>
+            <span class="sub">${dias(pz.data_fatal) < 0 ? 'há ' + humano(-dias(pz.data_fatal)) : dias(pz.data_fatal) === 0 ? 'hoje' : 'em ' + humano(dias(pz.data_fatal))}${pz.situacao === 'sugerido' ? ' · a conferir' : ''}</span>`
+          : '<b style="color:var(--crit)">sem prazo lançado — confira já</b>'}</span>
+        <a class="btn" style="text-decoration:none;border-color:var(--crit);color:var(--crit)" href="${pz ? '#/prazos?abrir=' + pz.id : '#/publicacoes'}">Tratar</a></div>`; }).join('')}
+  </div>` : ''}
   <div class="lado">
     <div>
       <div class="card"><h2>Hoje</h2>
@@ -2798,7 +2827,7 @@ let PZ = { filtro:'abertos', busca:'', aberto:null, todos:[], casos:[], procs:[]
 
 async function telaPrazos(abrir){
   const [pz, cs, pr] = await Promise.all([
-    sb.from('prazo').select('*').eq('parceria_id', PAR.id).order('data_fatal'),
+    sb.from('prazo').select('*,intimacao:intimacao_id(critico)').eq('parceria_id', PAR.id).order('data_fatal'),
     sb.from('caso').select('id,titulo,encerrado_em').eq('parceria_id', PAR.id).order('titulo'),
     sb.from('processo').select('id,numero_cnj,numero_formatado,caso_id').eq('parceria_id', PAR.id),
   ]);
@@ -2907,11 +2936,14 @@ let PZ_T = null;
 window.buscarPz = (v) => { PZ.busca = v; clearTimeout(PZ_T); PZ_T = setTimeout(() => {
   desenharPrazos(); const i = document.getElementById('pz-busca'); i.focus(); i.setSelectionRange(v.length, v.length); }, 250); };
 
+/* O prazo que nasce de sentença, acórdão ou liminar sobe para o topo do grupo enquanto vivo. */
+const critPz = z => vivo(z) ? z.intimacao?.critico : null;
+const ordemCrit = l => [...l].sort((a,b) => (critPz(b) ? 1 : 0) - (critPz(a) ? 1 : 0));
 function blocoPz(titulo, lista, nota){
   if (!lista.length) return '';
   return `<div class="card"><h2>${titulo} — ${lista.length}</h2>
     ${nota ? `<p class="nota">${nota}</p>` : ''}
-    <table><tbody>${lista.map(linhaPz).join('')}</tbody></table></div>`;
+    <table><tbody>${ordemCrit(lista).map(linhaPz).join('')}</tbody></table></div>`;
 }
 
 function seloPz(z){
@@ -2924,11 +2956,11 @@ function seloPz(z){
 function linhaPz(z){
   const d = dias(z.data_fatal), [cor, rot] = sit(d);
   const quando = vivo(z) ? `<span class="sub">${d < 0 ? Math.abs(d) + ' dias atrás' : (d === 0 ? 'hoje' : 'em ' + d + ' dias')}</span>` : '';
-  return `<tr id="pzl-${z.id}">
+  return `<tr id="pzl-${z.id}"${critPz(z) ? ' class="critica"' : ''}>
     <td style="width:34px;text-align:center">${vivo(z)
       ? `<input type="checkbox" title="marcar como cumprido" onchange="cumprirPz('${z.id}')">` : ''}</td>
     <td class="dt" style="width:130px"><b>${br(z.data_fatal)}</b>${quando}</td>
-    <td>${esc(z.descricao)}
+    <td>${critPz(z) ? pillCrit(critPz(z)) + ' ' : ''}${esc(z.descricao)}
       <span class="sub">${[z.providencia ? esc(z.providencia) : '',
         z.caso_id ? `<a class="lnk" href="#/caso/${z.caso_id}">${esc(tituloCasoPz(z.caso_id))}</a>` : '<span style="color:var(--ser)">sem caso</span>',
         z.processo_id ? esc(numeroPz(z.processo_id)) : ''].filter(Boolean).join(' · ')}</span>
@@ -2985,6 +3017,8 @@ window.abrirPz = async (id, redesenhando) => {
   linha.innerHTML = `<td colspan="${tr.children.length}" style="background:var(--s0);padding:14px 18px">
     <div style="display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:18px">
       <div>
+        ${z.intimacao?.critico ? `<div class="banda crit" style="border-width:2px"><span><b>▲ ${esc(ATOCRIT[z.intimacao.critico] || z.intimacao.critico)}.</b>
+          Ato que pede reação — recurso, embargos ou cumprimento. Leia a publicação inteira e confira o prazo no PJe antes de qualquer outra coisa.</span></div>` : ''}
         <div class="sub" style="margin:0 0 6px">De onde saiu: <b>${origem}</b>${
           z.data_publicacao ? ` · publicado em ${br(z.data_publicacao)}` : ''}${
           z.dias ? ` · ${z.dias} ${z.dias_uteis ? 'dias úteis' : 'dias corridos'}` : ''}${
