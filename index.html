@@ -314,7 +314,7 @@ let ESC_NOME = 'Breno S. Amorim Advocacia', ESC_LOGO = null, ESC_ID = null, ESC_
    depois o que se escreve, depois a conta do escritório, e só no fim o sistema.
    Quem já tinha mexido na ordem continua com a dele — a troca abaixo só alcança
    quem nunca personalizou. */
-const MENU_PADRAO = [['inicio','Início'],['prazos','Prazos e publicações'],['agenda','Agenda'],['mensageria','Mensagens'],['whatsapp','Conversas do WhatsApp'],['captacao','Captação'],['clientes','Clientes'],['parceiros','Parceiros'],['parceria','Parceria ↗'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['prev','Previdenciário'],['minutas','Minutas'],['playbook','Playbook'],['documentos','Documentos'],['dicionario','Dicionário'],['aprender','Aprender'],['financeiro','Financeiro'],['notas','Notas fiscais'],['metricas','Métricas'],['jurimetria','Jurimetria'],['projetos','Ideias e projetos'],['pessoal','Casa e família ↗'],['investir','Investir'],['manual','Manual'],['tutoriais','Tutoriais'],['regras','Regras'],['importar','Importar antigos'],['config','Configurações']];
+const MENU_PADRAO = [['inicio','Início'],['prazos','Prazos e publicações'],['agenda','Agenda'],['mensageria','Mensagens'],['whatsapp','Conversas do WhatsApp'],['captacao','Captação'],['clientes','Clientes'],['parceiros','Parceiros'],['parceria','Parceria ↗'],['casos','Casos'],['processos','Processos'],['andamento','Andamento'],['prev','Previdenciário'],['banc','Bancário'],['minutas','Minutas'],['playbook','Playbook'],['documentos','Documentos'],['dicionario','Dicionário'],['aprender','Aprender'],['financeiro','Financeiro'],['notas','Notas fiscais'],['metricas','Métricas'],['jurimetria','Jurimetria'],['projetos','Ideias e projetos'],['pessoal','Casa e família ↗'],['investir','Investir'],['manual','Manual'],['tutoriais','Tutoriais'],['regras','Regras'],['importar','Importar antigos'],['config','Configurações']];
 /* Ordem anterior, guardada só para reconhecer quem nunca mexeu no menu. */
 const MENU_ORDEM_ANTIGA = ['inicio','prazos','agenda','captacao','casos','processos','andamento','clientes','mensageria','metricas','jurimetria','financeiro','parceiros','minutas','playbook','aprender','dicionario','documentos','tutoriais','regras','importar','manual','investir','pessoal','config'];
 let MENUCFG = MENU_PADRAO.map(([k,r]) => ({ k, r, v:true }));
@@ -435,7 +435,7 @@ const grupoDe = k => (GRUPOS.find(([, ks]) => ks.includes(k)) || ['Outros'])[0];
 const GRUPOS = [
   ['Meu dia',           ['inicio','prazos','agenda','mensageria','whatsapp']],
   ['Pessoas',           ['captacao','clientes','parceiros','parceria']],
-  ['Casos e processos', ['casos','processos','andamento','prev']],
+  ['Casos e processos', ['casos','processos','andamento','prev','banc']],
   ['Escrever',          ['minutas','playbook','documentos','dicionario','aprender']],
   ['Escritório',        ['financeiro','notas','metricas','jurimetria','projetos']],
   ['Meu bolso',         ['pessoal','investir']],
@@ -4662,6 +4662,8 @@ async function telaCaso(id){
 
   /* caso previdenciário: atalho para a análise (Previdenciário) */
   const prevAn = ((await sb.from('prev_analise').select('id').eq('caso_id', id).limit(1)).data || [])[0] || null;
+  /* caso bancário: atalho para a análise (Bancário); sem a tabela no banco, simplesmente não aparece */
+  const bancAn = ((await sb.from('banc_analise').select('id').eq('caso_id', id).limit(1)).data || [])[0] || null;
   if (CASOABA.id !== id) CASOABA = { id, aba: 'geral' };
   /* Ato crítico dos últimos 45 dias que ainda pede reação: prazo aberto ligado a ele, ou nenhum prazo. */
   const critCaso = (itm.data||[]).filter(i => i.critico && dias(i.data_disponibilizacao) >= -45
@@ -4711,6 +4713,8 @@ async function telaCaso(id){
   </div>
   ${ehPrev ? `<p style="margin:10px 0 0"><button class="btn ${prevAn ? '' : 'ok'}"
     onclick="${prevAn ? `location.hash='#/prev/${prevAn.id}'` : `prevNova('${c.id}')`}">${prevAn ? 'Abrir a análise previdenciária' : '+ Análise previdenciária'}</button></p>` : ''}
+  ${bancAn || bancAreaRx.test((c.area||'') + ' ' + c.titulo) ? `<p style="margin:10px 0 0"><button class="btn ${bancAn ? '' : 'ok'}"
+    onclick="${bancAn ? `location.hash='#/banc/${bancAn.id}'` : `bancNova('${c.id}')`}">${bancAn ? 'Abrir a análise bancária' : '+ Análise bancária'}</button></p>` : ''}
   ${blocoParceria(c)}
   <div class="abas" id="abascaso">${ABASCASO.map(([k,r]) => {
     const n = k==='fatos' ? CASOFATOS.length : k==='processos' ? CASOPROC.length
@@ -12895,6 +12899,389 @@ window.prevBaseRodar = async () => {
 /* PREV-BASE-FIM */
 
 /* ----- lista de análises */
+/* BANC-INICIO — módulo Bancário: ações de consumidor contra bancos (consignado, RMC/RCC,
+   prestamista, juros, descontos em conta). Sempre ligado a um caso, como o Previdenciário.
+   ETAPA 1 — entrada de documentos: guarda o arquivo no bucket 'bancario' e, no navegador,
+   sem IA, reconhece o tipo, confere o CPF do titular, lê o período e diz o que falta.
+   Documento novo do mesmo tipo não substitui o anterior (extrato de março e de novembro
+   são provas diferentes). A leitura dos contratos e dos descontos é a etapa 2. */
+const BANC_TIPOS = [
+  ['emprestimos_inss', 'Extrato de Empréstimos (INSS)'], ['hiscre', 'Histórico de Créditos — HISCRE (INSS)'],
+  ['registrato', 'Registrato (Banco Central)'], ['extrato_bancario', 'Extrato bancário'], ['contrato', 'Contrato'],
+  ['trilha_assinatura', 'Trilha da assinatura eletrônica'], ['fatura_cartao', 'Fatura do cartão consignado'],
+  ['apolice', 'Apólice ou certificado de seguro'], ['protocolo_adm', 'Protocolo administrativo'],
+  ['resposta_banco', 'Resposta do banco'], ['procuracao', 'Procuração específica'], ['identidade', 'Documento de identidade'],
+  ['residencia', 'Comprovante de residência'], ['gratuidade', 'Gratuidade (renda e despesas)'],
+  ['medico', 'Documento médico'], ['outro', 'Outro']];
+const BANC_TIPO_NOME = Object.fromEntries(BANC_TIPOS);
+const BANC_PERFIS = [['inss', 'Aposentado ou pensionista do INSS'], ['bpc', 'BPC/LOAS'], ['servidor', 'Servidor público'],
+  ['correntista', 'Correntista (conta bancária)'], ['veiculo', 'Financiamento de veículo'], ['outro', 'Outro']];
+const BANC_SIT = { aberta: 'serie', pedido_adm: 'warn', ajuizada: 'presc', encerrada: 'good', arquivada: 'cin' };
+const BANC_SIT_NOME = { aberta: 'aberta', pedido_adm: 'pedido administrativo', ajuizada: 'ajuizada', encerrada: 'encerrada', arquivada: 'arquivada' };
+/* meses que o documento precisa cobrir para servir (HISCRE: prescrição de 5 anos; extrato: demonstrar a cobrança) */
+const BANC_PERIODO_MIN = { hiscre: 60, extrato_bancario: 3 };
+const BANC_BANCOS = ['Banco do Brasil', 'Caixa Econômica', 'Bradesco', 'Itaú', 'Santander', 'BMG', 'Banco Pan', 'C6', 'Crefisa',
+  'Agibank', 'Mercantil', 'Daycoval', 'Safra', 'Banco Inter', 'Nubank', 'Banrisul', 'Olé', 'Facta', 'Cetelem', 'Paraná Banco',
+  'PicPay', 'Sicoob', 'Sicredi', 'BRB', 'Banco do Nordeste', 'Bradescard', 'Pine', 'Itaú Consignado', 'Banco Master', 'Capital Consig'];
+const BANC_SEM_BANCO = 'O módulo Bancário ainda não tem as tabelas no banco. Aplique banco/68_bancario.sql no Supabase (SQL Editor) e recarregue.';
+const bancFaltaBanco = e => /banc_analise|banc_documento|PGRST205|42P01/.test((e?.message || '') + (e?.code || ''));
+const bancAreaRx = /banc[áa]ri|consign|empr[ée]stimo|\brmc\b|\brcc\b|cart[ãa]o consignado|prestamista|tarifa|financiamento|juros|revisional/i;
+const bancDig = s => String(s || '').replace(/\D/g, '');
+const bancCpfFmt = s => { const d = bancDig(s); return d.length === 11 ? d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : (s || ''); };
+let BANC = { a: null, docs: [], msg: '', prog: {} };
+
+async function telaBanc(){
+  const sub = location.hash.split('?')[0].split('/')[2];
+  if (sub) return telaBancAnalise(sub);
+  const [an, cs, dc] = await Promise.all([
+    sb.from('banc_analise').select('id,titulo,situacao,perfil,atualizado_em,caso:caso_id(id,titulo),cliente:cliente_id(nome)')
+      .order('atualizado_em', { ascending: false }),
+    sb.from('caso').select('id,titulo,area,cliente:cliente_id(nome)').is('encerrado_em', null).order('titulo'),
+    sb.from('banc_documento').select('analise_id,status'),
+  ]);
+  if (an.error) return erro(bancFaltaBanco(an.error) ? BANC_SEM_BANCO : an.error.message);
+  const lista = an.data || [];
+  const nDocs = {}, nPend = {};
+  for (const d of dc.data || []) { nDocs[d.analise_id] = (nDocs[d.analise_id] || 0) + 1; if (d.status === 'pendente') nPend[d.analise_id] = (nPend[d.analise_id] || 0) + 1; }
+  const casos = (cs.data || []).sort((a, b) => (bancAreaRx.test((b.area || '') + ' ' + b.titulo) - bancAreaRx.test((a.area || '') + ' ' + a.titulo)) || a.titulo.localeCompare(b.titulo));
+  const comAnalise = new Set(lista.map(x => x.caso?.id));
+  app.innerHTML = menu('banc') + `
+  <main><h1>Bancário</h1>
+  <p class="meta">Ações de consumidor contra bancos e financeiras: consignado não contratado, cartão consignado (RMC/RCC), seguro
+    prestamista, juros e descontos em conta. Sempre ligado a um caso. Comece pelos documentos: o sistema reconhece cada um,
+    confere o titular e o período e diz o que falta antes de qualquer análise.</p>
+  <div class="kpis">
+    <div class="kpi"><div class="n">${lista.filter(x => x.situacao === 'aberta').length}</div><div class="l">análises abertas</div></div>
+    <div class="kpi"><div class="n">${lista.filter(x => x.situacao === 'pedido_adm').length}</div><div class="l">em pedido administrativo</div></div>
+    <div class="kpi"><div class="n">${Object.keys(nPend).length}</div><div class="l">com documento pendente</div></div>
+  </div>
+  <div class="card"><h2>Nova análise</h2>
+    <p class="nota">Escolha o caso. Se ele ainda não existe, crie em Casos primeiro: a análise usa o cliente do caso.</p>
+    <div class="filtros">
+      <select id="banc-caso" style="min-width:320px;max-width:100%">
+        <option value="">— escolha o caso —</option>
+        ${casos.map(c => `<option value="${c.id}">${esc(c.titulo)}${c.cliente?.nome ? ' · ' + esc(c.cliente.nome) : ''}${comAnalise.has(c.id) ? ' (já tem análise)' : ''}</option>`).join('')}
+      </select>
+      <button class="btn ok" onclick="bancNova()">Abrir análise</button>
+      <span class="sub" id="banc-st"></span>
+    </div>
+  </div>
+  <div class="card"><h2>Análises</h2>
+    ${lista.length ? `<table><tr><th>Cliente</th><th>Caso</th><th>Situação</th><th>Documentos</th><th>Atualizada</th></tr>
+      ${lista.map(x => `<tr style="cursor:pointer" onclick="location.hash='#/banc/${x.id}'">
+        <td><b>${esc(x.cliente?.nome || x.titulo || '—')}</b></td>
+        <td>${esc(x.caso?.titulo || '—')}</td>
+        <td><span class="pill ${BANC_SIT[x.situacao] || 'cin'}">${esc(BANC_SIT_NOME[x.situacao] || x.situacao)}</span></td>
+        <td>${nDocs[x.id] || 0}${nPend[x.id] ? ` <span class="pill warn">${nPend[x.id]} pendente(s)</span>` : ''}</td>
+        <td class="dt">${br(x.atualizado_em)}</td></tr>`).join('')}</table>`
+      : '<div class="vazio">Nenhuma análise ainda.</div>'}
+  </div></main>` + rodape();
+  aplicarRotulos(app);
+}
+
+window.bancNova = async (casoId) => {
+  casoId = casoId || document.getElementById('banc-caso')?.value;
+  const st = document.getElementById('banc-st');
+  if (!casoId) { if (st) st.textContent = 'escolha um caso'; return; }
+  const ja = await sb.from('banc_analise').select('id').eq('caso_id', casoId).limit(1);
+  if (ja.error) { if (bancFaltaBanco(ja.error)) return erro(BANC_SEM_BANCO); if (st) st.textContent = ja.error.message; return; }
+  if (ja.data?.length) { location.hash = '#/banc/' + ja.data[0].id; return; }
+  const { data: c } = await sb.from('caso').select('id,titulo,cliente_id,cliente:cliente_id(cpf_cnpj)').eq('id', casoId).single();
+  const cpf = bancDig(c?.cliente?.cpf_cnpj).length === 11 ? bancDig(c.cliente.cpf_cnpj) : null;
+  const { data, error } = await sb.from('banc_analise').insert({
+    escritorio_id: await escId(), caso_id: casoId, cliente_id: c?.cliente_id || null, titulo: c?.titulo || null, cpf,
+  }).select('id').single();
+  if (error) { if (st) st.textContent = error.message; else alert(error.message); return; }
+  location.hash = '#/banc/' + data.id;
+};
+
+async function telaBancAnalise(id){
+  const { data: a, error } = await sb.from('banc_analise').select('*,caso:caso_id(id,titulo),cliente:cliente_id(nome,cpf_cnpj)').eq('id', id).single();
+  if (error) return erro(bancFaltaBanco(error) ? BANC_SEM_BANCO : error.message);
+  if (BANC.a?.id !== id) BANC = { a: null, docs: [], msg: '', prog: {} };
+  BANC.a = a;
+  const d = await sb.from('banc_documento').select('*').eq('analise_id', id).order('criado_em');
+  if (d.error) return erro(d.error.message);
+  BANC.docs = d.data || [];
+  bancPintar();
+}
+
+/* meses entre duas datas ISO, contando os dois meses das pontas */
+const bancMeses = (ini, fim) => (+fim.slice(0, 4) - +ini.slice(0, 4)) * 12 + (+fim.slice(5, 7) - +ini.slice(5, 7)) + 1;
+
+/* o que falta, a partir do perfil e do que já chegou */
+function bancFaltam(){
+  const a = BANC.a, docs = BANC.docs, tem = t => docs.some(d => d.tipo === t);
+  const f = [];
+  const inss = ['inss', 'bpc'].includes(a.perfil);
+  if (inss) {
+    if (!tem('emprestimos_inss')) f.push({ t: 'Extrato de Empréstimos do INSS', p: 'Meu INSS → "Extrato de Empréstimos", em PDF.', bloq: true });
+    const h = docs.filter(d => d.tipo === 'hiscre' && d.periodo_inicio && d.periodo_fim);
+    if (!tem('hiscre')) f.push({ t: 'Histórico de Créditos (HISCRE) dos últimos 5 anos', p: 'Meu INSS → "Extrato de Pagamento de Benefício" / Histórico de Créditos, período de 5 anos (ideal 10).', bloq: true });
+    else if (h.length && !h.some(d => bancMeses(d.periodo_inicio, d.periodo_fim) >= BANC_PERIODO_MIN.hiscre - 2))
+      f.push({ t: 'HISCRE com período maior', p: 'O que chegou cobre menos de 5 anos; peça o período de 5 anos (ideal 10).', bloq: true });
+  }
+  if (!tem('registrato')) f.push({ t: 'Registrato do Banco Central', p: 'gov.br → Registrato → relatório de empréstimos e financiamentos e de contas.' });
+  if (a.perfil === 'correntista' && !tem('extrato_bancario')) f.push({ t: 'Extrato da conta (3 a 6 meses)', p: 'Pelo aplicativo do banco, em PDF.', bloq: true });
+  if (inss && !tem('extrato_bancario')) f.push({ t: 'Extrato da conta onde cai o benefício (3 a 6 meses)', p: 'Para a tese de tarifas e seguros em conta; o banco está no HISCRE.' });
+  if (a.perfil === 'veiculo' && !tem('contrato')) f.push({ t: 'Contrato do financiamento', p: 'Com taxa mensal, anual e CET.', bloq: true });
+  if (!tem('procuracao')) f.push({ t: 'Procuração específica', p: 'Com o banco réu, os contratos e o objeto; assinada pelo gov.br ou com firma reconhecida.' });
+  if (!tem('identidade')) f.push({ t: 'Documento de identidade', p: 'RG ou CNH, frente e verso.' });
+  if (!tem('residencia')) f.push({ t: 'Comprovante de residência', p: 'Em nome do cliente, ou declaração.' });
+  if (!tem('gratuidade')) f.push({ t: 'Documentos da gratuidade', p: 'Contas de consumo, remédios, comprovante de não declarar IR.' });
+  for (const d of docs.filter(x => x.status === 'pendente')) f.push({ t: `Corrigir: ${d.nome}`, p: d.pendencia || 'pendência no documento', bloq: true, doc: true });
+  return f;
+}
+
+function bancPintar(){
+  const a = BANC.a, docs = BANC.docs, faltam = bancFaltam();
+  const ordem = Object.fromEntries(BANC_TIPOS.map(([k], i) => [k, i]));
+  const lista = [...docs].sort((x, y) => (ordem[x.tipo] - ordem[y.tipo]) || String(x.criado_em).localeCompare(String(y.criado_em)));
+  const tit = { confere: ['good', 'confere'], diverge: ['crit', 'CPF diverge'], a_conferir: ['cin', 'a conferir'] };
+  const sit = { recebido: 'serie', conferido: 'good', pendente: 'warn', lido: 'good', erro: 'crit' };
+  const per = d => d.periodo_inicio ? `${br(d.periodo_inicio)} a ${br(d.periodo_fim)}<div class="sub">${bancMeses(d.periodo_inicio, d.periodo_fim)} meses</div>` : '<span class="sub">—</span>';
+  const bloqueia = faltam.filter(x => x.bloq).length;
+  app.innerHTML = menu('banc') + `
+  <main><a class="volta" href="#/banc">← Bancário</a>
+  <h1>${esc(a.cliente?.nome || a.titulo || 'Análise bancária')}</h1>
+  <p class="meta">Caso: <a class="lnk" href="#/caso/${a.caso_id}">${esc(a.caso?.titulo || '—')}</a>
+    · <span class="pill ${BANC_SIT[a.situacao] || 'cin'}">${esc(BANC_SIT_NOME[a.situacao] || a.situacao)}</span></p>
+  ${BANC.msg ? `<div class="aviso" style="border-color:var(--serie)">${BANC.msg}</div>` : ''}
+
+  <div class="card"><h2>Dados</h2>
+    <div class="grade" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;padding:0 18px 10px">
+      <div><span class="r">CPF do titular</span><input id="ba-cpf" value="${esc(bancCpfFmt(a.cpf))}" placeholder="000.000.000-00" style="width:100%"></div>
+      <div><span class="r">Número do benefício</span><input id="ba-nb" value="${esc(a.nb || '')}" style="width:100%"></div>
+      <div><span class="r">Nascimento</span><input id="ba-nascimento" type="date" value="${a.nascimento || ''}" style="width:100%"></div>
+      <div><span class="r">Perfil</span><select id="ba-perfil" style="width:100%">
+        ${BANC_PERFIS.map(([k, r]) => `<option value="${k}" ${a.perfil === k ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
+      <div><span class="r">Situação</span><select id="ba-situacao" style="width:100%">
+        ${Object.entries(BANC_SIT_NOME).map(([k, r]) => `<option value="${k}" ${a.situacao === k ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
+    </div>
+    <div style="padding:0 18px 16px"><span class="sub">Observações</span>
+      <textarea id="ba-obs" rows="2">${esc(a.obs || '')}</textarea>
+      <p><button class="btn ok" onclick="bancSalvarDados()">Salvar</button> <span class="sub" id="ba-st" style="display:inline"></span></p>
+    </div>
+  </div>
+
+  <div class="card"><h2>${faltam.length ? `O que falta (${faltam.length})` : 'Documentos completos'}</h2>
+    ${faltam.length ? `<p class="nota">${bloqueia ? `<b>${bloqueia} item(ns) impedem a análise.</b> ` : ''}Os demais completam a prova e a gratuidade.</p>
+      <ul style="margin:0 18px 10px;padding-left:18px">${faltam.map(x => `<li style="margin:4px 0">${x.bloq ? '<b>' : ''}${esc(x.t)}${x.bloq ? '</b>' : ''}<div class="sub">${esc(x.p)}</div></li>`).join('')}</ul>
+      <div class="filtros" style="margin:0 18px 14px"><button class="btn" onclick="bancCopiarPedido()">Copiar mensagem para o cliente</button>
+        <span class="sub" id="bf-st"></span></div>`
+      : '<p class="nota">Tudo o que o sistema sabe pedir chegou. A próxima etapa é a leitura dos extratos.</p>'}
+  </div>
+
+  <div class="card"><h2>Documentos (${docs.length})</h2>
+    <p class="nota">Arraste os arquivos ou escolha abaixo. O sistema calcula a impressão digital (não guarda o mesmo arquivo duas vezes),
+      reconhece os extratos do INSS e o Registrato, confere o CPF e lê o período. A leitura acontece aqui no navegador; nada vai para IA nesta etapa.
+      Senha do gov.br do cliente não se guarda aqui em hipótese nenhuma.</p>
+    <div id="banc-drop" style="margin:0 18px 12px;padding:18px;border:1.5px dashed var(--b);border-radius:10px;text-align:center"
+      ondragover="event.preventDefault();this.style.borderColor='var(--serie)'" ondragleave="this.style.borderColor=''"
+      ondrop="event.preventDefault();this.style.borderColor='';bancAnexar(event.dataTransfer.files)">
+      <div class="filtros" style="justify-content:center">
+        <select id="banc-tipo"><option value="auto">tipo: reconhecer sozinho</option>
+          ${BANC_TIPOS.map(([k, r]) => `<option value="${k}">${r}</option>`).join('')}</select>
+        <input type="file" multiple accept="application/pdf,.pdf,image/*" onchange="bancAnexar(this.files)">
+      </div>
+      <div class="sub" id="bd-st" style="margin-top:6px">PDF ou foto, até 60 MB cada.</div>
+    </div>
+    ${lista.length ? `<table><tr><th>Documento</th><th>Período</th><th>Titular</th><th>Arquivo</th><th>Situação</th><th></th></tr>
+      ${lista.map(d => `<tr>
+        <td><b>${esc(d.nome)}</b>
+          <div><select onchange="bancDocTipo('${d.id}',this.value)" style="max-width:260px">
+            ${BANC_TIPOS.map(([k, r]) => `<option value="${k}" ${d.tipo === k ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
+          <div class="sub">recebido em ${br(d.criado_em)}${d.banco ? ' · ' + esc(d.banco) : ''}</div></td>
+        <td class="dt">${per(d)}</td>
+        <td><span class="pill ${tit[d.titular][0]}">${tit[d.titular][1]}</span>${d.titular_lido ? `<div class="sub">${esc(d.titular_lido.split(',').map(bancCpfFmt).join(', '))}</div>` : ''}</td>
+        <td class="dt">${d.paginas ? d.paginas + ' pág.' : '—'}<div class="sub">${d.legibilidade === 'imagem' ? 'imagem (sem texto)' : d.legibilidade === 'texto' ? 'com texto' : ''}</div></td>
+        <td><span class="pill ${sit[d.status] || 'cin'}">${esc(d.status)}</span>${d.pendencia ? `<div class="sub" style="max-width:240px">${esc(d.pendencia)}</div>` : ''}</td>
+        <td style="white-space:nowrap">
+          <button class="btn" onclick="bancDocAbrir('${d.id}')">Abrir</button>
+          ${d.status !== 'conferido' ? `<button class="btn" onclick="bancDocConferido('${d.id}')" title="Você conferiu o documento: titular, período e legibilidade estão certos">Conferido</button>` : ''}
+          <button class="btn" onclick="bancDocExcluir('${d.id}')" title="Excluir">×</button></td></tr>`).join('')}</table>`
+      : '<div class="vazio">Nenhum documento ainda.</div>'}
+  </div></main>` + rodape();
+  aplicarRotulos(app);
+}
+
+window.bancSalvarDados = async () => {
+  const v = k => document.getElementById('ba-' + k)?.value?.trim() || null;
+  const st = document.getElementById('ba-st');
+  const cpf = bancDig(v('cpf'));
+  if (cpf && cpf.length !== 11) { st.textContent = 'CPF com número de dígitos errado'; return; }
+  const upd = { cpf: cpf || null, nb: v('nb'), nascimento: v('nascimento'), perfil: v('perfil') || 'inss',
+    situacao: v('situacao') || 'aberta', obs: v('obs'), atualizado_em: new Date().toISOString() };
+  if (['encerrada', 'arquivada'].includes(upd.situacao) && !BANC.a.guarda_ate) {
+    const g = new Date(); g.setFullYear(g.getFullYear() + 5); upd.guarda_ate = g.toISOString().slice(0, 10);
+  }
+  st.textContent = 'salvando…';
+  const { error } = await sb.from('banc_analise').update(upd).eq('id', BANC.a.id);
+  if (error) { st.textContent = error.message; return; }
+  const mudouCpf = upd.cpf !== BANC.a.cpf;
+  Object.assign(BANC.a, upd);
+  if (mudouCpf) await bancReconferirTitular();
+  bancPintar();
+};
+
+/* CPF mudou: refaz a conferência do titular com o que já foi lido de cada documento */
+async function bancReconferirTitular(){
+  for (const d of BANC.docs) {
+    const tit = bancTitular(d.titular_lido ? d.titular_lido.split(',') : []);
+    if (tit === d.titular) continue;
+    const upd = { titular: tit, ...bancSituacao({ ...d, titular: tit }) };
+    await sb.from('banc_documento').update(upd).eq('id', d.id);
+    Object.assign(d, upd);
+  }
+}
+const bancTitular = cpfs => !BANC.a.cpf ? 'a_conferir' : cpfs.includes(BANC.a.cpf) ? 'confere' : cpfs.length ? 'diverge' : 'a_conferir';
+
+/* pendência e situação de um documento a partir do que se leu dele */
+function bancSituacao(d){
+  const p = [];
+  if (d.titular === 'diverge') p.push('o CPF do documento não é o do titular da análise — é do cliente certo?');
+  const min = BANC_PERIODO_MIN[d.tipo];
+  if (min && d.periodo_inicio && d.periodo_fim && bancMeses(d.periodo_inicio, d.periodo_fim) < min - 2)
+    p.push(`cobre ${bancMeses(d.periodo_inicio, d.periodo_fim)} meses; o mínimo é ${min}`);
+  if (d.legibilidade === 'imagem' && ['emprestimos_inss', 'hiscre', 'registrato', 'extrato_bancario'].includes(d.tipo))
+    p.push('é imagem, sem texto: baixe o PDF original (Meu INSS, Registrato, aplicativo do banco) em vez de foto ou digitalização');
+  if (d.status === 'conferido' && !p.length) return { status: 'conferido', pendencia: null };
+  return { status: p.length ? 'pendente' : (d.status === 'conferido' ? 'conferido' : 'recebido'), pendencia: p.length ? p.join('; ') : null };
+}
+
+async function bancHash(buf){
+  const h = await crypto.subtle.digest('SHA-256', buf);
+  return [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+function bancTipoPorTexto(t){
+  const T = t.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  if (/HISTORICO DE CREDITOS|HISCRE/.test(T)) return 'hiscre';
+  if (/EXTRATO DE EMPRESTIMOS/.test(T) || (/EMPRESTIMOS? CONSIGNADOS?/.test(T) && /BENEFICIO/.test(T) && /MARGEM/.test(T))) return 'emprestimos_inss';
+  if (/REGISTRATO|RELATORIO DE EMPRESTIMOS E FINANCIAMENTOS|SISTEMA DE INFORMACOES DE CREDITO/.test(T)) return 'registrato';
+  if (/ENDERECO IP|GEOLOCALIZA|TRILHA DE AUDITORIA|LOG DE ASSINATURA|EVIDENCIAS DA ASSINATURA/.test(T)) return 'trilha_assinatura';
+  if (/APOLICE|CERTIFICADO (INDIVIDUAL )?DE SEGURO|SEGURO PRESTAMISTA/.test(T)) return 'apolice';
+  if (/FATURA/.test(T) && /CARTAO/.test(T) && /CONSIGNADO|RMC|BENEFICIO/.test(T)) return 'fatura_cartao';
+  if (/CEDULA DE CREDITO|CONTRATO DE (EMPRESTIMO|FINANCIAMENTO|CARTAO)|TERMO DE ADESAO|AUTORIZACAO (PARA|DE) DESCONTO/.test(T)) return 'contrato';
+  if (/PROCURACAO/.test(T) && /OUTORGANTE/.test(T)) return 'procuracao';
+  if (/EXTRATO/.test(T) && /SALDO/.test(T)) return 'extrato_bancario';
+  return null;
+}
+/* período: competências MM/AAAA no HISCRE; datas DD/MM/AAAA nos demais. Fica fora o que é
+   antigo demais para ser movimento (data de nascimento, de concessão antiga). */
+function bancPeriodo(t, tipo){
+  const anoMin = new Date().getFullYear() - 15, anoMax = new Date().getFullYear() + 1;
+  const out = [], nasc = BANC.a.nascimento;
+  const ok = (a, m) => a >= anoMin && a <= anoMax && m >= 1 && m <= 12;
+  if (tipo === 'hiscre') {
+    for (const m of t.matchAll(/(?<![\d/])(\d{2})\/(\d{4})(?![\d/])/g)) if (ok(+m[2], +m[1])) out.push(`${m[2]}-${m[1]}-01`);
+  }
+  for (const m of t.matchAll(/(?<!\d)(\d{2})\/(\d{2})\/(\d{4})(?!\d)/g)) {
+    const iso = `${m[3]}-${m[2]}-${m[1]}`;
+    if (ok(+m[3], +m[2]) && +m[1] >= 1 && +m[1] <= 31 && iso !== nasc) out.push(iso);
+  }
+  if (!out.length) return {};
+  out.sort();
+  return { periodo_inicio: out[0], periodo_fim: out[out.length - 1] };
+}
+function bancBancoPorTexto(linhas){
+  const t = linhas.slice(0, 60).join(' ').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+  return BANC_BANCOS.find(b => t.includes(b.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase())) || null;
+}
+
+/* examina o arquivo no navegador e devolve o que se sabe dele antes de guardar */
+async function bancExaminar(arq, tipoEscolhido){
+  const buf = await arq.arrayBuffer();
+  const r = { hash: await bancHash(buf.slice(0)), paginas: 1, legibilidade: 'imagem', tipo: tipoEscolhido !== 'auto' ? tipoEscolhido : null, cpfs: [] };
+  const pdf = /pdf/i.test(arq.type) || /\.pdf$/i.test(arq.name);
+  if (pdf) {
+    try { const { PDFDocument } = await carregarPdfLib(); r.paginas = (await PDFDocument.load(buf.slice(0), { ignoreEncryption: true })).getPageCount(); } catch (e) { r.paginas = null; }
+    let linhas = [];
+    try { linhas = await pdfLinhas(buf.slice(0)); } catch (e) {}
+    const t = linhas.join('\n');
+    r.legibilidade = t.replace(/\s/g, '').length >= 80 * Math.max(1, r.paginas || 1) * 0.5 ? 'texto' : 'imagem';
+    if (!r.tipo) r.tipo = bancTipoPorTexto(t);
+    r.cpfs = [...new Set([...t.matchAll(/(?<!\d)(\d{3})\.?(\d{3})\.?(\d{3})-?(\d{2})(?!\d)/g)].map(m => m[1] + m[2] + m[3] + m[4]))].slice(0, 20);
+    Object.assign(r, bancPeriodo(t, r.tipo));
+    r.banco = bancBancoPorTexto(linhas);
+  }
+  r.tipo = r.tipo || 'outro';
+  return r;
+}
+
+window.bancAnexar = async (arquivos) => {
+  const st = document.getElementById('bd-st'), a = BANC.a;
+  const tipoEsc = document.getElementById('banc-tipo')?.value || 'auto';
+  const msgs = [];
+  try {
+    const eid = await escId();
+    for (const arq of [...arquivos || []]) {
+      if (arq.size > 60_000_000) { msgs.push(`${arq.name}: maior que 60 MB, divida o arquivo`); continue; }
+      st.textContent = `examinando ${arq.name}…`;
+      const ex = await bancExaminar(arq, tipoEsc);
+      const repetido = BANC.docs.find(d => d.hash === ex.hash);
+      if (repetido) { msgs.push(`${arq.name}: é o mesmo arquivo de "${repetido.nome}", não foi guardado de novo`); continue; }
+      st.textContent = `guardando ${arq.name}…`;
+      const caminho = `${eid}/${a.id}/${Date.now()}-${arq.name.normalize('NFD').replace(/[^\w.\-]+/g, '_').slice(-80)}`;
+      const up = await sb.storage.from('bancario').upload(caminho, arq, { upsert: false, contentType: arq.type || 'application/pdf' });
+      if (up.error) throw up.error;
+      const reg = { escritorio_id: eid, analise_id: a.id, tipo: ex.tipo, banco: ex.banco || null, nome: arq.name, arquivo: caminho,
+        hash: ex.hash, paginas: ex.paginas, periodo_inicio: ex.periodo_inicio || null, periodo_fim: ex.periodo_fim || null,
+        titular_lido: ex.cpfs.length ? ex.cpfs.join(',') : null, titular: bancTitular(ex.cpfs), legibilidade: ex.legibilidade,
+        sensivel: ex.tipo === 'medico', canal: 'tela', status: 'recebido' };
+      Object.assign(reg, bancSituacao(reg));
+      const { data, error } = await sb.from('banc_documento').insert(reg).select().single();
+      if (error) { await sb.storage.from('bancario').remove([caminho]); throw error; }
+      BANC.docs.push(data);
+      msgs.push(`${arq.name}: ${BANC_TIPO_NOME[data.tipo]}${data.status === 'pendente' ? ' — com pendência' : ''}`);
+    }
+  } catch (e) { msgs.push('não foi possível anexar: ' + e.message); }
+  await sb.from('banc_analise').update({ atualizado_em: new Date().toISOString() }).eq('id', a.id);
+  BANC.msg = msgs.map(esc).join('<br>');
+  bancPintar();
+};
+
+window.bancDocTipo = async (id, tipo) => {
+  const d = BANC.docs.find(x => x.id === id); if (!d) return;
+  const upd = { tipo, sensivel: tipo === 'medico', ...bancSituacao({ ...d, tipo }) };
+  const { error } = await sb.from('banc_documento').update(upd).eq('id', id);
+  if (error) return alert(error.message);
+  Object.assign(d, upd); BANC.msg = ''; bancPintar();
+};
+window.bancDocConferido = async id => {
+  const d = BANC.docs.find(x => x.id === id); if (!d) return;
+  if (d.status === 'pendente' && !confirm(`Este documento tem pendência:\n\n${d.pendencia}\n\nMarcar como conferido mesmo assim?`)) return;
+  const upd = { status: 'conferido', pendencia: null, titular: d.titular === 'a_conferir' ? 'confere' : d.titular };
+  const { error } = await sb.from('banc_documento').update(upd).eq('id', id);
+  if (error) return alert(error.message);
+  Object.assign(d, upd); BANC.msg = ''; bancPintar();
+};
+window.bancDocAbrir = async id => {
+  const d = BANC.docs.find(x => x.id === id); if (!d) return;
+  const { data, error } = await sb.storage.from('bancario').createSignedUrl(d.arquivo, 600);
+  if (error) return alert(error.message);
+  window.open(data.signedUrl, '_blank');
+};
+window.bancDocExcluir = async id => {
+  const d = BANC.docs.find(x => x.id === id); if (!d) return;
+  if (!confirm(`Excluir "${d.nome}" da análise?\n\nO arquivo é apagado do armazenamento.`)) return;
+  const { error } = await sb.from('banc_documento').delete().eq('id', id);
+  if (error) return alert(error.message);
+  await sb.storage.from('bancario').remove([d.arquivo]);
+  BANC.docs = BANC.docs.filter(x => x.id !== id); BANC.msg = ''; bancPintar();
+};
+window.bancCopiarPedido = async () => {
+  const f = bancFaltam().filter(x => !x.doc);
+  const nome = (BANC.a.cliente?.nome || '').split(' ')[0];
+  const txt = `Olá${nome ? ', ' + nome : ''}! Para continuarmos a análise do seu caso, precisamos de:\n\n`
+    + f.map((x, i) => `${i + 1}. ${x.t} — ${x.p}`).join('\n')
+    + `\n\nPode mandar em PDF ou foto bem nítida. Qualquer dúvida para baixar, é só chamar.`;
+  const st = document.getElementById('bf-st');
+  try { await navigator.clipboard.writeText(txt); st.textContent = 'copiada'; }
+  catch (e) { prompt('Copie a mensagem:', txt); }
+};
+/* BANC-FIM */
+
+
 async function telaPrev(){
   const sub = location.hash.split('?')[0].split('/')[2];
   if (sub === 'base') return telaPrevBase();
@@ -16670,6 +17057,7 @@ async function rota(){
   if(h.startsWith('#/casos'))      return telaCasos();
   if(h.startsWith('#/andamento'))  return telaAndamento();
   if(h.startsWith('#/prev'))       return telaPrev();
+  if(h.startsWith('#/banc'))       return telaBanc();
   if(h.startsWith('#/processos'))  return telaProcessos();
   if(h.startsWith('#/clientes'))   return telaClientes();
   if(h.startsWith('#/whatsapp/'))   return telaWhatsApp(h.split('/')[2]);
