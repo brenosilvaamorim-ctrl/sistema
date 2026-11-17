@@ -13300,7 +13300,7 @@ const BANC_ENTREV = [['a_perguntar', 'a perguntar'], ['nega', 'nega o contrato']
 const BANC_MARCO = '2021-03-30';   /* EAREsp 676.608: dobro só para o indébito daqui em diante */
 const BANC_PROD = { consignado: 'Consignado', rmc: 'RMC (cartão de crédito)', rcc: 'RCC (cartão de benefício)', pessoal: 'Empréstimo pessoal', veiculo: 'Veículo', outro: 'Outro' };
 const bancR = v => v == null ? '—' : 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const bancNorm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/^BANCO\s+/, '').replace(/\s+S\.?A\.?$/, '').trim();
+const bancNorm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/^\d{3}\s*-\s*/, '').replace(/^BANCO\s+/, '').replace(/\s+S\.?A\.?$/, '').trim();
 const bancMesmoBanco = (a, b) => { const x = bancNorm(a).split(/\s+/)[0], y = bancNorm(b).split(/\s+/)[0]; return !!x && !!y && (x === y || bancNorm(a).includes(y) || bancNorm(b).includes(x)); };
 const bancAddAnos = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setFullYear(d.getFullYear() + n); return d.toISOString().slice(0, 10); };
 const bancHoje = () => new Date().toISOString().slice(0, 10);
@@ -13399,7 +13399,7 @@ window.bancDocLer = async id => {
 function bancLinhasDaLeitura(d){
   const L = d.lido || {}, eid = d.escritorio_id, aid = d.analise_id;
   const num = v => Number.isFinite(Number(v)) && v !== null && v !== '' ? Number(v) : null;
-  const dt = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? v : null;
+  const dt = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? v : /^\d{4}-\d{2}$/.test(String(v || '')) ? v + '-01' : null;   /* o INSS dá o início do desconto em mês/ano */
   if (L.modo === 'emprestimos') return { tabela: 'banc_contrato', linhas: (L.contratos || []).filter(c => c?.numero).map(c => ({
     escritorio_id: eid, analise_id: aid, documento_id: d.id, numero: String(c.numero).trim(), banco: c.banco || null,
     produto: ['consignado', 'rmc', 'rcc'].includes(c.produto) ? c.produto : 'consignado', situacao: c.situacao || null,
