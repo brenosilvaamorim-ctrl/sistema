@@ -13486,7 +13486,7 @@ function bancMotor(){
     const desc = BANC.descontos.filter(x => x.contrato && bancDig(x.contrato) && bancDig(x.contrato) === bancDig(c.numero));
     const ultimo = desc.length ? desc.map(x => x.competencia).sort().pop() : null;
     const ativo = /ativ/i.test(c.situacao || '');
-    const refUlt = ultimo || (ativo ? hoje : c.fim_desconto);
+    const refUlt = ativo ? hoje : (ultimo || c.fim_desconto);   /* ativo: o desconto continua, o prazo não corre */
     const limite = refUlt ? bancAddAnos(refUlt, 5) : null;
     const fx = bancFaixas(desc.map(x => [x.competencia, x.valor]), q5);
     const pag = pagadorEm(c.averbacao);
@@ -13565,7 +13565,7 @@ function bancBlocoMapa(){
       <td class="dt">${br(c.averbacao)}</td>
       <td>${bancR(c.valor_emprestado ?? c.limite_cartao)}<div class="sub">${bancR(c.parcela ?? c.reservado)}${c.qtd_parcelas ? ' × ' + c.qtd_parcelas : ''}</div></td>
       <td>${k.desc.length ? `${k.desc.length} mês(es)<div class="sub">último ${prevComp(k.ultimo)}</div>` : '<span class="sub">não ligado a rubrica</span>'}</td>
-      <td>${k.ativo && !k.ultimo ? '<span class="pill good">ativo</span>' : k.limite ? `<span class="pill ${k.venceu ? 'crit' : dias(k.limite) < 180 ? 'warn' : 'good'}">${k.venceu ? 'prescrito em' : 'até'} ${br(k.limite)}</span>` : '<span class="sub">sem data</span>'}</td>
+      <td>${k.ativo ? '<span class="pill good">ativo — descontando</span>' : k.limite ? `<span class="pill ${k.venceu ? 'crit' : dias(k.limite) < 180 ? 'warn' : 'good'}">${k.venceu ? 'prescrito em' : 'até'} ${br(k.limite)}</span>` : '<span class="sub">sem data</span>'}</td>
       <td>${k.desc.length ? `${bancR(k.fx.principal)}<div class="sub">simples ${bancR(k.fx.simples)} + dobro de ${bancR(k.fx.dobro)}</div>` : '—'}</td>
       <td><select onchange="bancEntrevista('${c.id}',this.value)">${BANC_ENTREV.map(([v, r]) => `<option value="${v}" ${c.entrevista === v ? 'selected' : ''}>${r}</option>`).join('')}</select></td></tr>`; }).join('')}</table>`
     : '<p class="nota">Nenhum contrato gravado ainda (leia o Extrato de Empréstimos).</p>';
