@@ -12928,7 +12928,7 @@ const bancFaltaBanco = e => /banc_analise|banc_documento|PGRST205|42P01/.test((e
 const bancAreaRx = /banc[áa]ri|consign|empr[ée]stimo|\brmc\b|\brcc\b|cart[ãa]o consignado|prestamista|tarifa|financiamento|juros|revisional/i;
 const bancDig = s => String(s || '').replace(/\D/g, '');
 const bancCpfFmt = s => { const d = bancDig(s); return d.length === 11 ? d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : (s || ''); };
-let BANC = { a: null, docs: [], msg: '', prog: {} };
+let BANC = { a: null, docs: [], msg: '', prog: {}, contratos: [], descontos: [], lanc: [], previa: null, semLeitura: false };
 
 async function telaBanc(){
   const sub = location.hash.split('?')[0].split('/')[2];
@@ -12998,11 +12998,12 @@ window.bancNova = async (casoId) => {
 async function telaBancAnalise(id){
   const { data: a, error } = await sb.from('banc_analise').select('*,caso:caso_id(id,titulo),cliente:cliente_id(nome,cpf_cnpj)').eq('id', id).single();
   if (error) return erro(bancFaltaBanco(error) ? BANC_SEM_BANCO : error.message);
-  if (BANC.a?.id !== id) BANC = { a: null, docs: [], msg: '', prog: {} };
+  if (BANC.a?.id !== id) BANC = { a: null, docs: [], msg: '', prog: {}, contratos: [], descontos: [], lanc: [], previa: null, semLeitura: false };
   BANC.a = a;
   const d = await sb.from('banc_documento').select('*').eq('analise_id', id).order('criado_em');
   if (d.error) return erro(d.error.message);
   BANC.docs = d.data || [];
+  try { await bancCarregarMapa(); } catch (e) { BANC.msg = 'mapa: ' + esc(e.message); }
   bancPintar();
 }
 
@@ -13095,13 +13096,19 @@ function bancPintar(){
         <td class="dt">${per(d)}</td>
         <td><span class="pill ${tit[d.titular][0]}">${tit[d.titular][1]}</span>${d.titular_lido ? `<div class="sub">${esc(d.titular_lido.split(',').map(bancCpfFmt).join(', '))}</div>` : ''}</td>
         <td class="dt">${d.paginas ? d.paginas + ' pág.' : '—'}<div class="sub">${d.legibilidade === 'imagem' ? 'imagem (sem texto)' : d.legibilidade === 'texto' ? 'com texto' : ''}</div></td>
-        <td><span class="pill ${sit[d.status] || 'cin'}">${esc(d.status)}</span>${d.pendencia ? `<div class="sub" style="max-width:240px">${esc(d.pendencia)}</div>` : ''}</td>
+        <td><span class="pill ${sit[d.status] || 'cin'}">${esc(d.status)}</span>${d.pendencia ? `<div class="sub" style="max-width:240px">${esc(d.pendencia)}</div>` : ''}${d.erro ? `<div class="sub" style="max-width:240px;color:var(--crit)">${esc(d.erro)}</div>` : ''}</td>
         <td style="white-space:nowrap">
           <button class="btn" onclick="bancDocAbrir('${d.id}')">Abrir</button>
+          ${BANC.prog[d.id] ? `<span class="sub">${esc(BANC.prog[d.id])}</span>`
+            : BANC_LER.has(d.tipo) ? (d.lido ? `<button class="btn ${d.lido.gravado_em ? '' : 'ok'}" onclick="bancVerLeitura('${d.id}')">${d.lido.gravado_em ? 'Leitura' : 'Conferir leitura'}</button>
+              <button class="btn" onclick="bancDocLer('${d.id}')" title="Ler de novo">↻</button>` : `<button class="btn" onclick="bancDocLer('${d.id}')">Ler</button>`) : ''}
           ${d.status !== 'conferido' ? `<button class="btn" onclick="bancDocConferido('${d.id}')" title="Você conferiu o documento: titular, período e legibilidade estão certos">Conferido</button>` : ''}
           <button class="btn" onclick="bancDocExcluir('${d.id}')" title="Excluir">×</button></td></tr>`).join('')}</table>`
       : '<div class="vazio">Nenhum documento ainda.</div>'}
-  </div></main>` + rodape();
+  </div>
+  ${BANC.previa && docs.find(x => x.id === BANC.previa)?.lido ? bancBlocoPrevia(docs.find(x => x.id === BANC.previa)) : ''}
+  ${bancBlocoMapa()}
+  </main>` + rodape();
   aplicarRotulos(app);
 }
 
@@ -13280,6 +13287,306 @@ window.bancCopiarPedido = async () => {
   catch (e) { prompt('Copie a mensagem:', txt); }
 };
 /* BANC-FIM */
+/* BANC-LEITURA — etapa 2: ler os documentos (IA), conferir e gravar no mapa.
+   Extrato de Empréstimos → banc_contrato; HISCRE → banc_desconto; extrato de conta →
+   banc_lancamento (só as linhas suspeitas). Contrato e trilha ficam no "lido" do documento.
+   A leitura NUNCA grava sozinha: o advogado vê a prévia e clica em "Gravar no mapa". */
+const BANC_MODO = { emprestimos_inss: 'emprestimos', hiscre: 'hiscre', contrato: 'contrato', trilha_assinatura: 'trilha' };
+const BANC_LER = new Set([...Object.keys(BANC_MODO), 'extrato_bancario']);
+const BANC_CAT_NOME = { tarifa: 'Tarifa', cesta: 'Cesta / pacote de serviços', seguro: 'Seguro', capitalizacao: 'Título de capitalização',
+  emprestimo: 'Parcela de empréstimo', anuidade: 'Anuidade', juros_mora: 'Juros, mora, IOF', outro: 'Outro' };
+const BANC_ENTREV = [['a_perguntar', 'a perguntar'], ['nega', 'nega o contrato'], ['nao_lembra', 'não lembra'],
+  ['enganado', 'reconhece, mas foi enganado'], ['reconhece', 'reconhece']];
+const BANC_MARCO = '2021-03-30';   /* EAREsp 676.608: dobro só para o indébito daqui em diante */
+const BANC_PROD = { consignado: 'Consignado', rmc: 'RMC (cartão de crédito)', rcc: 'RCC (cartão de benefício)', pessoal: 'Empréstimo pessoal', veiculo: 'Veículo', outro: 'Outro' };
+const bancR = v => v == null ? '—' : 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const bancNorm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/^BANCO\s+/, '').replace(/\s+S\.?A\.?$/, '').trim();
+const bancMesmoBanco = (a, b) => { const x = bancNorm(a).split(/\s+/)[0], y = bancNorm(b).split(/\s+/)[0]; return !!x && !!y && (x === y || bancNorm(a).includes(y) || bancNorm(b).includes(x)); };
+const bancAddAnos = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setFullYear(d.getFullYear() + n); return d.toISOString().slice(0, 10); };
+const bancHoje = () => new Date().toISOString().slice(0, 10);
+
+/* categoria de uma linha de extrato de conta, pela descrição */
+function bancCategoria(desc, sugerida){
+  const s = Object.entries(BANC_CAT_NOME).find(([, n]) => n === sugerida)?.[0];
+  if (s && s !== 'outro') return s;
+  const t = bancNorm(desc);
+  if (/CESTA|PACOTE|PCT\b|MENSALIDADE PACOTE/.test(t)) return 'cesta';
+  if (/SEGURO|\bSEG\b|PROTEC|ASSISTENCIA|PREVIDENCIA/.test(t)) return 'seguro';
+  if (/CAPITALIZ|TITULO DE CAP|\bCAP\b|SORTE/.test(t)) return 'capitalizacao';
+  if (/ANUIDADE/.test(t)) return 'anuidade';
+  if (/TARIFA|\bTAR\b|MANUT|EXTRATO AVULSO|SAQUE ADICIONAL|TED TARIFA/.test(t)) return 'tarifa';
+  if (/MORA|JUROS|\bIOF\b|ENCARGO|ADIANT.*DEPOSITANTE|CHEQUE ESPECIAL/.test(t)) return 'juros_mora';
+  if (/EMPREST|EMPRES\b|CRED(ITO)? PESSOAL|PARC.*CRED|CDC|FINANC|PARCELA/.test(t)) return 'emprestimo';
+  return 'outro';
+}
+
+/* junta as leituras das partes de um PDF longo */
+function bancJuntar(modo, partes){
+  const out = { observacao: partes.map(p => p.observacao).filter(Boolean).join(' | ') || null };
+  const primeiro = partes.find(p => p) || {};
+  if (modo === 'emprestimos') return { ...out, titular: primeiro.titular, margem: primeiro.margem, contratos: partes.flatMap(p => p.contratos || []) };
+  if (modo === 'hiscre') {
+    const m = new Map();
+    for (const c of partes.flatMap(p => p.competencias || [])) {
+      if (!c?.competencia) continue;
+      const k = String(c.competencia).slice(0, 7), ja = m.get(k);
+      if (ja) ja.descontos.push(...(c.descontos || [])); else m.set(k, { ...c, competencia: k, descontos: [...(c.descontos || [])] });
+    }
+    return { ...out, titular: primeiro.titular, competencias: [...m.values()].sort((a, b) => a.competencia.localeCompare(b.competencia)) };
+  }
+  if (modo === 'extrato') return { ...out, documento: primeiro.documento, lancamentos: partes.flatMap(p => p.lancamentos || []) };
+  if (modo === 'trilha') return { ...out, ...primeiro, eventos: partes.flatMap(p => p.eventos || []) };
+  return { ...out, ...primeiro };
+}
+
+window.bancDocLer = async id => {
+  const d = BANC.docs.find(x => x.id === id); if (!d) return;
+  if (BANC.semLeitura) { BANC.msg = esc(BANC_SEM_LEITURA); return bancPintar(); }
+  const conta = d.tipo === 'extrato_bancario', modo = conta ? 'extrato' : BANC_MODO[d.tipo];
+  if (!modo) return;
+  const prog = t => { BANC.prog[id] = t; bancPintar(); };
+  try {
+    prog('baixando…');
+    const { data: blob, error } = await sb.storage.from('bancario').download(d.arquivo);
+    if (error) throw error;
+    const pdf = /pdf/i.test(blob.type) || /\.pdf$/i.test(d.nome);
+    const lidas = [];
+    const ler = async (bytes, mime, rotulo) => {
+      const corpo = { arquivo: await nfB64(new Blob([bytes])), mime, nome: d.nome + rotulo };
+      const r = conta
+        ? await chamarFuncao('ler-extrato', { ...corpo, categorias: Object.values(BANC_CAT_NOME) })
+        : (await chamarFuncao('ler-bancario', { ...corpo, modo })).lido;
+      lidas.push(r);
+    };
+    if (pdf) {
+      prog('dividindo o PDF…');
+      const P = await prevDocPartes(await blob.arrayBuffer());
+      if (P.partes.some(p => p.bytes.length > 6_300_000)) throw new Error('há página grande demais (mais de 6 MB numa página só); digitalize em resolução menor');
+      const fila = [...P.partes]; let feitas = 0;
+      const trabalha = async () => { for (let p; (p = fila.shift()); ) {
+        try { await ler(p.bytes, 'application/pdf', ` (páginas ${p.de} a ${p.ate})`); }
+        catch (e) {
+          if (!/demais/.test(e.message) || p.ate === p.de) throw e;
+          const meio = Math.floor((p.de + p.ate) / 2);
+          fila.push({ de: p.de, ate: meio, bytes: await P.monta(p.de - 1, meio - p.de + 1) }, { de: meio + 1, ate: p.ate, bytes: await P.monta(meio, p.ate - meio) });
+          continue;
+        }
+        prog(`lendo… ${++feitas} parte(s) de ${feitas + fila.length}`);
+      } };
+      prog(`lendo… 0 parte(s) de ${P.partes.length}`);
+      await Promise.all([trabalha(), trabalha()]);
+    } else {
+      if (blob.size > 6_300_000) throw new Error('imagem grande demais (mais de 6 MB)');
+      prog('lendo…'); await ler(await blob.arrayBuffer(), blob.type || 'image/jpeg', '');
+    }
+    const lido = { modo, ...bancJuntar(modo, lidas), gravado_em: null };
+    const upd = { status: 'lido', lido, lido_em: new Date().toISOString(), erro: null };
+    const { error: e2 } = await sb.from('banc_documento').update(upd).eq('id', id);
+    if (e2) throw e2;
+    Object.assign(d, upd);
+    BANC.previa = id;
+  } catch (e) {
+    const msg = /404|not found|Failed to fetch/i.test(e.message) && !conta
+      ? 'a função ler-bancario ainda não foi publicada no Supabase (Edge Functions → ler-bancario)' : e.message;
+    Object.assign(d, { status: 'erro', erro: msg });
+    await sb.from('banc_documento').update({ status: 'erro', erro: String(msg).slice(0, 500) }).eq('id', id);
+  }
+  delete BANC.prog[id];
+  bancPintar();
+};
+
+/* o que a leitura vai gravar, já no formato das tabelas */
+function bancLinhasDaLeitura(d){
+  const L = d.lido || {}, eid = d.escritorio_id, aid = d.analise_id;
+  const num = v => Number.isFinite(Number(v)) && v !== null && v !== '' ? Number(v) : null;
+  const dt = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? v : null;
+  if (L.modo === 'emprestimos') return { tabela: 'banc_contrato', linhas: (L.contratos || []).filter(c => c?.numero).map(c => ({
+    escritorio_id: eid, analise_id: aid, documento_id: d.id, numero: String(c.numero).trim(), banco: c.banco || null,
+    produto: ['consignado', 'rmc', 'rcc'].includes(c.produto) ? c.produto : 'consignado', situacao: c.situacao || null,
+    averbacao: dt(c.data_averbacao), inicio_desconto: dt(c.inicio_desconto), fim_desconto: dt(c.fim_desconto),
+    valor_emprestado: num(c.valor_emprestado), parcela: num(c.valor_parcela), qtd_parcelas: num(c.qtd_parcelas),
+    limite_cartao: num(c.limite_cartao), reservado: num(c.reservado), taxa_mensal: num(c.taxa_mensal), origem: c.origem || null })) };
+  if (L.modo === 'hiscre') return { tabela: 'banc_desconto', linhas: (L.competencias || []).flatMap(c => (c.descontos || [])
+    .filter(x => x?.rubrica && num(x.valor)).map(x => ({ escritorio_id: eid, analise_id: aid, documento_id: d.id,
+      competencia: c.competencia + '-01', rubrica: String(x.rubrica).trim(), valor: Math.abs(num(x.valor)),
+      contrato: x.contrato || null, credor: x.credor || null, banco_pagador: c.banco || null }))) };
+  if (L.modo === 'extrato') return { tabela: 'banc_lancamento', linhas: (L.lancamentos || []).filter(l => l.tipo !== 'entrada')
+    .map(l => ({ l, cat: bancCategoria(l.descricao, l.categoria_sugerida) })).filter(x => x.cat !== 'outro')
+    .map(({ l, cat }) => ({ escritorio_id: eid, analise_id: aid, documento_id: d.id, data: l.data, descricao: l.descricao,
+      valor: l.valor, categoria: cat, banco: L.documento?.banco || d.banco || null, conta: L.documento?.conta || null })) };
+  return { tabela: null, linhas: [] };
+}
+
+window.bancGravarLeitura = async id => {
+  const d = BANC.docs.find(x => x.id === id); if (!d?.lido) return;
+  const { tabela, linhas } = bancLinhasDaLeitura(d);
+  if (!tabela) return;
+  try {
+    if (tabela === 'banc_contrato') {
+      /* contrato já mapeado mantém a entrevista e as observações; o resto é atualizado */
+      for (const c of linhas) {
+        const ja = BANC.contratos.find(x => x.numero === c.numero && x.produto === c.produto);
+        const r = ja ? await sb.from('banc_contrato').update({ ...c, atualizado_em: new Date().toISOString() }).eq('id', ja.id)
+                     : await sb.from('banc_contrato').insert(c);
+        if (r.error) throw r.error;
+      }
+    } else {
+      const del = await sb.from(tabela).delete().eq('documento_id', id);
+      if (del.error) throw del.error;
+      for (let i = 0; i < linhas.length; i += 500) { const r = await sb.from(tabela).insert(linhas.slice(i, i + 500)); if (r.error) throw r.error; }
+    }
+    const lido = { ...d.lido, gravado_em: new Date().toISOString() };
+    await sb.from('banc_documento').update({ lido }).eq('id', id);
+    d.lido = lido; BANC.previa = null;
+    BANC.msg = `${linhas.length} linha(s) gravada(s) no mapa a partir de "${esc(d.nome)}".`;
+    await bancCarregarMapa();
+  } catch (e) { BANC.msg = 'não foi possível gravar: ' + esc(e.message); }
+  bancPintar();
+};
+window.bancVerLeitura = id => { BANC.previa = BANC.previa === id ? null : id; bancPintar(); };
+
+async function bancCarregarMapa(){
+  const id = BANC.a.id;
+  const [c, ds, l] = await Promise.all([
+    sb.from('banc_contrato').select('*').eq('analise_id', id).order('averbacao', { ascending: true, nullsFirst: false }),
+    prevTodasBanc('banc_desconto', id), prevTodasBanc('banc_lancamento', id)]);
+  if (c.error) { if (bancFaltaBanco(c.error) || /banc_contrato/.test(c.error.message)) { BANC.semLeitura = true; BANC.contratos = []; BANC.descontos = []; BANC.lanc = []; return; } throw c.error; }
+  BANC.semLeitura = false; BANC.contratos = c.data || []; BANC.descontos = ds; BANC.lanc = l;
+}
+async function prevTodasBanc(tabela, id){
+  const out = [];
+  for (let i = 0; ; i += 1000) {
+    const { data, error } = await sb.from(tabela).select('*').eq('analise_id', id).order('id').range(i, i + 999);
+    if (error) return [];
+    out.push(...(data || [])); if (!data || data.length < 1000) break;
+  }
+  return out;
+}
+const BANC_SEM_LEITURA = 'A leitura ainda não tem as tabelas no banco. Aplique banco/69_bancario_leitura.sql no Supabase (SQL Editor) e recarregue.';
+
+window.bancEntrevista = async (id, v) => {
+  const { error } = await sb.from('banc_contrato').update({ entrevista: v, atualizado_em: new Date().toISOString() }).eq('id', id);
+  if (error) return alert(error.message);
+  BANC.contratos.find(x => x.id === id).entrevista = v; bancPintar();
+};
+
+/* ---------- motor de regras: tudo determinístico, a partir do que foi gravado ---------- */
+function bancFaixas(valores, desde){
+  let simples = 0, dobro = 0;
+  for (const [data, v] of valores) { if (desde && data < desde) continue; if (data < BANC_MARCO) simples += +v; else dobro += +v; }
+  return { simples, dobro, principal: simples + 2 * dobro };
+}
+function bancMotor(){
+  const hoje = bancHoje(), q5 = bancAddAnos(hoje, -5), q10 = bancAddAnos(hoje, -10);
+  /* banco pagador por competência (HISCRE) */
+  const pagador = new Map(); for (const x of BANC.descontos) if (x.banco_pagador) pagador.set(x.competencia.slice(0, 7), x.banco_pagador);
+  const pagadorEm = iso => { if (!iso) return null; const k = iso.slice(0, 7); if (pagador.has(k)) return pagador.get(k);
+    const ant = [...pagador.keys()].sort().filter(x => x <= k).pop(); return ant ? pagador.get(ant) : null; };  /* antes do HISCRE: não se sabe */
+  const contratos = BANC.contratos.map(c => {
+    const desc = BANC.descontos.filter(x => x.contrato && bancDig(x.contrato) && bancDig(x.contrato) === bancDig(c.numero));
+    const ultimo = desc.length ? desc.map(x => x.competencia).sort().pop() : null;
+    const ativo = /ativ/i.test(c.situacao || '');
+    const refUlt = ultimo || (ativo ? hoje : c.fim_desconto);
+    const limite = refUlt ? bancAddAnos(refUlt, 5) : null;
+    const fx = bancFaixas(desc.map(x => [x.competencia, x.valor]), q5);
+    const pag = pagadorEm(c.averbacao);
+    const inss = pag && c.banco ? !bancMesmoBanco(pag, c.banco) : null;
+    const teto = c.produto === 'consignado' ? 1.85 : ['rmc', 'rcc'].includes(c.produto) ? 2.46 : null;  /* teto CNPS vigente; o da data da contratação deve ser conferido */
+    return { c, desc, ultimo, ativo, limite, venceu: limite && limite < hoje, fx, pag, inss,
+      acimaTeto: teto && c.taxa_mensal ? +c.taxa_mensal > teto : null };
+  });
+  /* rubricas do HISCRE sem contrato identificado */
+  const semContrato = new Map();
+  for (const x of BANC.descontos.filter(x => !contratos.some(k => k.desc.includes(x)))) {
+    const k = x.rubrica.toUpperCase(); const a = semContrato.get(k) || { rubrica: x.rubrica, n: 0, valores: [] };
+    a.n++; a.valores.push([x.competencia, x.valor]); semContrato.set(k, a);
+  }
+  /* conta: por categoria, nos cenários de 5 e 10 anos */
+  const cats = {};
+  for (const l of BANC.lanc) { (cats[l.categoria] = cats[l.categoria] || []).push([l.data, l.valor, l.banco]); }
+  const conta = Object.entries(cats).map(([cat, v]) => ({ cat, n: v.length, f5: bancFaixas(v, q5), f10: bancFaixas(v, q10) }));
+  /* ações sugeridas: uma por banco */
+  const acoes = new Map();
+  const add = (banco, item) => { const k = bancNorm(banco) || '(banco não identificado)'; const a = acoes.get(k) || { banco: banco || k, itens: [] }; a.itens.push(item); acoes.set(k, a); };
+  for (const k of contratos) if (['nega', 'nao_lembra', 'enganado'].includes(k.c.entrevista) && !k.venceu)
+    add(k.c.banco, `${BANC_PROD[k.c.produto]} ${k.c.numero} — ${BANC_ENTREV.find(([v]) => v === k.c.entrevista)[1]}`);
+  for (const l of BANC.lanc.filter(l => l.data >= q10 && l.categoria !== 'emprestimo')) {
+    const k = bancNorm(l.banco) || '(banco não identificado)'; const a = acoes.get(k);
+    if (!a || !a.itens.includes('descontos em conta')) add(l.banco, 'descontos em conta');
+  }
+  return { contratos, semContrato: [...semContrato.values()], conta, acoes: [...acoes.values()], q5, q10, pagadores: [...new Set(pagador.values())] };
+}
+
+/* ---------- pintura das seções da etapa 2 ---------- */
+function bancBlocoPrevia(d){
+  const { tabela, linhas } = bancLinhasDaLeitura(d), L = d.lido || {};
+  const cab = L.titular?.cpf && BANC.a.cpf && bancDig(L.titular.cpf) !== BANC.a.cpf ? `<div class="aviso">O CPF lido (${esc(bancCpfFmt(L.titular.cpf))}) não é o do titular da análise.</div>` : '';
+  let corpo = '';
+  if (L.modo === 'emprestimos') corpo = `<table><tr><th>Contrato</th><th>Banco</th><th>Produto</th><th>Averbação</th><th>Situação</th><th>Valor / limite</th><th>Parcela / reservado</th><th>Taxa</th></tr>
+    ${linhas.map(c => `<tr><td>${esc(c.numero)}${c.origem ? `<div class="sub">origem ${esc(c.origem)}</div>` : ''}</td><td>${esc(c.banco || '—')}</td><td>${BANC_PROD[c.produto]}</td>
+      <td class="dt">${br(c.averbacao)}</td><td>${esc(c.situacao || '—')}</td><td>${bancR(c.valor_emprestado ?? c.limite_cartao)}</td>
+      <td>${bancR(c.parcela ?? c.reservado)}${c.qtd_parcelas ? ` × ${c.qtd_parcelas}` : ''}</td><td>${c.taxa_mensal != null ? c.taxa_mensal + '% a.m.' : '—'}</td></tr>`).join('')}</table>`;
+  else if (L.modo === 'hiscre') { const comps = L.competencias || [];
+    corpo = `<p class="nota">${comps.length} competência(s), de ${prevComp(comps[0]?.competencia + '-01')} a ${prevComp(comps[comps.length - 1]?.competencia + '-01')}; ${linhas.length} desconto(s).
+      Bancos pagadores: ${esc([...new Set(comps.map(c => c.banco).filter(Boolean))].join(', ') || '—')}.</p>
+      <table><tr><th>Rubrica</th><th>Meses</th><th>Total</th></tr>${Object.values(linhas.reduce((a, x) => { const k = x.rubrica; a[k] = a[k] || { r: k, n: 0, t: 0 }; a[k].n++; a[k].t += x.valor; return a; }, {}))
+        .map(x => `<tr><td>${esc(x.r)}</td><td>${x.n}</td><td>${bancR(x.t)}</td></tr>`).join('')}</table>`; }
+  else if (L.modo === 'extrato') corpo = `<p class="nota">${(L.lancamentos || []).length} linha(s) lidas; ${linhas.length} suspeita(s) vão para o mapa (as demais ficam de fora).</p>
+    <table><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Valor</th></tr>${linhas.slice(0, 60).map(l => `<tr><td class="dt">${br(l.data)}</td><td>${esc(l.descricao)}</td><td>${BANC_CAT_NOME[l.categoria]}</td><td>${bancR(l.valor)}</td></tr>`).join('')}</table>
+    ${linhas.length > 60 ? `<p class="sub" style="padding:0 18px">… e mais ${linhas.length - 60}.</p>` : ''}`;
+  else if (L.modo === 'contrato') { const k = L.contrato || {};
+    corpo = `<div style="padding:0 18px"><p>Contrato ${esc(k.numero || '—')} · ${esc(k.banco || '—')} · ${esc(k.produto || '')} · ${br(k.data)}</p>
+      <p>Taxa ${k.taxa_mensal ?? '—'}% a.m. (${k.taxa_anual ?? '—'}% a.a.) · CET ${k.cet_mensal ?? '—'}% a.m. · parcela ${bancR(k.parcela)} × ${k.qtd_parcelas ?? '—'}</p>
+      <p>Seguro: ${(L.seguro || []).length ? (L.seguro || []).map(s => `${esc(s.tipo || 'seguro')} ${bancR(s.premio)}`).join('; ') : 'nenhum lido'}</p>
+      <p>Tarifas: ${(L.tarifas || []).map(t => `${esc(t.nome)} ${bancR(t.valor)}`).join('; ') || 'nenhuma lida'}</p>
+      <p>Assinatura: ${esc(L.assinatura?.forma || '—')}${L.assinatura?.em_branco ? ' — <b>campo de assinatura em branco</b>' : ''}</p></div>`; }
+  else if (L.modo === 'trilha') corpo = `<div style="padding:0 18px"><p>Selfie: ${L.selfie?.existe ? 'sim, ' + esc(L.selfie.data_hora || '') : 'não consta'} · gov.br: ${L.govbr?.existe ? 'sim' : 'não consta'} · hash: ${esc(L.hash || '—')}</p></div>
+    <table><tr><th>Data e hora</th><th>IP</th><th>Geolocalização</th><th>Dispositivo</th><th>Telefone</th><th>Ação</th></tr>${(L.eventos || []).map(e => `<tr><td class="dt">${esc(e.data_hora || '')}</td><td>${esc(e.ip || '')}</td>
+      <td>${e.latitude != null ? `<a class="lnk" target="_blank" href="https://www.google.com/maps?q=${e.latitude},${e.longitude}">${e.latitude}, ${e.longitude}</a>` : '—'}</td><td>${esc([e.dispositivo, e.sistema].filter(Boolean).join(' · '))}</td><td>${esc(e.telefone || '')}</td><td>${esc(e.acao || '')}</td></tr>`).join('')}</table>`;
+  return `<div class="card"><h2>Leitura de "${esc(d.nome)}"</h2>${cab}
+    <p class="nota">Confira com o documento aberto ao lado. ${tabela ? 'Nada foi gravado no mapa ainda.' : 'Esta leitura fica guardada no documento (não vira linha do mapa).'}${L.observacao ? ` <b>Observação da leitura:</b> ${esc(L.observacao)}` : ''}</p>
+    ${corpo}
+    <div class="filtros" style="margin:10px 18px 14px"><button class="btn" onclick="bancDocAbrir('${d.id}')">Abrir o documento</button>
+      ${tabela ? `<button class="btn ok" onclick="bancGravarLeitura('${d.id}')">${d.lido.gravado_em ? 'Gravar de novo (substitui)' : `Gravar ${linhas.length} linha(s) no mapa`}</button>` : ''}
+      <button class="btn" onclick="bancVerLeitura('${d.id}')">Fechar</button></div></div>`;
+}
+
+function bancBlocoMapa(){
+  if (BANC.semLeitura) return `<div class="card"><h2>Mapa do extrato</h2><div class="aviso">${esc(BANC_SEM_LEITURA)}</div></div>`;
+  if (!BANC.contratos.length && !BANC.descontos.length && !BANC.lanc.length)
+    return `<div class="card"><h2>Mapa do extrato</h2><p class="nota">Leia o Extrato de Empréstimos, o HISCRE e o extrato da conta (botão "Ler" em cada documento) e grave a leitura: o mapa se monta aqui.</p></div>`;
+  const M = bancMotor();
+  const contr = M.contratos.length ? `<table><tr><th>Contrato</th><th>Averbação</th><th>Valor / parcela</th><th>Descontos no HISCRE</th><th>Prazo (5 anos do último desconto)</th><th>Restituição (últimos 5 anos)</th><th>Entrevista</th></tr>
+    ${M.contratos.map(k => { const c = k.c; return `<tr>
+      <td><b>${esc(c.numero)}</b><div class="sub">${esc(c.banco || '—')} · ${BANC_PROD[c.produto]}${c.situacao ? ' · ' + esc(c.situacao) : ''}</div>
+        ${k.inss ? `<div class="sub" style="color:var(--warn)">credor diferente do pagador (${esc(k.pag)}): INSS pode entrar (Tema 183/TNU)</div>` : ''}
+        ${k.acimaTeto ? `<div class="sub" style="color:var(--warn)">taxa ${c.taxa_mensal}% a.m. acima do teto atual do CNPS — confira o da data</div>` : ''}
+        ${c.origem ? `<div class="sub">origem: ${esc(c.origem)}</div>` : ''}</td>
+      <td class="dt">${br(c.averbacao)}</td>
+      <td>${bancR(c.valor_emprestado ?? c.limite_cartao)}<div class="sub">${bancR(c.parcela ?? c.reservado)}${c.qtd_parcelas ? ' × ' + c.qtd_parcelas : ''}</div></td>
+      <td>${k.desc.length ? `${k.desc.length} mês(es)<div class="sub">último ${prevComp(k.ultimo)}</div>` : '<span class="sub">não ligado a rubrica</span>'}</td>
+      <td>${k.ativo && !k.ultimo ? '<span class="pill good">ativo</span>' : k.limite ? `<span class="pill ${k.venceu ? 'crit' : dias(k.limite) < 180 ? 'warn' : 'good'}">${k.venceu ? 'prescrito em' : 'até'} ${br(k.limite)}</span>` : '<span class="sub">sem data</span>'}</td>
+      <td>${k.desc.length ? `${bancR(k.fx.principal)}<div class="sub">simples ${bancR(k.fx.simples)} + dobro de ${bancR(k.fx.dobro)}</div>` : '—'}</td>
+      <td><select onchange="bancEntrevista('${c.id}',this.value)">${BANC_ENTREV.map(([v, r]) => `<option value="${v}" ${c.entrevista === v ? 'selected' : ''}>${r}</option>`).join('')}</select></td></tr>`; }).join('')}</table>`
+    : '<p class="nota">Nenhum contrato gravado ainda (leia o Extrato de Empréstimos).</p>';
+  const rub = M.semContrato.length ? `<h3 style="margin:16px 18px 6px">Descontos do HISCRE sem contrato identificado</h3>
+    <p class="nota">O HISCRE nem sempre traz o número do contrato. Os totais abaixo valem para os últimos 5 anos (desde ${br(M.q5)}).</p>
+    <table><tr><th>Rubrica</th><th>Meses</th><th>Simples (até 29/03/2021)</th><th>Base do dobro (desde 30/03/2021)</th><th>Pedido principal</th></tr>
+    ${M.semContrato.map(x => { const f = bancFaixas(x.valores, M.q5); return `<tr><td>${esc(x.rubrica)}</td><td>${x.n}</td><td>${bancR(f.simples)}</td><td>${bancR(f.dobro)}</td><td><b>${bancR(f.principal)}</b></td></tr>`; }).join('')}</table>` : '';
+  const conta = M.conta.length ? `<h3 style="margin:16px 18px 6px">Descontos em conta</h3>
+    <p class="nota">Prazo de 10 anos (relação contratual) é a tese; o banco alegará 3 ou 5. Os dois cenários abaixo.</p>
+    <table><tr><th>Categoria</th><th>Linhas</th><th>Pedido em 5 anos</th><th>Pedido em 10 anos</th></tr>
+    ${M.conta.map(x => `<tr><td>${BANC_CAT_NOME[x.cat]}</td><td>${x.n}</td><td>${bancR(x.f5.principal)}</td><td><b>${bancR(x.f10.principal)}</b></td></tr>`).join('')}</table>` : '';
+  const acoes = M.acoes.length ? `<h3 style="margin:16px 18px 6px">Ações sugeridas (uma por banco)</h3>
+    <ul style="margin:0 18px 14px;padding-left:18px">${M.acoes.map(a => `<li style="margin:4px 0"><b>${esc(a.banco)}</b>: ${a.itens.map(esc).join('; ')}</li>`).join('')}</ul>`
+    : '<p class="nota">Marque a coluna "Entrevista" de cada contrato: as ações sugeridas saem dela.</p>';
+  return `<div class="card"><h2>Mapa do extrato</h2>
+    <p class="nota">Montado só com o que foi gravado e conferido. Prazos e valores são nominais (sem correção e juros) e servem para triar; o parecer sai da skill.
+      ${M.pagadores.length ? `Benefício pago em: ${esc(M.pagadores.join(', '))}.` : ''}</p>
+    ${contr}${rub}${conta}${acoes}</div>`;
+}
+/* BANC-LEITURA-FIM */
+
 
 
 async function telaPrev(){

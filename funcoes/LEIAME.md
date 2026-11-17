@@ -81,10 +81,14 @@ de um compromisso que já é seu.
 
 `painel` não precisa: é só a casca HTML, e todo dado dela vem com a sessão de quem abriu.
 
-`ler-documento` e `ler-extrato` **não** usam a chave de serviço — rodam com o login de quem
+`ler-documento`, `ler-extrato` e `ler-bancario` **não** usam a chave de serviço — rodam com o login de quem
 chamou, então a RLS vale. Aceitam qualquer login válido de propósito, porque a área da casa
 (`familia/`) usa o `ler-extrato`. O que elas expõem a um convidado não é dado, é gasto de
 API; se isso incomodar, o caminho é um teto de gasto na Anthropic, não uma trava aqui.
+
+`ler-bancario` (módulo Bancário) lê o Extrato de Empréstimos e o Histórico de Créditos do INSS,
+contratos e trilhas de assinatura eletrônica; devolve a leitura e não grava nada — quem grava
+é a tela, depois de o advogado conferir. Aceita qualquer login válido, como as outras duas.
 
 Para chamar uma função protegida à mão, use a sessão do escritório (o `access_token` do
 login) no `Authorization`. A chave pública da página **não** serve mais para isso.
