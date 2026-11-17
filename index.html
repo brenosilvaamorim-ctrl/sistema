@@ -13623,15 +13623,17 @@ function bancTextoPedido(banco){
   const ped = [];
   const emp = contratos.filter(c => ['consignado', 'pessoal', 'veiculo', 'outro'].includes(c.produto));
   const cart = contratos.filter(c => ['rmc', 'rcc'].includes(c.produto));
-  if (emp.length) ped.push(`cópia integral dos contratos ${emp.map(c => c.numero).join(', ')}, com o comprovante da transferência do valor emprestado (TED ou DOC), indicando banco, agência e conta de destino`);
-  if (cart.length) ped.push(`cópia do termo de adesão ao cartão de crédito consignado ${cart.map(c => c.numero).join(', ')}, de todas as faturas desde a contratação e dos comprovantes de cada saque ou compra`);
+  if (emp.length) ped.push(`cópia integral ${emp.length > 1 ? 'dos contratos' : 'do contrato'} ${emp.map(c => c.numero).join(', ')}, com o comprovante da transferência do valor emprestado (TED ou DOC), indicando banco, agência e conta de destino`);
+  if (cart.length) ped.push(`cópia do termo de adesão ${cart.length > 1 ? 'aos cartões' : 'ao cartão'} de crédito consignado ${cart.map(c => c.numero).join(', ')}, de todas as faturas desde a contratação e dos comprovantes de cada saque ou compra`);
   if (contratos.length) ped.push('a trilha de auditoria da assinatura de cada contrato: data e hora, IP, geolocalização, dispositivo, número de telefone, selfie ou biometria e o código de verificação usado; se a contratação foi por telefone, a gravação da ligação');
   if (cats.length) ped.push(`o contrato de abertura da conta e a autorização expressa para os débitos de ${cats.map(c => BANC_CAT_NOME[c].toLowerCase()).join(', ')}, com as respectivas apólices, propostas ou títulos`);
   ped.push('a relação de todos os dados pessoais meus que o banco trata, com a origem, a finalidade e os terceiros com quem foram compartilhados (Lei 13.709/2018, arts. 9º e 18, I e II), em declaração completa no prazo de 15 dias (art. 19, II)');
-  const neg = contratos.some(c => ['nega', 'enganado'].includes(c.entrevista));
+  const neg = contratos.filter(c => c.entrevista === 'nega').map(c => c.numero), eng = contratos.filter(c => c.entrevista === 'enganado').map(c => c.numero);
+  const lista = xs => xs.length > 1 ? `os contratos ${xs.slice(0, -1).join(', ')} e ${xs[xs.length - 1]}` : `o contrato ${xs[0]}`;
+  const fecho = [neg.length ? `Não reconheço ${lista(neg)}.` : '', eng.length ? `Quanto a${lista(eng)}, o que contratei não corresponde ao que me foi oferecido.` : ''].filter(Boolean).join(' ');
   return `Eu, ${cli}${id ? ', ' + id : ''}, venho requerer a esse banco, com base nos arts. 6º, III, e 43 do Código de Defesa do Consumidor e na Lei Geral de Proteção de Dados:\n\n`
     + ped.map((p, i) => `${i + 1}. ${p};`).join('\n').replace(/;$/, '.')
-    + (neg ? `\n\nNão reconheço ${contratos.length > 1 ? 'esses contratos' : 'esse contrato'}. Não havendo prova da contratação, peço o cancelamento, a suspensão imediata dos descontos e a devolução do que foi descontado.` : '')
+    + (fecho ? `\n\n${fecho} Não havendo prova da contratação regular, peço o cancelamento, a suspensão imediata dos descontos e a devolução do que foi descontado.` : '')
     + `\n\nPeço resposta por escrito, com os documentos, no prazo de 30 dias.`;
 }
 
