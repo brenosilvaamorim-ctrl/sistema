@@ -28,7 +28,8 @@ const INSTRUCOES = `Sistema do escritório Breno S. Amorim Advocacia (Petrolina/
 Comece por "buscar" (nome do cliente, CPF, título do caso ou número do processo) para achar os ids.
 "ver_caso" traz o caso inteiro: cliente, processos e movimentações, prazos, intimações, fatos, documentos e minutas.
 "ver_analise_previdenciaria" traz os vínculos do CNIS, o tempo, as pendências, as simulações salvas e o que foi lido dos documentos do INSS.
-"abrir_documento" devolve o PDF guardado (CNIS, processo administrativo, PPP) para você ler.
+"ver_analise_bancaria" traz os contratos do Extrato de Empréstimos, os descontos do HISCRE e da conta, a entrevista do cliente, os pedidos administrativos e o que foi lido de contratos e trilhas (use com a skill direito-bancario).
+"abrir_documento" devolve o PDF guardado (CNIS, processo administrativo, PPP, extratos e contratos bancários) para você ler.
 Datas vêm em dd/mm/aaaa. Ao citar documento, diga a página. Este conector não grava nada: o que precisar mudar, oriente o advogado a fazer no sistema.`;
 
 const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
@@ -142,6 +143,7 @@ const FERRAMENTAS: Ferramenta[] = [
         db.from('minuta').select('tipo,status,teses,criado_em').eq('caso_id', caso_id).order('criado_em', { ascending: false }).limit(10),
         db.from('prev_analise').select('id,data_base,situacao').eq('caso_id', caso_id),
       ]);
+      const bancs = await db.from('banc_analise').select('id,perfil,situacao').eq('caso_id', caso_id);   /* sem a tabela (antes do 68), só não lista */
       const cli = c.cliente || {}, L: string[] = [];
       L.push(`CASO: ${c.titulo}  (caso_id ${c.id})`);
       L.push(`Área: ${c.area || '—'} · polo: ${c.polo || '—'} · lado do cliente: ${c.cliente_lado || '—'} · valor da causa: ${dinheiro(c.valor_causa)}`);
@@ -182,6 +184,8 @@ const FERRAMENTAS: Ferramenta[] = [
       if (mn.length) { L.push('', 'MINUTAS'); for (const m of mn) L.push(`- ${br(m.criado_em)} · ${m.tipo} · ${m.status}${m.teses?.length ? ' · teses: ' + m.teses.join('; ') : ''}`); }
       const an = ok(analises) as any[];
       if (an.length) { L.push('', 'ANÁLISE PREVIDENCIÁRIA'); for (const a of an) L.push(`- situação ${a.situacao} · data-base ${br(a.data_base)} · analise_id ${a.id} (use "ver_analise_previdenciaria")`); }
+      const bc = (bancs.data || []) as any[];
+      if (bc.length) { L.push('', 'ANÁLISE BANCÁRIA'); for (const a of bc) L.push(`- perfil ${a.perfil} · situação ${a.situacao} · analise_id ${a.id} (use "ver_analise_bancaria")`); }
       return L.join('\n');
     },
   },
@@ -259,6 +263,72 @@ const FERRAMENTAS: Ferramenta[] = [
     },
   },
   {
+    name: 'ver_analise_bancaria', title: 'Ver a análise bancária',
+    description: 'O caso bancário (consumidor contra banco): dados do titular, contratos do Extrato de Empréstimos do INSS com a resposta do cliente na entrevista, descontos do HISCRE por contrato ou rubrica, descontos em conta por banco e categoria, pedidos administrativos (envio, protocolo, resposta) e documentos, com o que foi lido de contratos e trilhas de assinatura. Valores nominais; a contagem do prazo e do dobro fica com a skill.',
+    inputSchema: so({ analise_id: { type: 'string', description: 'id da análise' }, caso_id: { type: 'string', description: 'ou o id do caso' } }),
+    async run({ analise_id, caso_id }) {
+      const esc = await escritorio();
+      let q = db.from('banc_analise').select('*, cliente:cliente_id(nome,cpf_cnpj,nascimento), caso:caso_id(titulo)').eq('escritorio_id', esc);
+      if (uuidOk(analise_id)) q = q.eq('id', analise_id); else if (uuidOk(caso_id)) q = q.eq('caso_id', caso_id); else return 'Informe analise_id ou caso_id.';
+      const a = (ok(await q.order('criado_em', { ascending: false }).limit(1)) as any[])[0];
+      if (!a) return 'Análise bancária não encontrada.';
+      const todas = async (t: string, cols: string) => { const out: any[] = []; for (let i = 0; ; i += 1000) { const r = await db.from(t).select(cols).eq('analise_id', a.id).order('id').range(i, i + 999); if (r.error) return out; out.push(...(r.data || [])); if ((r.data || []).length < 1000) break; } return out; };
+      const [cs, ds, ls, pd, docs] = await Promise.all([
+        db.from('banc_contrato').select('*').eq('analise_id', a.id).order('averbacao'),
+        todas('banc_desconto', 'competencia,rubrica,valor,contrato,credor,banco_pagador'),
+        todas('banc_lancamento', 'data,descricao,valor,categoria,banco'),
+        db.from('banc_pedido').select('*').eq('analise_id', a.id).order('criado_em'),
+        db.from('banc_documento').select('id,tipo,banco,nome,paginas,periodo_inicio,periodo_fim,titular,status,pendencia,erro,lido').eq('analise_id', a.id).order('criado_em'),
+      ]);
+      const DOBRO = '2021-03-30', dig = (s: unknown) => soDigitos(s).replace(/^0+/, '');
+      const soma = (xs: any[], f: (x: any) => boolean) => xs.filter(f).reduce((t, x) => t + Number(x.valor || 0), 0);
+      const L: string[] = [];
+      L.push(`ANÁLISE BANCÁRIA (analise_id ${a.id}) · caso "${a.caso?.titulo || ''}" · situação ${a.situacao} · perfil ${a.perfil}`);
+      L.push(`Titular: ${a.cliente?.nome || a.titulo || '—'} · CPF ${a.cpf || a.cliente?.cpf_cnpj || '—'} · benefício ${a.nb || '—'} · nascimento ${br(a.nascimento || a.cliente?.nascimento)} · hoje ${br(hojeRecife())}`);
+      if (a.obs) L.push(`Observações: ${a.obs}`);
+      const pag = [...new Set(ds.map(x => x.banco_pagador).filter(Boolean))];
+      if (pag.length) L.push(`Benefício pago em (HISCRE): ${pag.join(', ')}`);
+      const contratos = (cs.data || []) as any[], usados = new Set<any>();
+      L.push('', 'CONTRATOS (número · banco · produto · averbação · situação · valor · parcela · taxa · entrevista · descontos no HISCRE)');
+      for (const c of contratos) {
+        const dd = ds.filter(x => x.contrato && dig(x.contrato) === dig(c.numero)); dd.forEach(x => usados.add(x));
+        const ult = dd.map(x => x.competencia).sort().pop();
+        L.push(`- ${c.numero} · ${c.banco || '—'} · ${c.produto} · averbação ${br(c.averbacao)} · ${c.situacao || '—'} · ${dinheiro(c.valor_emprestado ?? c.limite_cartao)} · ${dinheiro(c.parcela ?? c.reservado)}${c.qtd_parcelas ? ' × ' + c.qtd_parcelas : ''}`
+          + `${c.taxa_mensal != null ? ' · ' + c.taxa_mensal + '% a.m.' : ''}${c.origem ? ' · origem ' + c.origem : ''} · entrevista: ${c.entrevista}`
+          + ` · ${dd.length ? `${dd.length} mês(es), último ${br(ult).slice(3)}, total ${dinheiro(soma(dd, () => true))} (antes de 30/03/2021 ${dinheiro(soma(dd, x => x.competencia < DOBRO))}; desde ${dinheiro(soma(dd, x => x.competencia >= DOBRO))})` : 'sem desconto ligado'}${c.obs ? ' · obs: ' + c.obs : ''}`);
+      }
+      if (!contratos.length) L.push('- nenhum gravado');
+      const resto = ds.filter(x => !usados.has(x));
+      if (resto.length) {
+        L.push('', 'DESCONTOS DO HISCRE SEM CONTRATO IDENTIFICADO (rubrica · meses · período · total · antes/desde 30/03/2021)');
+        const g = new Map<string, any[]>(); for (const x of resto) { const k = String(x.rubrica || '').toUpperCase(); if (!g.has(k)) g.set(k, []); g.get(k)!.push(x); }
+        for (const [k, xs] of g) { const cp = xs.map(x => x.competencia).sort();
+          L.push(`- ${k} · ${xs.length} · ${br(cp[0]).slice(3)} a ${br(cp[cp.length - 1]).slice(3)} · ${dinheiro(soma(xs, () => true))} · ${dinheiro(soma(xs, x => x.competencia < DOBRO))} / ${dinheiro(soma(xs, x => x.competencia >= DOBRO))}`); }
+      }
+      if (ls.length) {
+        L.push('', 'DESCONTOS EM CONTA (banco · categoria · linhas · período · total · antes/desde 30/03/2021)');
+        const g = new Map<string, any[]>(); for (const x of ls) { const k = `${x.banco || '—'} · ${x.categoria}`; if (!g.has(k)) g.set(k, []); g.get(k)!.push(x); }
+        for (const [k, xs] of g) { const dt = xs.map(x => x.data).sort();
+          L.push(`- ${k} · ${xs.length} · ${br(dt[0])} a ${br(dt[dt.length - 1])} · ${dinheiro(soma(xs, () => true))} · ${dinheiro(soma(xs, x => x.data < DOBRO))} / ${dinheiro(soma(xs, x => x.data >= DOBRO))} · ex.: ${corta([...new Set(xs.map(x => x.descricao))].slice(0, 3).join('; '), 160)}`); }
+      }
+      const ps = (pd.data || []) as any[];
+      L.push('', 'PEDIDOS ADMINISTRATIVOS');
+      if (!ps.length) L.push('- nenhum');
+      for (const p of ps) L.push(`- ${p.banco} · ${p.situacao}${p.enviado_em ? ` · enviado ${br(p.enviado_em)} por ${p.canal || '—'}${p.protocolo ? ', protocolo ' + p.protocolo : ''} · resposta até ${br(maisDias(p.enviado_em, 30))}` : ''}`
+        + `${p.respondido_em ? ' · respondido ' + br(p.respondido_em) : ''}${p.exibiu ? ' · exibiu: ' + p.exibiu : ''}${p.resposta ? ' · ' + corta(p.resposta, 400) : ''}${p.contratos?.length ? ' · contratos pedidos: ' + p.contratos.join(', ') : ''}`);
+      const dc = (docs.data || []) as any[];
+      if (dc.length) {
+        L.push('', 'DOCUMENTOS (abra o PDF com abrir_documento, documento_id "banc:<id>")');
+        for (const d of dc) {
+          L.push(`- ${d.nome} · ${d.tipo}${d.banco ? ' · ' + d.banco : ''}${d.periodo_inicio ? ` · ${br(d.periodo_inicio)} a ${br(d.periodo_fim)}` : ''} · ${d.paginas ?? '?'} págs. · ${d.status}${d.titular === 'diverge' ? ' · CPF DIVERGE' : ''}${d.pendencia ? ' · pendência: ' + d.pendencia : ''}${d.erro ? ' · erro: ' + d.erro : ''} · documento_id banc:${d.id}`);
+          if (d.lido && ['contrato', 'trilha'].includes(d.lido.modo)) L.push(`    leitura: ${corta(JSON.stringify(d.lido), 3000)}`);
+        }
+      }
+      L.push('', 'Valores nominais, sem correção nem juros. Prazo: 5 anos do último desconto (contrato ativo não tem prazo correndo); dobro só sobre o descontado desde 30/03/2021 (EAREsp 676.608).');
+      return L.join('\n');
+    },
+  },
+  {
     name: 'ver_remuneracoes', title: 'Ver as remunerações do CNIS',
     description: 'Competência por competência (valor e indicadores) de um vínculo, ou de todos, num intervalo. Útil para checar meses abaixo do mínimo, lacunas e remunerações extemporâneas.',
     inputSchema: so({ analise_id: { type: 'string' }, vinculo_id: { type: 'string', description: 'opcional: só este vínculo' },
@@ -287,12 +357,16 @@ const FERRAMENTAS: Ferramenta[] = [
   },
   {
     name: 'abrir_documento', title: 'Abrir um documento guardado (PDF)',
-    description: 'Devolve o PDF guardado no sistema para leitura: um documento anexado à análise previdenciária (documento_id da lista) ou o CNIS ("cnis:<analise_id>"). PDFs acima de ~4 MB não cabem: peça ao advogado para anexar direto na conversa.',
+    description: 'Devolve o PDF guardado no sistema para leitura: um documento anexado à análise previdenciária (documento_id da lista), o CNIS ("cnis:<analise_id>") ou um documento da análise bancária ("banc:<documento_id>"). PDFs acima de ~4 MB não cabem: peça ao advogado para anexar direto na conversa.',
     inputSchema: so({ documento_id: { type: 'string', description: 'id do documento anexado, ou "cnis:<analise_id>"' } }, ['documento_id']),
     async run({ documento_id }) {
       const esc = await escritorio(), id = String(documento_id || '');
-      let caminho = '', nome = '';
-      if (id.startsWith('cnis:')) {
+      let caminho = '', nome = '', balde = 'previdenciario';
+      if (id.startsWith('banc:')) {
+        const d = (ok(await db.from('banc_documento').select('arquivo,nome').eq('id', id.slice(5)).eq('escritorio_id', esc).limit(1)) as any[])[0];
+        if (!d) return 'Documento bancário não encontrado.';
+        caminho = d.arquivo; nome = d.nome; balde = 'bancario';
+      } else if (id.startsWith('cnis:')) {
         const a = (ok(await db.from('prev_analise').select('cnis_arquivo').eq('id', id.slice(5)).eq('escritorio_id', esc).limit(1)) as any[])[0];
         if (!a?.cnis_arquivo) return 'Esta análise não tem PDF do CNIS guardado.';
         caminho = a.cnis_arquivo; nome = 'CNIS.pdf';
@@ -302,7 +376,7 @@ const FERRAMENTAS: Ferramenta[] = [
         caminho = d.arquivo; nome = d.nome;
       } else return 'documento_id inválido.';
       if (!caminho.startsWith(esc + '/')) return 'Documento fora da pasta do escritório.';
-      const { data, error } = await db.storage.from('previdenciario').download(caminho);
+      const { data, error } = await db.storage.from(balde).download(caminho);
       if (error || !data) return 'Não foi possível baixar: ' + (error?.message || 'sem arquivo');
       const buf = new Uint8Array(await data.arrayBuffer());
       if (buf.length > 4_200_000) return `"${nome}" tem ${(buf.length / 1048576).toFixed(1)} MB: grande demais para devolver por aqui. Peça ao advogado para anexar o PDF direto na conversa.`;

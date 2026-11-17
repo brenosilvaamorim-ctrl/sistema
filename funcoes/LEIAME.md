@@ -200,7 +200,9 @@ A tela publicada antes do passo 1 não quebra: sem a tabela, o quadro só não a
 
 Deixa o Claude (claude.ai e Claude Desktop) consultar o sistema numa conversa: buscar
 clientes e casos, ver o caso inteiro, a análise previdenciária, as remunerações do CNIS,
-os prazos e a agenda, a base de normas e abrir os PDFs guardados. **Só lê**: nenhuma
+a análise bancária (`ver_analise_bancaria`: contratos, descontos, pedidos administrativos e
+leituras, para a skill direito-bancario), os prazos e a agenda, a base de normas e abrir os
+PDFs guardados (inclusive os do balde `bancario`, com `documento_id` "banc:<id>"). **Só lê**: nenhuma
 ferramenta grava. Cada consulta fica no histórico (`historico`, entidade `mcp`).
 O uso sai da assinatura do Claude, não do crédito da API.
 
