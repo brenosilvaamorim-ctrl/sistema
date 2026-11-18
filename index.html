@@ -145,6 +145,26 @@ textarea{width:100%;resize:vertical;line-height:1.45}
 .abas button .n{font-size:11px;color:var(--i3);margin-left:4px;font-weight:400}
 .lado{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:18px;align-items:start}
 @media(max-width:900px){.lado{grid-template-columns:1fr}}
+/* Tribunais a consultar (banco/71). Cada tribunal é uma cápsula: o anel à esquerda enche
+   conforme o ciclo de quinze dias passa e muda de cor quando a próxima entrada se aproxima. */
+.trb{display:flex;flex-wrap:wrap;gap:9px;padding:4px 18px 14px}
+.trb-it{display:inline-flex;align-items:center;gap:9px;padding:5px 14px 5px 5px;border-radius:99px;
+  border:1px solid var(--ln);background:var(--s0);color:var(--ink);cursor:pointer;font:inherit;text-align:left;
+  transition:border-color .15s,transform .15s}
+.trb-it:hover{border-color:var(--i3);transform:translateY(-1px)}
+.trb-it.on{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink) inset}
+.trb-it.crit{border-color:var(--crit)}
+.trb-anel{--c:var(--i3);--p:0;width:32px;height:32px;border-radius:50%;flex:none;display:grid;place-items:center;
+  background:conic-gradient(var(--c) calc(var(--p)*1%),var(--ln) 0)}
+.trb-anel b{width:24px;height:24px;border-radius:50%;background:var(--s1);display:grid;place-items:center;
+  font:600 10.5px/1 ui-sans-serif,sans-serif;color:var(--c);font-variant-numeric:tabular-nums}
+.trb-it .sg{display:block;font:600 14px/1.1 Georgia,'Times New Roman',serif;letter-spacing:.02em}
+.trb-it .st{display:block;font-size:10.8px;color:var(--i3);margin-top:2px;white-space:nowrap}
+.trb-it sup{font:400 10px ui-sans-serif,sans-serif;color:var(--i3);margin-left:3px}
+.trb-det{margin:0 18px 14px;padding:12px 14px;border:1px solid var(--ln);border-radius:10px;background:var(--s0);font-size:12.8px}
+.trb-det .lin{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.trb-add{display:flex;gap:6px;padding:0 18px 16px}.trb-add input{flex:1;min-width:0;text-transform:uppercase}
+.trb-add input::placeholder{text-transform:none}
 .dl{padding:0 18px 14px}
 .dl-dia{display:flex;align-items:baseline;gap:8px;margin:16px 0 4px;font:600 13.6px/1.3 Georgia,serif;color:var(--ink)}
 .dl-dia:first-child{margin-top:4px}.dl-dia .sub{display:inline;font:400 11.6px ui-sans-serif,sans-serif;margin:0}
@@ -691,6 +711,117 @@ window.assinouAgora = async (id, data) => {
    (banco/62_planejamento_semanal.sql). Marcar um item guarda só o id dele em `feitos`:
    não dá baixa em prazo nem em evento, porque o plano é sugestão e a baixa continua
    sendo feita onde sempre foi. O que ficar sem marcar volta no plano do domingo seguinte. */
+/* ------------------------------------------------- tribunais a consultar (banco/71)
+   Entram sozinhos os tribunais com processo em curso; os outros, à mão. O lembrete é de
+   entrar no sistema de cada um a cada quinze dias (ou o intervalo escolhido), porque nem
+   tudo o que acontece no PJe chega ao DataJud ou ao DJEN. */
+let TRIB = null;   // { itens:[{sigla,nome,procs,manual,ultima,intervalo,link}], aberto }
+function montarTribunais(procs, consultas, nomes){
+  const nm = Object.fromEntries((nomes||[]).map(t => [t.sigla, t.nome]));
+  const m = {};
+  for (const p of procs || []) {
+    if (!p.tribunal_sigla || p.fase === 'arquivado') continue;
+    (m[p.tribunal_sigla] ||= { sigla:p.tribunal_sigla, procs:0 }).procs++;
+  }
+  for (const c of consultas || []) {
+    if (!m[c.sigla] && !c.manual) continue;   // saiu o último processo e não foi incluído à mão
+    Object.assign(m[c.sigla] ||= { sigla:c.sigla, procs:0 },
+      { manual:c.manual, ultima:c.ultima_consulta, intervalo:c.intervalo_dias, link:c.link });
+  }
+  const itens = Object.values(m).map(t => ({ ...t, nome: nm[t.sigla] || '', intervalo: t.intervalo || 15 }));
+  TRIB = { itens, aberto: TRIB?.aberto || null, nomes: nomes || [] };
+}
+/* A data da consulta é a do relógio de Petrolina, não a UTC: depois das 21h o hoje() do
+   sistema já marca o dia seguinte, e o tribunal consultado à noite nasceria "no futuro". */
+const hojeLocal = () => new Date().toLocaleDateString('sv');
+const tribDesde = d => Math.round((Date.parse(hojeLocal()+'T00:00:00Z') - Date.parse(String(d).slice(0,10)+'T00:00:00Z')) / 864e5);
+/* faltam = dias até a próxima consulta (negativo = atrasada); null = nunca consultado */
+const tribFaltam = t => t.ultima ? t.intervalo - tribDesde(t.ultima) : null;
+function tribEstado(t){
+  const f = tribFaltam(t);
+  if (f == null) return { c:'var(--i3)', cls:'', p:0, txt:'nunca consultado', ord:-1e4 };
+  const passados = t.intervalo - f, p = Math.max(4, Math.min(100, Math.round(passados / t.intervalo * 100)));
+  if (f < 0)  return { c:'var(--crit)', cls:'crit', p:100, txt:'atrasado ' + humano(-f), ord:f - 1e5 };
+  if (f === 0) return { c:'var(--crit)', cls:'crit', p:100, txt:'consultar hoje', ord:f };
+  if (f <= 3) return { c:'var(--warn)', cls:'', p, txt:'faltam ' + humano(f), ord:f };
+  return { c:'var(--good)', cls:'', p, txt:'próxima em ' + humano(f), ord:f };
+}
+function quadroTribunais(){
+  if (!TRIB) return '';
+  const itens = TRIB.itens.map(t => ({ t, e:tribEstado(t) })).sort((a,b) => a.e.ord - b.e.ord || a.t.sigla.localeCompare(b.t.sigla));
+  const atras = itens.filter(x => x.e.cls === 'crit' || x.t.ultima == null).length;
+  const a = TRIB.itens.find(t => t.sigla === TRIB.aberto);
+  return `<h2>Tribunais a consultar</h2>
+    <p class="nota" style="margin-bottom:8px">${itens.length
+      ? (atras ? '<b style="color:var(--crit)">' + atras + '</b> pedindo uma entrada no sistema. ' : 'Tudo em dia. ')
+        + 'O número no anel são os dias desde a última consulta; clique no tribunal para marcar a de hoje.'
+      : 'Nenhum processo em curso com tribunal informado. Inclua abaixo os sistemas que quer acompanhar.'}</p>
+    <div class="trb">${itens.map(({t,e}) => `<button class="trb-it ${e.cls}${TRIB.aberto===t.sigla?' on':''}"
+        title="${esc(t.nome || t.sigla)}${t.procs ? ' · ' + t.procs + ' processo(s) em curso' : ''}" onclick="abrirTribunal('${esc(t.sigla)}')">
+        <span class="trb-anel" style="--c:${e.c};--p:${e.p}"><b>${t.ultima ? tribDesde(t.ultima) : '—'}</b></span>
+        <span><span class="sg">${esc(t.sigla)}${t.procs ? `<sup>${t.procs}</sup>` : ''}</span>
+          <span class="st" style="${e.cls||e.c==='var(--warn)' ? 'color:'+e.c : ''}">${e.txt}</span></span></button>`).join('')}</div>
+    ${a ? `<div class="trb-det">
+      <b>${esc(a.sigla)}</b>${a.nome ? ' — ' + esc(a.nome) : ''}
+      <span class="sub">${a.procs ? a.procs + ' processo(s) em curso' : 'incluído à mão, sem processo em curso cadastrado'}
+        · última consulta: ${a.ultima ? br(a.ultima) + ' (' + (tribDesde(a.ultima) === 0 ? 'hoje' : 'há ' + humano(tribDesde(a.ultima))) + ')' : 'nunca'}</span>
+      <div class="lin">
+        <button class="btn ok" onclick="salvarTribunal('${esc(a.sigla)}',{ultima_consulta:hojeLocal()})">Consultei hoje</button>
+        ${a.link ? `<a class="btn" style="text-decoration:none" href="${esc(a.link)}" target="_blank" rel="noreferrer">Abrir o sistema ↗</a>` : ''}
+        <input type="date" value="${a.ultima || ''}" max="${hojeLocal()}" title="outra data de consulta"
+          onchange="this.value && salvarTribunal('${esc(a.sigla)}',{ultima_consulta:this.value})">
+      </div>
+      <div class="lin">
+        <span class="sub" style="margin:0">a cada</span>
+        <select onchange="salvarTribunal('${esc(a.sigla)}',{intervalo_dias:+this.value})">
+          ${[7,15,30,60].concat([7,15,30,60].includes(a.intervalo) ? [] : [a.intervalo]).map(n =>
+            `<option value="${n}"${n===a.intervalo?' selected':''}>${n} dias</option>`).join('')}</select>
+        <input type="text" placeholder="endereço do sistema (https://…)" value="${esc(a.link || '')}" style="flex:1;min-width:150px;text-transform:none"
+          onchange="salvarTribunal('${esc(a.sigla)}',{link:this.value.trim()||null})">
+      </div>
+      ${a.manual && !a.procs ? `<div class="lin"><button class="btn" style="color:var(--crit)" onclick="tirarTribunal('${esc(a.sigla)}')">Tirar da lista</button></div>` : ''}
+      <span class="sub" id="trb-st"></span>
+    </div>` : ''}
+    <form class="trb-add" onsubmit="event.preventDefault();incluirTribunal(this.sigla.value)">
+      <input name="sigla" list="trb-lista" placeholder="incluir tribunal (TRF5, TJBA…)" autocomplete="off">
+      <datalist id="trb-lista">${TRIB.nomes.filter(t => !TRIB.itens.some(i => i.sigla === t.sigla))
+        .map(t => `<option value="${esc(t.sigla)}">${esc(t.nome)}</option>`).join('')}</datalist>
+      <button class="btn">Incluir</button></form>`;
+}
+const pintarTribunais = () => { const el = document.getElementById('initrib'); if (el) el.innerHTML = quadroTribunais(); };
+window.abrirTribunal = sigla => { TRIB.aberto = TRIB.aberto === sigla ? null : sigla; pintarTribunais(); };
+window.salvarTribunal = async (sigla, campos) => {
+  const t = TRIB.itens.find(x => x.sigla === sigla); if (!t) return;
+  const st = document.getElementById('trb-st'); if (st) st.textContent = 'salvando…';
+  const { error } = await sb.from('tribunal_consulta').upsert(
+    { escritorio_id: await escId(), sigla, manual: !!t.manual, ...campos, atualizado_em: new Date().toISOString() },
+    { onConflict: 'escritorio_id,sigla' });
+  if (error) { if (st) { st.style.color = 'var(--crit)'; st.textContent = 'erro: ' + error.message; } return; }
+  if ('ultima_consulta' in campos) t.ultima = campos.ultima_consulta;
+  if ('intervalo_dias' in campos) t.intervalo = campos.intervalo_dias;
+  if ('link' in campos) t.link = campos.link;
+  pintarTribunais();
+};
+window.incluirTribunal = async (bruto) => {
+  const sigla = String(bruto || '').trim().toUpperCase().replace(/\s+/g, '');
+  if (!sigla) return;
+  const ja = TRIB.itens.find(x => x.sigla === sigla);
+  if (ja) { TRIB.aberto = sigla; return pintarTribunais(); }
+  const { error } = await sb.from('tribunal_consulta').upsert(
+    { escritorio_id: await escId(), sigla, manual: true, atualizado_em: new Date().toISOString() },
+    { onConflict: 'escritorio_id,sigla' });
+  if (error) return alert('Não consegui incluir: ' + error.message);
+  TRIB.itens.push({ sigla, procs:0, manual:true, ultima:null, intervalo:15, link:null,
+    nome: TRIB.nomes.find(t => t.sigla === sigla)?.nome || '' });
+  TRIB.aberto = sigla; pintarTribunais();
+};
+window.tirarTribunal = async (sigla) => {
+  if (!confirm('Tirar ' + sigla + ' da lista de tribunais a consultar?')) return;
+  const { error } = await sb.from('tribunal_consulta').delete().eq('sigla', sigla);
+  if (error) return alert('Não consegui tirar: ' + error.message);
+  TRIB.itens = TRIB.itens.filter(x => x.sigla !== sigla); TRIB.aberto = null; pintarTribunais();
+};
+
 let INIPLANO = null;
 const DIASEM = ['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
 function quadroPlano(h){
@@ -756,7 +887,7 @@ async function telaInicio(){
   const d7  = new Date(Date.now() + 7*864e5).toISOString().slice(0,10);
   const d30 = new Date(Date.now() - 30*864e5).toISOString().slice(0,10);
   const mes = h.slice(0,7);
-  const [pz, ev, itm, lc, cs, asn, pla, urg, lds, crt] = await Promise.all([
+  const [pz, ev, itm, lc, cs, asn, pla, urg, lds, crt, tpr, tco, tnm] = await Promise.all([
     sb.from('prazo').select('id,descricao,data_fatal,situacao,regime,data_inicio,caso:caso_id(id,titulo)')
       .in('situacao',['sugerido','confirmado']).order('data_fatal'),
     sb.from('evento').select('id,titulo,tipo,inicio,local,link_sala,situacao,caso:caso_id(id,titulo),cliente:cliente_id(nome)')
@@ -776,8 +907,13 @@ async function telaInicio(){
     sb.from('intimacao').select('id,critico,data_disponibilizacao,numero_formatado,tribunal_sigla,situacao,caso_id,caso:caso_id(titulo),prazo(id,data_fatal,situacao)')
       .not('critico','is',null).gte('data_disponibilizacao', new Date(Date.now() - 45*864e5).toISOString().slice(0,10))
       .order('data_disponibilizacao', { ascending:false }),
+    sb.from('processo').select('tribunal_sigla,fase').limit(2000),
+    /* tribunais a consultar: banco/71. Sem a tabela, o quadro não aparece. */
+    sb.from('tribunal_consulta').select('sigla,manual,ultima_consulta,intervalo_dias,link'),
+    sb.from('tribunal').select('sigla,nome').eq('ativo', true).order('sigla'),
   ]);
   if (pz.error) return erro(pz.error.message);
+  if (tco.error) TRIB = null; else montarTribunais(tpr.data, tco.data, tnm.data);
   /* Se a tabela ainda não existir (banco/62 não rodado), o quadro só não aparece. */
   INIPLANO = pla.error ? undefined : ((pla.data||[])[0] || null);
   const PZ = pz.data||[], EV = ev.data||[], LC = lc.data||[];
@@ -895,6 +1031,7 @@ async function telaInicio(){
           ${at('Casos abertos', abertos, '#/casos')}
           </div>
         </div></div>
+      ${TRIB ? `<div class="card" id="initrib">${quadroTribunais()}</div>` : ''}
       <div class="card"><h2>O mês no dinheiro</h2>
         <div class="at">
           ${at('A receber no mês', rs(entra), '#/financeiro')}
