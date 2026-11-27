@@ -2,11 +2,22 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Breno S. Amorim Advocacia</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@400;500&family=Inter:wght@400;500;600;650&display=swap">
 <style>
-:root{color-scheme:light;--s0:#f4f3f0;--s1:#fcfcfb;--ln:#e3e1dc;--ink:#0b0b0b;--i2:#52514e;--i3:#78766f;
---good:#0ca30c;--warn:#fab219;--ser:#ec835a;--crit:#d03b3b;--serie:#2a78d6;--hoje:#2a78d6;--presc:#7b3fb0;--taref:#2f8f7f}
-@media(prefers-color-scheme:dark){:root{color-scheme:dark;--s0:#111110;--s1:#1a1a19;--ln:#33332f;--ink:#fff;--i2:#c3c2b7;--i3:#8f8e85;--serie:#3987e5;--presc:#a973dd;--taref:#45b39e}}
-*{box-sizing:border-box}body{margin:0;background:var(--s0);color:var(--ink);font:15px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
+/* Pele de 11/2026: a paleta da marca do escritório. O fundo pérola e o marrom saem da logo
+   (o marrom do monograma vira a cor de destaque, no lugar do azul); o cinza dos textos é o do
+   nome. As cores de estado continuam com o mesmo sentido de antes, só puxadas para tons de
+   terra para conviver com o marrom: vermelho é urgente, âmbar é atenção, roxo é prescrição.
+   Os cartões deixam a linha em volta e passam a flutuar com sombra leve (--sh). */
+:root{color-scheme:light;--s0:#ebe7e4;--s1:#f9f7f5;--ln:#ddd6cf;--ink:#2a2520;--i2:#5d5852;--i3:#857e76;
+--good:#4f7d50;--warn:#c08412;--ser:#b0623a;--crit:#b8382f;--serie:#6b4f3b;--hoje:#6b4f3b;--presc:#7a4e8a;--taref:#3f7f72;
+--sh:0 1px 2px rgba(60,40,25,.05),0 4px 16px rgba(60,40,25,.07);
+--disp:"Marcellus",Georgia,serif;--rot:"Jost",ui-sans-serif,sans-serif;--sans:"Inter",ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
+@media(prefers-color-scheme:dark){:root{color-scheme:dark;--s0:#191613;--s1:#231f1b;--ln:#3a332d;--ink:#f1ece6;--i2:#cfc7be;--i3:#978e84;
+--good:#8db98a;--warn:#e3ae45;--ser:#d48b65;--crit:#e0675c;--serie:#c9a27f;--hoje:#c9a27f;--presc:#b98cc9;--taref:#6fbfae;
+--sh:0 1px 2px rgba(0,0,0,.3),0 6px 18px rgba(0,0,0,.25)}}
+*{box-sizing:border-box}body{margin:0;background:var(--s0);color:var(--ink);font:15px/1.5 var(--sans)}
 a{color:inherit}
 nav{display:flex;gap:2px;align-items:center;padding:0 20px;background:var(--s1);border-bottom:1px solid var(--ln);
   flex-wrap:wrap;position:sticky;top:0;z-index:9}
@@ -28,13 +39,14 @@ nav a.on{color:var(--ink);border-bottom-color:var(--serie);font-weight:600}
 .grp .lista a.on{color:var(--serie);font-weight:600;background:var(--s0)}
 nav a:hover{color:var(--ink)}nav .dir{margin-left:auto;font-size:12.3px;color:var(--i3);padding:15px 0}
 .marca{display:flex;align-items:center;gap:9px;padding:11px 18px 11px 0;margin-right:10px;border-right:1px solid var(--ln)}
-.marca .sigla{width:31px;height:31px;border-radius:7px;background:var(--ink);color:var(--s1);display:grid;
-  place-items:center;font:600 12.5px/1 ui-sans-serif,sans-serif;letter-spacing:.02em;flex:none}
+/* O monograma da logo entra como máscara: assim ele pega a cor de destaque e acompanha o modo escuro. */
+.marca .mono{width:40px;height:33px;flex:none;background:var(--serie);
+  -webkit-mask:url(marca/monograma.png) center/contain no-repeat;mask:url(marca/monograma.png) center/contain no-repeat}
 .marca img{width:31px;height:31px;object-fit:contain;border-radius:6px;flex:none}
-.marca .nome{font:600 14.2px/1.15 Georgia,'Times New Roman',serif;letter-spacing:.01em;color:var(--ink)}
-.marca .sub2{display:block;font:400 10.5px/1.3 ui-sans-serif,sans-serif;color:var(--i3);
+.marca .nome{font:400 13.6px/1.15 var(--disp);letter-spacing:.09em;text-transform:uppercase;color:var(--i2)}
+.marca .sub2{display:block;font:400 10px/1.3 var(--rot);color:var(--i3);
   text-transform:uppercase;letter-spacing:.09em;margin-top:2px}
-h1{font-family:Georgia,'Times New Roman',serif;font-weight:600;letter-spacing:-.005em}
+h1{font-family:var(--disp);font-weight:400;letter-spacing:.01em}
 footer{max-width:1180px;margin:0 auto;padding:0 18px 40px;color:var(--i3);font-size:11.6px;line-height:1.7}
 footer b{color:var(--i2);font-weight:600}
 main{max-width:1180px;margin:0 auto;padding:24px 18px 70px}
@@ -83,7 +95,7 @@ textarea{width:100%;resize:vertical;line-height:1.45}
 .aviso{background:var(--s1);border:1px solid var(--crit);border-left-width:3px;border-radius:8px;padding:12px 15px;margin-bottom:18px;font-size:13.4px;color:var(--i2)}
 .nfc{display:flex;flex-direction:column;gap:3px}.nfc .sub{margin:0}
 .aviso b{color:var(--ink)}.vazio{padding:28px;text-align:center;color:var(--i3)}
-.login{max-width:400px;margin:12vh auto;background:var(--s1);border:1px solid var(--ln);border-radius:14px;padding:28px}
+.login{max-width:400px;margin:12vh auto;background:var(--s1);border:0;box-shadow:var(--sh);text-align:center;border-radius:14px;padding:28px}
 .login h1{font-size:19px;margin-bottom:6px}.login p{color:var(--i2);font-size:13.5px;margin:0 0 18px}
 .login input{width:100%;margin-bottom:10px;padding:9px 11px}.login .btn{width:100%;padding:9px}
 .filtros{display:flex;gap:8px;align-items:center;margin:0 18px 12px;flex-wrap:wrap}
@@ -109,7 +121,7 @@ textarea{width:100%;resize:vertical;line-height:1.45}
 .duas{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px}
 .duas .card{margin-bottom:0}
 .calnav{display:flex;gap:10px;align-items:baseline;margin-bottom:14px}
-.calnav .mes{font:600 19px/1 Georgia,serif;color:var(--ink);letter-spacing:-.01em}
+.calnav .mes{font:400 20px/1 var(--disp);color:var(--ink);letter-spacing:-.01em}
 .calnav .ano{font-size:15px;color:var(--i3)}
 .calnav .nav{margin-left:auto;display:flex;gap:6px}
 .calnav .nav button{border:1px solid var(--ln);background:var(--s1);color:var(--i2);border-radius:7px;
@@ -158,7 +170,7 @@ textarea{width:100%;resize:vertical;line-height:1.45}
   background:conic-gradient(var(--c) calc(var(--p)*1%),var(--ln) 0)}
 .trb-anel b{width:24px;height:24px;border-radius:50%;background:var(--s1);display:grid;place-items:center;
   font:600 10.5px/1 ui-sans-serif,sans-serif;color:var(--c);font-variant-numeric:tabular-nums}
-.trb-it .sg{display:block;font:600 14px/1.1 Georgia,'Times New Roman',serif;letter-spacing:.02em}
+.trb-it .sg{display:block;font:400 14px/1.1 var(--disp);letter-spacing:.02em}
 .trb-it .st{display:block;font-size:10.8px;color:var(--i3);margin-top:2px;white-space:nowrap}
 .trb-it sup{font:400 10px ui-sans-serif,sans-serif;color:var(--i3);margin-left:3px}
 .trb-det{margin:0 18px 14px;padding:12px 14px;border:1px solid var(--ln);border-radius:10px;background:var(--s0);font-size:12.8px}
@@ -166,7 +178,7 @@ textarea{width:100%;resize:vertical;line-height:1.45}
 .trb-add{display:flex;gap:6px;padding:0 18px 16px}.trb-add input{flex:1;min-width:0;text-transform:uppercase}
 .trb-add input::placeholder{text-transform:none}
 .dl{padding:0 18px 14px}
-.dl-dia{display:flex;align-items:baseline;gap:8px;margin:16px 0 4px;font:600 13.6px/1.3 Georgia,serif;color:var(--ink)}
+.dl-dia{display:flex;align-items:baseline;gap:8px;margin:16px 0 4px;font:400 14.5px/1.3 var(--disp);color:var(--ink)}
 .dl-dia:first-child{margin-top:4px}.dl-dia .sub{display:inline;font:400 11.6px ui-sans-serif,sans-serif;margin:0}
 .dl-dia.hj{color:var(--serie)}
 .dl-it{display:grid;grid-template-columns:48px minmax(0,1fr) auto;gap:10px;align-items:start;padding:8px 0;
@@ -199,7 +211,7 @@ textarea{width:100%;resize:vertical;line-height:1.45}
 .md-ev.audiencia{border-left-color:var(--crit)}.md-ev.tarefa{border-left-color:var(--taref)}.md-ev.reuniao{border-left-color:var(--serie)}.md-ev.pericia{border-left-color:var(--warn)}
 .pzrow{padding-left:10px;padding-right:6px}
 .critico-bloco{border:2px solid var(--crit);border-radius:12px;background:color-mix(in srgb,var(--crit) 7%,var(--s1));margin:0 0 18px;padding:14px 18px}
-.critico-bloco .tit{font:600 17px/1.3 Georgia,serif;color:var(--crit);margin-bottom:6px}
+.critico-bloco .tit{font:400 18px/1.3 var(--disp);color:var(--crit);margin-bottom:6px}
 .critico-bloco .it{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;padding:8px 0;border-top:1px solid color-mix(in srgb,var(--crit) 25%,transparent);font-size:13.6px}
 .critico-bloco .it:first-of-type{border-top:0}
 .pzrow.critica{box-shadow:inset 4px 0 0 var(--crit);background:color-mix(in srgb,var(--crit) 6%,transparent)}.pzrow:hover{background:var(--s0)}.pzrow.sel{background:var(--s0);box-shadow:inset 3px 0 0 var(--ink)}
@@ -293,6 +305,18 @@ textarea{width:100%;resize:vertical;line-height:1.45}
 .tl.fut .tlponto::before{background:var(--ser,#b45309)}
 .tlcorpo{padding:7px 0 11px 6px;border-bottom:1px solid var(--lin)}
 .tlcorpo b{display:block;margin-top:2px}
+/* ---- pele 11/2026: cartões com sombra em vez de linha; rótulos em caixa alta espaçada ---- */
+.card,.tile,.kpi{border:0;box-shadow:var(--sh)}
+.card{border-radius:14px}.tile{border-radius:12px}.kpi{border-radius:14px}
+.card>h2{font:500 12px/1.35 var(--rot);letter-spacing:.15em;text-transform:uppercase;color:var(--i2);margin-top:17px}
+.card>h2 *{font-family:var(--sans);letter-spacing:normal;text-transform:none}
+th{font-family:var(--rot);font-weight:500;letter-spacing:.12em}
+.coluna{border:0;background:color-mix(in srgb,var(--s0) 55%,var(--s1))}
+.cartao{background:var(--s1);border:0;box-shadow:var(--sh);border-radius:11px}
+.cartao.arrastando{outline:1px dashed var(--i3)}
+.abas button.on{border-bottom-color:var(--serie)}
+.mono-login{display:block;width:64px;height:54px;margin:0 auto 12px;background:var(--serie);
+  -webkit-mask:url(marca/monograma.png) center/contain no-repeat;mask:url(marca/monograma.png) center/contain no-repeat}
 </style></head><body>
 <div id="app"><div class="vazio">Carregando…</div></div>
 <script>
@@ -314,7 +338,7 @@ let USER = null, ESC_CARREGADO = false;
 /* ------------------------------------------------------------------ login */
 function telaLogin(msg){
   app.innerHTML = `<div class="login">
-    <h1 style="font-family:Georgia,'Times New Roman',serif">Breno S. Amorim Advocacia</h1>
+    <span class="mono-login" role="img" aria-label="BA"></span><h1>Breno S. Amorim Advocacia</h1>
     <p>Sistema interno. Entre com seu e-mail — enviamos um link de acesso, sem senha para decorar.</p>
     <input id="em" type="email" placeholder="seu@email.com" autocomplete="email">
     <button class="btn ok" id="go">Receber link de acesso</button>
@@ -479,7 +503,7 @@ function menu(atual){
     .filter(([, l]) => l.length);
   const marca = ESC_LOGO
     ? `<img src="${ESC_LOGO}" alt="">`
-    : `<div class="sigla">${esc(ESC_NOME.split(/\s+/).filter(w=>w.length>2).slice(0,2).map(w=>w[0]).join('').toUpperCase()||'BA')}</div>`;
+    : `<span class="mono" role="img" aria-label="BA"></span>`;
   return `<nav>
     <div class="marca">${marca}<div><span class="nome">${esc(ESC_NOME)}</span>
       <span class="sub2">sistema interno</span></div></div>
@@ -1155,7 +1179,7 @@ function pintarDetPz(id){
   const campo = (rot, v) => v ? `<div><span class="r">${rot}</span>${v}</div>` : '';
   alvo.innerHTML = `
     <div style="padding:16px 18px 4px;display:flex;gap:10px;align-items:flex-start;justify-content:space-between">
-      <div><div style="font:600 18px/1.3 Georgia,serif">${esc(p.descricao)}</div>
+      <div><div style="font:400 19px/1.3 var(--disp)">${esc(p.descricao)}</div>
         <div class="sub" style="margin-top:3px">${p.situacao === 'sugerido' ? 'Sugerido pelo robô — confira antes de aceitar' : 'Confirmado'}${p.providencia ? ' · ' + esc(p.providencia) : ''}</div></div>
       <span class="pill ${k}"><span aria-hidden="true">${ic}</span> ${tx}</span>
     </div>
@@ -2640,7 +2664,7 @@ function pintarMeuDia(){
       </div></div>
     <div class="card" style="margin-bottom:0">
       <div style="display:flex;align-items:center;gap:8px;padding:14px 18px 6px">
-        <b style="font:600 16px Georgia,serif">${D === h ? 'Hoje' : nm[0].toUpperCase() + nm.slice(1)}, ${br(D)}</b>
+        <b style="font:400 17px var(--disp)">${D === h ? 'Hoje' : nm[0].toUpperCase() + nm.slice(1)}, ${br(D)}</b>
         <span style="margin-left:auto;display:flex;gap:5px">
           <button class="btn" onclick="AGDIA = somaDia(AGDIA || hoje(), -1); pintarMeuDia()">‹</button>
           <button class="btn" onclick="AGDIA = null; pintarMeuDia()">Hoje</button>
