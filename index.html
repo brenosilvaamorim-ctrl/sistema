@@ -165,8 +165,10 @@ textarea{width:100%;resize:vertical;line-height:1.45}
 .calnav .nav button{border:1px solid var(--ln);background:var(--s1);color:var(--i2);border-radius:7px;
   padding:5px 11px;font-size:13px;cursor:pointer;line-height:1.2}
 .calnav .nav button:hover{border-color:var(--i3);color:var(--ink)}
-.calmes{display:grid;grid-template-columns:1.6fr 1fr;gap:16px;align-items:start}
-@media(max-width:860px){.calmes{grid-template-columns:1fr}}
+.calmes{display:grid;grid-template-columns:minmax(0,2.2fr) minmax(0,1fr);gap:18px;align-items:start}
+/* Com o menu lateral, o calendário só divide a largura com o dia escolhido em tela grande;
+   abaixo disso o dia vai para baixo da grade, para os compromissos caberem escritos nas células. */
+@media(max-width:1500px){.calmes{grid-template-columns:1fr}}
 /* ---- desenho de 11/2026: Início, Agenda e caso. Cabeçalho em serifa, blocos que dizem o
    que pedem, e a semana como lista por dia — o Breno preferiu lista a grade de calendário. */
 .cab{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:14px}
@@ -237,7 +239,7 @@ textarea{width:100%;resize:vertical;line-height:1.45}
 .marca-esq.ser{border-left-color:var(--ser)}.marca-esq.warn{border-left-color:var(--warn)}
 .vistas{display:inline-flex;border:1px solid var(--ln);border-radius:8px;overflow:hidden}
 .vistas button{font:inherit;font-size:12.3px;padding:5px 11px;border:0;background:var(--s1);color:var(--i2);cursor:pointer}
-.vistas button.on{background:var(--ink);color:var(--s1);font-weight:600}
+.vistas button.on{background:var(--serie);color:var(--s1);font-weight:600}
 .md-it{border:1px solid var(--ln);border-radius:8px;padding:8px 10px;margin:6px 0;font-size:13px;background:var(--s0);cursor:grab}
 .md-it:hover{border-color:var(--i3)}.md-it.sel{border-color:var(--ink);box-shadow:inset 3px 0 0 var(--ink)}
 .md-grade{padding:0 18px 16px}
@@ -254,31 +256,42 @@ textarea{width:100%;resize:vertical;line-height:1.45}
 .critico-bloco .it:first-of-type{border-top:0}
 .pzrow.critica{box-shadow:inset 4px 0 0 var(--crit);background:color-mix(in srgb,var(--crit) 6%,transparent)}.pzrow:hover{background:var(--s0)}.pzrow.sel{background:var(--s0);box-shadow:inset 3px 0 0 var(--ink)}
 #pzdet .ficha{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
-.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--ln);
-  border:1px solid var(--ln);border-radius:10px;overflow:hidden}
-.cabdia{background:var(--s0);padding:7px 8px;font-size:10.4px;color:var(--i3);
-  text-transform:uppercase;letter-spacing:.07em;text-align:center;font-weight:600}
-.dia{background:var(--s1);min-height:74px;padding:6px 5px 5px;cursor:pointer;transition:background .12s}
-.dia:hover{background:var(--s0)}
-.dia.fora{opacity:.32;cursor:default}.dia.fora:hover{background:var(--s1)}
-.dia.sel{background:var(--s0);box-shadow:inset 0 0 0 2px var(--serie)}
-.dia .num{font-size:12.5px;color:var(--i2);font-variant-numeric:tabular-nums;
-  width:22px;height:22px;display:flex;align-items:center;justify-content:center;
-  border-radius:99px;margin:0 auto 4px}
-.dia.hoje{background:var(--s0)}
-.dia.hoje .num{background:var(--hoje);color:#fff;font-weight:700;
-  box-shadow:0 0 0 3px color-mix(in srgb, var(--hoje) 22%, transparent)}
-.pontos{display:flex;gap:3px;justify-content:center;flex-wrap:wrap;min-height:7px}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.cabdia{padding:4px 0 6px;font:500 10.5px/1 var(--rot);color:var(--i3);text-transform:uppercase;letter-spacing:.16em;text-align:center}
+.dia{background:color-mix(in srgb,var(--s0) 45%,var(--s1));border-radius:10px;min-height:96px;padding:6px;cursor:pointer;
+  display:flex;flex-direction:column;gap:3px;min-width:0;transition:background .12s}
+.dia:hover{background:color-mix(in srgb,var(--serie) 9%,var(--s1))}
+.dia:focus-visible{outline:2px solid var(--serie);outline-offset:1px}
+.dia.fds{background:transparent}
+.dia.fora{opacity:.38;cursor:default}.dia.fora:hover{background:transparent}
+.dia.sel{box-shadow:inset 0 0 0 1.5px var(--serie)}
+.dia .num{font-size:12.5px;font-weight:500;color:var(--i2);font-variant-numeric:tabular-nums;
+  width:24px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:99px}
+.dia.hoje .num{background:var(--hoje);color:var(--s1);font-weight:650}
+.chips{display:flex;flex-direction:column;gap:3px;min-width:0}
+.ch{font-size:11px;line-height:1.3;padding:2px 5px;border-radius:5px;border-left:2.5px solid var(--i3);color:var(--ink);
+  background:color-mix(in srgb,var(--i3) 12%,transparent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ch b{font-weight:600}
+.ch.prazo{border-color:var(--ser);background:color-mix(in srgb,var(--ser) 13%,transparent)}
+.ch.audiencia{border-color:var(--crit);background:color-mix(in srgb,var(--crit) 12%,transparent)}
+.ch.prescricao{border-color:var(--presc);background:color-mix(in srgb,var(--presc) 13%,transparent)}
+.ch.pericia{border-color:var(--warn);background:color-mix(in srgb,var(--warn) 15%,transparent)}
+.ch.reuniao{border-color:var(--serie);background:color-mix(in srgb,var(--serie) 12%,transparent)}
+.ch.tarefa{border-color:var(--taref);background:color-mix(in srgb,var(--taref) 13%,transparent)}
+.dia .mais{font-size:11px;color:var(--i3);padding-left:5px}
+.dia .pontos{display:none;gap:3px;justify-content:center;flex-wrap:wrap}
 .pt{width:6px;height:6px;border-radius:99px;background:var(--i3)}
 .pt.prazo{background:var(--ser)}.pt.audiencia{background:var(--crit)}
 .pt.prescricao{background:var(--presc)}.pt.pericia{background:var(--warn)}
 .pt.reuniao{background:var(--serie)}.pt.tarefa{background:var(--taref)}
-.dia .qtd{font-size:9.5px;color:var(--i3);text-align:center;margin-top:2px}
-.legenda{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:11.4px;color:var(--i3)}
+@media(max-width:640px){.cal{gap:2px}.cabdia{letter-spacing:.04em}.dia{min-height:54px;padding:4px 2px;align-items:center}
+  .dia .chips{display:none}.dia .pontos{display:flex}}
+@media(prefers-reduced-motion:reduce){.dia{transition:none}}
+.legenda{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:12px;color:var(--i2)}
 .legenda span{display:flex;gap:5px;align-items:center}
 .legenda .pt{display:inline-block}
-.diadet{background:var(--s1);border:1px solid var(--ln);border-radius:10px;padding:14px 16px}
-.diadet h3{font:600 14px/1.3 ui-sans-serif,sans-serif;margin:0 0 3px;color:var(--ink)}
+.diadet{background:var(--s1);border-radius:12px;padding:14px 16px;box-shadow:var(--sh)}
+.diadet h3{font:400 18px/1.3 var(--disp);margin:0 0 3px;color:var(--ink)}
 .diadet .quando{font-size:11.6px;color:var(--i3);margin-bottom:12px}
 .item{border-left:3px solid var(--i3);padding:2px 0 2px 11px;margin-bottom:13px}
 .item.prazo{border-color:var(--ser)}.item.audiencia{border-color:var(--crit)}
@@ -290,7 +303,7 @@ textarea{width:100%;resize:vertical;line-height:1.45}
 .item a{font-size:11.4px;color:var(--i2);text-decoration:none;border-bottom:1px solid var(--ln)}
 .item a:hover{color:var(--ink);border-color:var(--i3)}
 .faixa{display:flex;gap:10px;overflow-x:auto;padding:2px 0 8px;margin-bottom:4px}
-.prox{flex:0 0 190px;background:var(--s1);border:1px solid var(--ln);border-top-width:3px;
+.prox{flex:0 0 190px;background:var(--s1);border:0;border-top:3px solid var(--ln);box-shadow:var(--sh);
   border-radius:9px;padding:11px 13px}
 .prox.prazo{border-top-color:var(--ser)}.prox.audiencia{border-top-color:var(--crit)}
 .prox.prescricao{border-top-color:var(--presc)}.prox.pericia{border-top-color:var(--warn)}
@@ -2130,7 +2143,11 @@ function itensPorDia(){
   for (const v of m.values()) v.sort((a,b)=>String(a.hora||'99').localeCompare(String(b.hora||'99')));
   return m;
 }
-window.verDia = iso => { CAL.sel = iso; pintaCalendario(); };
+window.verDia = iso => { CAL.sel = iso; pintaCalendario();
+  /* Quando o dia fica embaixo da grade, leva o olho até ele, mas só se estiver fora da tela. */
+  const d = document.querySelector('.diadet'); if (!d) return;
+  const r = d.getBoundingClientRect();
+  if (r.top > innerHeight - 80) d.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }); };
 function detalheDia(){
   const iso = CAL.sel;
   if (!iso) return `<div class="diadet"><h3>Nenhum dia selecionado</h3>
@@ -2225,22 +2242,31 @@ function gradeMes(){
   const porDia = itensPorDia();
   let html = `<div class="calnav">
     <span class="mes">${MES_LONGO[mes]}</span><span class="ano">${ano}</span>
-    <span class="nav"><button onclick="mudaMes(-1)">←</button>
+    <span class="nav"><button onclick="mudaMes(-1)" aria-label="mês anterior">←</button>
       <button onclick="irHoje()">hoje</button>
-      <button onclick="mudaMes(1)">→</button></span></div>
+      <button onclick="mudaMes(1)" aria-label="próximo mês">→</button></span></div>
     <div class="calmes"><div><div class="cal">` +
     ['dom','seg','ter','qua','qui','sex','sáb'].map(d=>`<div class="cabdia">${d}</div>`).join('');
-  for (let i = 0; i < 42; i++) {
+  /* Desde 11/2026 cada dia mostra os compromissos escritos (hora e o quê, com a cor do tipo),
+     até três; o resto vira "+N". No celular a célula não comporta texto e volta aos pontinhos.
+     A sexta semana só aparece quando o mês precisa dela. */
+  const semanas = Math.ceil((primeiro.getUTCDay() + new Date(Date.UTC(ano, mes + 1, 0)).getUTCDate()) / 7);
+  const curto = it => String(it.nome || it.titulo).replace(/^(Prazo|Audiência|Prescrição)\s*[:—-]\s*/,'');
+  for (let i = 0; i < semanas * 7; i++) {
     const d = new Date(inicio); d.setUTCDate(inicio.getUTCDate() + i);
     const iso = d.toISOString().slice(0,10);
     const fora = d.getUTCMonth() !== mes;
+    const fds = d.getUTCDay() === 0 || d.getUTCDay() === 6;
     const itens = porDia.get(iso) || [];
     const tipos = [...new Set(itens.map(x=>x.tipo))].slice(0,4);
-    html += `<div class="dia${fora?' fora':''}${iso===hoje()?' hoje':''}${iso===CAL.sel?' sel':''}"
-        ${fora?'':`onclick="verDia('${iso}')"`}>
+    html += `<div class="dia${fora?' fora':''}${fds?' fds':''}${iso===hoje()?' hoje':''}${iso===CAL.sel?' sel':''}"
+        ${fora?'':`onclick="verDia('${iso}')" tabindex="0" onkeydown="if(event.key==='Enter')verDia('${iso}')"`}
+        aria-label="${br(iso)}${itens.length ? ', ' + itens.length + ' compromisso' + (itens.length>1?'s':'') : ''}">
       <div class="num">${d.getUTCDate()}</div>
+      <div class="chips">${itens.slice(0,3).map(it=>`<span class="ch ${it.tipo}" title="${esc((it.hora && it.hora!=='00:00' ? it.hora + ' ' : '') + it.titulo)}">${
+        it.hora && it.hora!=='00:00' ? `<b>${it.hora}</b> ` : ''}${esc(curto(it))}</span>`).join('')}${
+        itens.length>3 ? `<span class="mais">+${itens.length-3} mais</span>` : ''}</div>
       <div class="pontos">${tipos.map(t=>`<span class="pt ${t}"></span>`).join('')}</div>
-      ${itens.length>1?`<div class="qtd">${itens.length}</div>`:''}
     </div>`;
   }
   html += `</div><div class="legenda">
@@ -2248,7 +2274,8 @@ function gradeMes(){
       <span><i class="pt audiencia"></i> audiência</span>
       <span><i class="pt prescricao"></i> prescrição</span>
       <span><i class="pt pericia"></i> perícia</span>
-      <span><i class="pt reuniao"></i> reunião</span></div>
+      <span><i class="pt reuniao"></i> reunião</span>
+      <span><i class="pt tarefa"></i> tarefa</span></div>
     </div>${detalheDia()}</div>`;
   return html;
 }
