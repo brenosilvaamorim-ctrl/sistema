@@ -91,6 +91,23 @@ h1{font-size:21px;margin:0 0 3px}.meta{color:var(--i2);font-size:13.5px;margin-b
 @media(max-width:640px){.ptl-l{grid-template-columns:92px 1fr;gap:8px}.ptl{padding:2px 10px 6px}}
 .kpi .n{font-size:29px;font-weight:650;line-height:1.1;letter-spacing:-.02em}
 .kpi .l{color:var(--i2);font-size:12.5px;margin-top:2px}.kpi.al .n{color:var(--crit)}
+/* Fileira de números do Início: cada um é um atalho para a tela onde aquilo se resolve. */
+.kpis.painel{grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:20px}
+.kpis.painel .kpi{display:flex;align-items:center;gap:12px;text-decoration:none;color:inherit;transition:transform .12s}
+.kpis.painel .kpi:hover{transform:translateY(-1px)}
+.kpis.painel .kpi .n{display:block;font-variant-numeric:tabular-nums;white-space:nowrap}
+.kpis.painel .kpi .l{display:block;font-family:var(--rot);letter-spacing:.02em}
+.kpis.painel .ic{margin-left:auto;width:40px;height:40px;border-radius:11px;display:grid;place-items:center;flex:none;
+  color:var(--c);background:color-mix(in srgb,var(--c) 14%,transparent)}
+.kpis.painel .ic svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+@media(max-width:640px){.kpis.painel{grid-template-columns:1fr 1fr;gap:10px}.kpis.painel .ic{display:none}.kpis.painel .kpi .n{font-size:24px}
+  .kpis.painel .kpi:nth-child(5){grid-column:1/-1}}
+@media(prefers-reduced-motion:reduce){.kpis.painel .kpi{transition:none}}
+.rec-top{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.rec-top .v{font-size:23px;font-weight:650;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.rec-top .d{font-size:12.5px;font-weight:600}
+svg.graf-rec{width:100%;height:auto;display:block}
+svg.graf-rec text{fill:var(--i3);font:11px var(--sans)}
 .card{background:var(--s1);border:1px solid var(--ln);border-radius:12px;margin-bottom:18px;overflow:hidden}
 h2{font-size:14.5px;margin:15px 18px 3px}.nota{margin:0 18px 12px;color:var(--i2);font-size:12.8px;max-width:78ch}
 table{width:100%;border-collapse:collapse;font-size:13.4px}
@@ -958,13 +975,17 @@ async function telaInicio(){
   const d7  = new Date(Date.now() + 7*864e5).toISOString().slice(0,10);
   const d30 = new Date(Date.now() - 30*864e5).toISOString().slice(0,10);
   const mes = h.slice(0,7);
-  const [pz, ev, itm, lc, cs, asn, pla, urg, lds, crt, tpr, tco, tnm] = await Promise.all([
+  /* Fim do mês pelo primeiro dia do mês seguinte: "-31" num mês de trinta dias é data
+     inválida, a consulta falhava calada e "O mês no dinheiro" aparecia zerado. */
+  const mesSeg = (() => { const d = new Date(h.slice(0,7)+'-01T12:00:00Z'); d.setUTCMonth(d.getUTCMonth()+1); return d.toISOString().slice(0,10); })();
+  const ini6 = (() => { const d = new Date(h.slice(0,7)+'-01T12:00:00Z'); d.setUTCMonth(d.getUTCMonth()-5); return d.toISOString().slice(0,10); })();
+  const [pz, ev, itm, lc, cs, asn, pla, urg, lds, crt, tpr, tco, tnm, rec] = await Promise.all([
     sb.from('prazo').select('id,descricao,data_fatal,situacao,regime,data_inicio,caso:caso_id(id,titulo)')
       .in('situacao',['sugerido','confirmado']).order('data_fatal'),
     sb.from('evento').select('id,titulo,tipo,inicio,local,link_sala,situacao,caso:caso_id(id,titulo),cliente:cliente_id(nome)')
       .not('situacao','in','("concluida","cancelada")').order('inicio'),
     sb.from('intimacao').select('id,situacao').gte('data_disponibilizacao', d30),
-    sb.from('lancamento').select('tipo,valor,situacao,vencimento').gte('vencimento', mes+'-01').lte('vencimento', mes+'-31'),
+    sb.from('lancamento').select('tipo,valor,situacao,vencimento').gte('vencimento', mes+'-01').lt('vencimento', mesSeg),
     sb.from('caso').select('id,encerrado_em'),
     sb.from('assinatura')
       .select('id,titulo,tipo,link,plataforma,enviado_em,caso:caso_id(id,titulo,cliente:cliente_id(nome,whatsapp,telefone))')
@@ -982,6 +1003,10 @@ async function telaInicio(){
     /* tribunais a consultar: banco/71. Sem a tabela, o quadro não aparece. */
     sb.from('tribunal_consulta').select('sigla,manual,ultima_consulta,intervalo_dias,link'),
     sb.from('tribunal').select('sigla,nome').eq('ativo', true).order('sigla'),
+    /* O que de fato entrou (baixado como pago) nos últimos seis meses, para o gráfico do painel.
+       Quem não enxerga o financeiro recebe erro ou nada, e o gráfico simplesmente não aparece. */
+    sb.from('lancamento').select('valor,pagamento').eq('tipo','entrada').eq('situacao','pago')
+      .gte('pagamento', ini6).lt('pagamento', mesSeg),
   ]);
   if (pz.error) return erro(pz.error.message);
   if (tco.error) TRIB = null; else montarTribunais(tpr.data, tco.data, tnm.data);
@@ -1050,6 +1075,39 @@ async function telaInicio(){
     prHoje.length ? prHoje.length + ' prazo' + (prHoje.length>1?'s':'') + ' vencendo' : '',
     evHoje.filter(e=>e.tipo!=='audiencia').length ? evHoje.filter(e=>e.tipo!=='audiencia').length + ' compromisso' + (evHoje.filter(e=>e.tipo!=='audiencia').length>1?'s':'') : '',
   ].filter(Boolean);
+  /* Painel (11/2026): os números que mais pedem olho ficam numa fileira no alto, cada um levando
+     à tela onde se resolve. Eles saíram da lista "Precisa de você" para não aparecer duas vezes. */
+  const REC = rec.error ? null : (rec.data || []);
+  const recMes = REC ? REC.filter(l => String(l.pagamento).slice(0,7) === mes).reduce((a,b)=>a+Number(b.valor||0),0) : null;
+  const IKPI = {
+    rel:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    cal:'<path d="M3 9h18M7 3v4M17 3v4"/><rect x="3" y="5" width="18" height="16" rx="3"/>',
+    sino:'<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
+    mart:'<path d="m14 4 6 6M10 8l6 6M4 20l7-7M13 3l8 8-3 3-8-8z"/>',
+  };
+  const kpi = (num, rot, href, ic, cor, al) => `<a class="kpi${al ? ' al' : ''}" href="${href}">
+      <span style="min-width:0"><span class="n">${num}</span><span class="l">${rot}</span></span>
+      ${ic ? `<span class="ic" style="--c:${cor}"><svg viewBox="0 0 24 24">${IKPI[ic]}</svg></span>` : ''}</a>`;
+  const MESES = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+  /* Barras na cor de destaque, o mês corrente cheio e os anteriores claros: cor de enfeite
+     aqui roubaria o vermelho e o âmbar, que no sistema querem dizer prazo. */
+  const graficoRec = () => {
+    const ms = Array.from({ length: 6 }, (_, i) => { const d = new Date(ini6+'T12:00:00Z'); d.setUTCMonth(d.getUTCMonth()+i); return d.toISOString().slice(0,7); });
+    const v = ms.map(m => REC.filter(l => String(l.pagamento).slice(0,7) === m).reduce((a,b)=>a+Number(b.valor||0),0) / 1000);
+    const passo = [1,2,5,10,20,25,50,100,200,250,500].find(p => p*4 >= Math.max(...v, 1)) || Math.ceil(Math.max(...v)/4);
+    const max = passo*4, W = 460, H = 168, L = 34, B = 22, T = 14, ch = H-B-T, st = (W-L)/6, bw = Math.min(42, st*.6);
+    let g = '';
+    for (let k = 0; k <= 4; k++) { const y = T + ch - k*passo/max*ch;
+      g += `<line x1="${L}" x2="${W}" y1="${y}" y2="${y}" stroke="var(--ln)"/><text x="${L-6}" y="${y+4}" text-anchor="end">${k*passo}</text>`; }
+    v.forEach((x, i) => { const hh = x/max*ch, xx = L + i*st + (st-bw)/2, y = T + ch - hh, ult = i === 5;
+      g += `<rect x="${xx}" y="${y}" width="${bw}" height="${Math.max(hh, x ? 1 : 0)}" rx="5" fill="var(--serie)" opacity="${ult ? 1 : .32}"><title>${MESES[+ms[i].slice(5)-1]}: ${rs(x*1000)}</title></rect>
+        <text x="${xx+bw/2}" y="${H-6}" text-anchor="middle">${MESES[+ms[i].slice(5)-1]}</text>`;
+      if (ult && x) g += `<text x="${xx+bw/2}" y="${y-5}" text-anchor="middle" style="fill:var(--ink);font-weight:600">${x.toLocaleString('pt-BR',{maximumFractionDigits:1})}</text>`; });
+    /* Sem porcentagem sobre o mês anterior: o mês corrente ainda não fechou e a comparação enganaria. */
+    return `<div class="rec-top"><span class="v">${rs(recMes)}</span></div>
+      <p class="sub" style="margin:0 0 6px">recebido em ${MESES[+mes.slice(5)-1]} até hoje · últimos seis meses, em mil R$</p>
+      <svg class="graf-rec" viewBox="0 0 ${W} ${H}" role="img" aria-label="Entradas recebidas por mês">${g}</svg>`;
+  };
   const at = (rot, num, href, al) => `<a class="at-it${al && num ? ' al' : ''}" href="${href}"><span class="rot">${rot}</span><span class="num">${num}</span></a>`;
 
   app.innerHTML = menu('inicio') + `
@@ -1065,6 +1123,13 @@ async function telaInicio(){
       <a class="btn" style="text-decoration:none" href="#/minutas">Minutar</a>
       <a class="btn" style="text-decoration:none" href="#/mensageria">Escrever ao cliente</a>
     </div>
+  </div>
+  <div class="kpis painel">
+    ${kpi(prHoje.length, 'Prazo' + (prHoje.length===1?'':'s') + ' vence' + (prHoje.length===1?'':'m') + ' hoje', '#/prazos', 'rel', 'var(--crit)', prHoje.length > 0)}
+    ${kpi(pr7.length, 'Prazos nos próximos 7 dias', '#/agenda', 'cal', 'var(--warn)')}
+    ${kpi(conferir, 'Publicações a conferir', '#/prazos', 'sino', 'var(--serie)', conferir > 0)}
+    ${kpi(aud7.length, 'Audiências na semana', '#/agenda', 'mart', 'var(--presc)')}
+    ${recMes !== null ? kpi(recMes >= 1e4 ? 'R$ ' + (recMes/1000).toLocaleString('pt-BR',{maximumFractionDigits:1}) + ' mil' : rs(recMes), 'Recebido em ' + ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'][+mes.slice(5)-1], '#/financeiro', null) : ''}
   </div>
   ${CRIT.length ? `<div class="critico-bloco">
     <div class="tit">▲ ${CRIT.length === 1 ? 'Ato crítico publicado — não pode passar' : CRIT.length + ' atos críticos publicados — não podem passar'}</div>
@@ -1094,15 +1159,14 @@ async function telaInicio(){
             <b>${esc(c.cliente?.nome || c.titulo)}</b><span class="sub">${esc(URG[c.urgencia]?.[0] || c.urgencia)}${c.cliente?.nome && c.titulo !== c.cliente.nome ? ' · ' + esc(c.titulo) : ''}</span></a>`).join('')}
           <div style="margin-top:${protocolos.length || URGS.length ? '10px' : '0'}">
           ${at('Prazos vencidos em aberto', vencidos.length, '#/prazos', true)}
-          ${at('Publicações a conferir', conferir, '#/prazos', true)}
-          ${at('Prazos nos próximos 7 dias', pr7.length, '#/agenda')}
-          ${at('Audiências na semana', aud7.length, '#/agenda')}
           ${at('Leads com retorno para hoje', leadsHoje, '#/captacao', true)}
           ${at('Assinaturas paradas', paradas.length, '#/inicio', true)}
           ${at('Casos abertos', abertos, '#/casos')}
           </div>
         </div></div>
       ${TRIB ? `<div class="card" id="initrib">${quadroTribunais()}</div>` : ''}
+      ${REC && REC.length ? `<div class="card"><h2>Entradas recebidas <a class="lnk" href="#/financeiro" style="float:right;font-size:12px;font-weight:500">financeiro</a></h2>
+        <div style="padding:0 18px 14px">${graficoRec()}</div></div>` : ''}
       <div class="card"><h2>O mês no dinheiro</h2>
         <div class="at">
           ${at('A receber no mês', rs(entra), '#/financeiro')}
