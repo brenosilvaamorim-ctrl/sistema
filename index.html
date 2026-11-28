@@ -323,7 +323,8 @@ textarea{width:100%;resize:vertical;line-height:1.45}
 .cabcol .pto{width:8px;height:8px;border-radius:50%;flex:none}
 .cabcol .q{margin-left:auto;font:600 11.5px var(--sans);letter-spacing:0;color:var(--i3);background:var(--s1);border-radius:10px;padding:1px 8px}
 .cartao{background:var(--s0);border:1px solid var(--ln);border-radius:9px;padding:9px 10px;margin-bottom:8px}
-.quadro .cartao{cursor:grab}
+.quadro .cartao{cursor:grab;user-select:none}
+.quadro .cartao a,.quadro .cartao button,.quadro .cartao select,.quadro .cartao summary{cursor:pointer}
 .quadro .cartao:active{cursor:grabbing}
 .cartao.arrastando{opacity:.45;border-style:dashed}
 .coluna.alvo{background:var(--ln)}
@@ -4341,7 +4342,7 @@ async function telaCasos(){
       ${SOURGENTES || SOPROTOCOLO ? `<button class="btn" onclick="SOURGENTES=false; SOPROTOCOLO=false; telaCasos()">limpar</button>` : ''}
     </div>
   </div>
-  <p class="nota" style="margin:0 0 12px">Arraste pela alça <b>⠿</b> para mudar de etapa ou reordenar. A cor da borda é a urgência que você marcou no caso:
+  <p class="nota" style="margin:0 0 12px">Arraste o cartão para mudar de etapa ou reordenar (no celular, use o <b>⋯</b> do cartão). A cor da borda é a urgência que você marcou no caso:
     <span style="color:var(--crit)">■</span> não pode esperar · <span style="color:var(--ser)">■</span> muito urgente.</p>
   <div class="card"><div style="padding:12px 18px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
     <button class="btn ok" onclick="abrirNovoCaso()">Abrir um caso</button>
@@ -4463,13 +4464,15 @@ function ligarArrastoCasos(){
      continua igual; clicar no nome volta a funcionar. */
   document.addEventListener('mouseup', soltarCartoes);
   document.addEventListener('dragend', soltarCartoes);
+  /* 11/2026: só a alça (dez pixels de largura) iniciava o arrasto, e quem pegava o cartão
+     pelo meio não conseguia mover nada. Agora o cartão inteiro arrasta, menos quando o
+     clique cai num link, botão, seletor ou no "⋯" — é isso que mantém o nome clicável. */
+  const interativo = t => t.closest && t.closest('a,button,select,input,textarea,summary,label,details[open]');
   document.querySelectorAll('.quadro .cartao').forEach(el => {
     el.draggable = false;
-    const pega = el.querySelector('.pega');
-    if (pega) {
-      pega.addEventListener('mousedown', () => { el.draggable = true; });
-      pega.addEventListener('touchstart', () => { el.draggable = true; }, { passive: true });
-    }
+    const liga = e => { if (!interativo(e.target)) el.draggable = true; };
+    el.addEventListener('mousedown', liga);
+    el.addEventListener('touchstart', liga, { passive: true });
     el.addEventListener('dragstart', e => {
       ARRASTA = el; el.classList.add('arrastando');
       e.dataTransfer.effectAllowed = 'move';
