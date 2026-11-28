@@ -174,27 +174,30 @@ textarea{width:100%;resize:vertical;line-height:1.45}
 .cab{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:14px}
 .cab h1{font-size:26px;margin:0 0 4px}.cab .meta{margin:0}
 .cab .acoesc{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.urgsel{display:flex;gap:4px;flex-wrap:wrap}
-.urgsel button{font:inherit;font-size:11.6px;padding:4px 10px;border-radius:99px;border:1px solid var(--ln);
-  background:var(--s1);color:var(--i3);cursor:pointer}
-.urgsel button:hover{border-color:var(--i3);color:var(--ink)}
-.urgsel button.on{font-weight:600}
-.urgsel button.on.baixa{color:var(--i2);border-color:var(--i2)}.urgsel button.on.normal{color:var(--serie);border-color:var(--serie)}
-.urgsel button.on.alta{color:var(--ser);border-color:var(--ser)}.urgsel button.on.critica{color:var(--s1);background:var(--crit);border-color:var(--crit)}
-.banda{display:flex;gap:12px;align-items:center;flex-wrap:wrap;border-radius:10px;padding:10px 14px;margin:0 0 14px;
-  font-size:13.4px;border:1px solid var(--ln);background:var(--s1)}
-.banda.crit{border-color:var(--crit);color:var(--crit)}.banda.ser{border-color:var(--ser);color:var(--ser)}
+/* Urgência como um seletor único: o nível escolhido fica cheio, na cor dele. */
+.urgsel{display:inline-flex;gap:2px;flex-wrap:wrap;background:var(--s1);border-radius:10px;padding:3px;box-shadow:var(--sh)}
+.urgsel button{font:inherit;font-size:12.2px;padding:5px 11px;border-radius:8px;border:0;background:none;color:var(--i2);cursor:pointer}
+.urgsel button:hover{color:var(--ink);background:var(--s0)}
+.urgsel button.on{font-weight:600;color:var(--s1)}
+.urgsel button.on.baixa{background:var(--i3)}.urgsel button.on.normal{background:var(--serie)}
+.urgsel button.on.alta{background:var(--ser)}.urgsel button.on.critica{background:var(--crit)}
+.banda{display:flex;gap:12px;align-items:center;flex-wrap:wrap;border-radius:12px;padding:11px 14px;margin:0 0 14px;
+  font-size:13.4px;border:0;background:var(--s1);box-shadow:inset 3px 0 0 var(--i3)}
+.banda.crit{color:var(--crit);background:color-mix(in srgb,var(--crit) 8%,var(--s1));box-shadow:inset 3px 0 0 var(--crit)}
+.banda.ser{color:var(--ser);background:color-mix(in srgb,var(--ser) 9%,var(--s1));box-shadow:inset 3px 0 0 var(--ser)}
 .banda b{color:inherit}.banda .btn{margin-left:auto}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:0 0 6px}
 .tile{background:var(--s1);border:1px solid var(--ln);border-radius:10px;padding:10px 13px}
-.tile .r{font-size:11.3px;color:var(--i3)}.tile .v{font-size:17px;font-weight:600;margin-top:1px;font-variant-numeric:tabular-nums}
+.tile .r{font:400 11.5px/1.3 var(--rot);color:var(--i3);letter-spacing:.03em}.tile .v{font-size:17px;font-weight:600;margin-top:1px;font-variant-numeric:tabular-nums}
 .tile.al .v{color:var(--crit)}
 .abas{display:flex;gap:20px;flex-wrap:wrap;border-bottom:1px solid var(--ln);margin:14px 0 18px;position:sticky;top:var(--topo,0px);
   background:var(--s0);z-index:5}
 .abas button{background:none;border:0;border-bottom:2px solid transparent;padding:10px 0 9px;font:inherit;font-size:13.6px;
   color:var(--i2);cursor:pointer}
 .abas button:hover{color:var(--ink)}.abas button.on{color:var(--ink);border-bottom-color:var(--ink);font-weight:600}
-.abas button .n{font-size:11px;color:var(--i3);margin-left:4px;font-weight:400}
+/* No celular as sete abas do caso quebravam em três linhas; viram uma faixa que desliza. */
+@media(max-width:640px){.abas{flex-wrap:nowrap;overflow-x:auto;gap:18px;scrollbar-width:none}.abas button{white-space:nowrap;flex:none}}
+.abas button .n{font-size:11px;margin-left:6px;font-weight:600;color:var(--serie);background:color-mix(in srgb,var(--serie) 12%,var(--s1));border-radius:9px;padding:0 6px}
 .lado{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:18px;align-items:start}
 @media(max-width:900px){.lado{grid-template-columns:1fr}}
 /* Tribunais a consultar (banco/71). Cada tribunal é uma cápsula: o anel à esquerda enche
@@ -315,15 +318,23 @@ textarea{width:100%;resize:vertical;line-height:1.45}
 .prox.urg .dd{color:var(--crit)}
 .quadro{display:flex;gap:12px;overflow-x:auto;padding-bottom:10px;align-items:flex-start}
 .coluna{flex:0 0 268px;background:var(--s1);border:1px solid var(--ln);border-radius:12px;padding:10px}
-.cabcol{font-size:12.4px;font-weight:600;padding:8px 4px 10px;margin:-10px -10px 8px;
-  border-bottom:1px solid var(--ln);padding-left:12px;border-radius:12px 12px 0 0}
+.cabcol{display:flex;align-items:center;gap:7px;padding:4px 4px 10px;font:500 11px/1.25 var(--rot);letter-spacing:.15em;
+  text-transform:uppercase;color:var(--i2)}
+.cabcol .pto{width:8px;height:8px;border-radius:50%;flex:none}
+.cabcol .q{margin-left:auto;font:600 11.5px var(--sans);letter-spacing:0;color:var(--i3);background:var(--s1);border-radius:10px;padding:1px 8px}
 .cartao{background:var(--s0);border:1px solid var(--ln);border-radius:9px;padding:9px 10px;margin-bottom:8px}
 .quadro .cartao{cursor:grab}
 .quadro .cartao:active{cursor:grabbing}
 .cartao.arrastando{opacity:.45;border-style:dashed}
 .coluna.alvo{background:var(--ln)}
 .cartao .pega{float:right;color:var(--i3);font-size:13px;letter-spacing:1px;user-select:none;cursor:grab}
-.cartao .tit{font-size:13px;font-weight:600;line-height:1.25}
+.cartao .tit{font-size:13.6px;font-weight:600;line-height:1.3}
+.cartao .tit .lnk{text-decoration:none}
+.cartao.u-critica{box-shadow:inset 3px 0 0 var(--crit),var(--sh)}.cartao.u-alta{box-shadow:inset 3px 0 0 var(--ser),var(--sh)}
+.cc-mais{margin-top:6px}
+.cc-mais summary{list-style:none;cursor:pointer;color:var(--i3);font-size:15px;line-height:1;width:max-content;padding:0 6px;border-radius:6px}
+.cc-mais summary::-webkit-details-marker{display:none}
+.cc-mais summary:hover,.cc-mais[open] summary{background:var(--s0);color:var(--ink)}
 .cartao .pill{margin:0 4px 3px 0}
 
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
@@ -362,7 +373,8 @@ textarea{width:100%;resize:vertical;line-height:1.45}
 .card>h2{font:500 12px/1.35 var(--rot);letter-spacing:.15em;text-transform:uppercase;color:var(--i2);margin-top:17px}
 .card>h2 *{font-family:var(--sans);letter-spacing:normal;text-transform:none}
 th{font-family:var(--rot);font-weight:500;letter-spacing:.12em}
-.coluna{border:0;background:color-mix(in srgb,var(--s0) 55%,var(--s1))}
+.coluna{border:0;background:color-mix(in srgb,var(--s0) 55%,var(--s1));border-radius:14px}
+.cartao{padding:11px 12px}
 .cartao{background:var(--s1);border:0;box-shadow:var(--sh);border-radius:11px}
 .cartao.arrastando{outline:1px dashed var(--i3)}
 .abas button.on{border-bottom-color:var(--serie)}
@@ -4190,19 +4202,22 @@ function cartao(c){
   const parado = c.ultima_movimentacao
     ? Math.round((Date.now() - Date.parse(c.ultima_movimentacao))/864e5) : null;
   const u = (typeof CASOURG !== 'undefined' && CASOURG[c.id]) || 'normal';
-  return `<div class="cartao" data-caso="${c.id}" data-col="${c.coluna_id||''}"${
-      u==='critica' ? ' style="border-left:4px solid var(--crit)"' : u==='alta' ? ' style="border-left:4px solid var(--ser)"' : ''}>
-    <span class="pega" title="arraste para reordenar">⠿</span>
+  /* Desde 11/2026 o cartão mostra só o que se lê de relance (quem, área, prazo, alertas);
+     mover de etapa, abrir, encerrar e reordenar ficam no "⋯", a um clique. A urgência
+     continua na borda esquerda. */
+  return `<div class="cartao${u==='critica' ? ' u-critica' : u==='alta' ? ' u-alta' : ''}" data-caso="${c.id}" data-col="${c.coluna_id||''}">
+    <span class="pega" title="arraste para mudar de etapa ou reordenar">⠿</span>
     <div class="tit"><a class="lnk" href="#/caso/${c.id}">${esc(c.cliente_nome || c.titulo || 'Sem cliente')}</a></div>
-    <div class="sub" style="margin:2px 0 7px">${esc(c.area_nome || c.area || 'sem área')}${
-      c.polo ? ' · ' + esc(c.polo) : ''} · ${c.processos} processo(s)</div>
+    <div class="sub" style="margin:3px 0 8px">${esc(c.area_nome || c.area || 'sem área')}${
+      c.polo ? ' · ' + esc(c.polo) : ''} · ${Number(c.processos) ? c.processos + ' processo' + (Number(c.processos) > 1 ? 's' : '') : 'sem processo'}</div>
     ${d !== null ? `<span class="pill ${k}">prazo ${br(c.proximo_prazo)}${d<0?' (vencido)':''}</span>` : ''}
     ${u==='critica' || u==='alta' ? `<span class="pill ${URG[u][1]}">${URG[u][0]}</span>` : ''}
     ${typeof CASOPROT !== 'undefined' && CASOPROT[c.id] ? (() => { const n = dias(CASOPROT[c.id]);
       return `<span class="pill ${n <= 3 ? 'crit' : 'ser'}">protocolar ${n < 0 ? 'venceu ' + br(CASOPROT[c.id]) : 'até ' + br(CASOPROT[c.id])}</span>`; })() : ''}
     ${parado !== null && parado > 90 ? `<span class="pill ser">parado há ${parado} dias</span>` : ''}
     ${pillsTag(c.id)}
-    <div style="margin-top:9px;display:flex;gap:5px;flex-wrap:wrap">
+    <details class="cc-mais"><summary title="mover de etapa, abrir, encerrar, reordenar" aria-label="mais ações">⋯</summary>
+    <div style="margin-top:8px;display:flex;gap:5px;flex-wrap:wrap">
       <select onchange="moverCaso('${c.id}', this.value)" style="flex:1;min-width:130px;font-size:11.6px">
         ${COLUNAS.map(x=>`<option value="${x.id}" ${x.id===c.coluna_id?'selected':''}>${esc(x.nome)}</option>`).join('')}
       </select>
@@ -4212,7 +4227,7 @@ function cartao(c){
         onclick="subirCaso('${c.id}',-1)">▲</button>
       <button class="btn" style="font-size:11.4px;padding:4px 7px" title="descer na coluna"
         onclick="subirCaso('${c.id}',1)">▼</button>
-    </div>
+    </div></details>
     <div id="enc${c.id}" style="display:none;margin-top:8px;border-top:1px solid var(--ln);padding-top:8px">
       <div class="sub" style="margin:0 0 5px">Checklist antes de encerrar: prazo pendente resolvido, cliente avisado,
         honorário lançado, documentos guardados.</div>
@@ -4402,8 +4417,7 @@ async function telaCasos(){
     ${COLUNAS.map(col=>{
       const meus = abertos.filter(c=>c.coluna_id===col.id);
       return `<div class="coluna" data-col="${col.id}">
-        <div class="cabcol" style="border-top:3px solid ${col.cor||'var(--i3)'}">
-          ${esc(col.nome)} <span class="sub" style="display:inline;margin:0">${meus.length}</span></div>
+        <div class="cabcol"><span class="pto" style="background:${col.cor||'var(--i3)'}"></span>${esc(col.nome)}<span class="q">${meus.length}</span></div>
         ${meus.map(cartao).join('') || '<div class="sub" style="padding:10px 2px">vazio</div>'}
       </div>`;
     }).join('')}
