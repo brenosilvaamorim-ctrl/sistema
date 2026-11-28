@@ -381,6 +381,31 @@ th{font-family:var(--rot);font-weight:500;letter-spacing:.12em}
 .abas button.on{border-bottom-color:var(--serie)}
 .mono-login{display:block;width:64px;height:54px;margin:0 auto 12px;background:var(--serie);
   -webkit-mask:url(marca/monograma.png) center/contain no-repeat;mask:url(marca/monograma.png) center/contain no-repeat}
+
+/* ---- Captação: resultados por período (11/2026) ---- */
+.per{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:0 0 14px}
+.per-res{margin:0 0 0 auto}
+@media(max-width:640px){.per-res{margin-left:0;width:100%}}
+.tiles.k6{grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px}
+.funil{display:flex;flex-direction:column;gap:10px;padding:4px 18px 0}
+.fz{display:grid;grid-template-columns:140px minmax(0,1fr) 46px;gap:10px;align-items:center;font-size:13.2px}
+.fz .tr{height:26px;border-radius:7px;background:color-mix(in srgb,var(--serie) 10%,transparent);overflow:hidden}
+.fz .br{height:100%;background:var(--serie);border-radius:7px;display:flex;align-items:center;padding-left:9px;color:var(--s1);
+  font-weight:600;font-size:12.5px;font-variant-numeric:tabular-nums;min-width:fit-content;padding-right:6px}
+.fz:nth-child(2) .br{opacity:.85}.fz:nth-child(3) .br{opacity:.7}.fz:nth-child(4) .br{background:var(--good)}
+.fz .pc{font-size:12px;color:var(--i3);text-align:right;font-variant-numeric:tabular-nums}
+.hb{display:grid;grid-template-columns:minmax(0,150px) minmax(0,1fr) auto;gap:8px 10px;align-items:center;font-size:13px}
+.hb .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--i2)}
+.hb .tr{position:relative;height:16px;border-radius:5px;background:color-mix(in srgb,var(--serie) 8%,transparent)}
+.hb .a{position:absolute;inset:0 auto 0 0;background:color-mix(in srgb,var(--serie) 35%,transparent);border-radius:5px}
+.hb .b{position:absolute;inset:0 auto 0 0;background:var(--serie);border-radius:5px}
+.hb .vl{font-size:12px;color:var(--i2);white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right}
+.leg2{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--i2);margin-bottom:10px}
+.leg2 i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.grande{font-size:30px;font-weight:650;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+svg.graf-cap{width:100%;min-width:560px;height:auto;display:block}
+svg.graf-cap text{fill:var(--i3);font:11px var(--sans)}
+@media(max-width:640px){.fz{grid-template-columns:96px minmax(0,1fr) 40px}.hb{grid-template-columns:minmax(0,96px) minmax(0,1fr) auto}}
 </style></head><body>
 <div id="app"><div class="vazio">Carregando…</div></div>
 <script>
@@ -3986,42 +4011,88 @@ async function telaCaptacao(){
   LEADS = (le.data||[]).map(l => ({ ...l, area_nome: rotA.get(l.area_id),
     origem_nome: [rotO.get(l.origem_id), rotO.get(l.origem2_id)].filter(Boolean).join(' + ') || null }));
 
-  const mes = hoje().slice(0,7);
-  const doMes = LEADS.filter(l => String(l.criado_em).slice(0,7) === mes);
-  const fechados = doMes.filter(l => l.etapa === 'fechado').length;
-  const abertos = LEADS.filter(l => !['fechado','perdido'].includes(l.etapa));
-  const atrasados = abertos.filter(l => l.proximo_contato && dias(l.proximo_contato) < 0).length;
-  const conv = doMes.length ? Math.round(fechados / doMes.length * 100) : 0;
-  /* A taxa que decide quanto vale pagar por um lead. Base: só quem foi
-     atendido. Quem não compareceu fala da marcação, não da proposta, e por
-     isso fica de fora do denominador. */
-  const atendidos = LEADS.filter(l => ['contratou','nao_contratou'].includes(l.desfecho));
-  const contratou = atendidos.filter(l => l.desfecho === 'contratou');
-  const taxaFech = atendidos.length ? Math.round(contratou.length / atendidos.length * 100) : null;
-  const faltaram = LEADS.filter(l => l.desfecho === 'nao_compareceu').length;
-  const ticket = contratou.filter(l => l.honorario > 0);
-  const ticketMedio = ticket.length
-    ? Math.round(ticket.reduce((a,l) => a + Number(l.honorario), 0) / ticket.length) : null;
   const opt = (lista, vazio) => `<option value="">${vazio}</option>` +
     lista.map(x=>`<option value="${x.id}">${esc(x.nome)}</option>`).join('');
+  CAPOPT = opt;
+  pintarCaptacao();
+}
+/* ---- Captação em duas abas (11/2026) ----
+   "Atender" é o trabalho do dia: o novo contato e o quadro por etapa, como sempre foram.
+   "Resultados" é a leitura por período, que antes não existia: tudo ali obedece ao seletor
+   de período e se compara com o período anterior do mesmo tamanho.
+
+   Cada conta usa a data que responde a pergunta dela: "chegaram" e o funil contam pela
+   chegada; contratos, taxa e honorário, pela data da decisão (desfecho_em); consultas e
+   faltas, pela data da consulta. Assim "contratos de novembro" são os fechados em novembro,
+   ainda que a pessoa tenha chegado em outubro.
+
+   Leads fechados antes de existir desfecho_em (banco/29) não têm a data da decisão; para
+   eles vale atualizado_em, que é o melhor que há. A taxa de fechamento só conta quem foi
+   atendido: quem não compareceu não ouviu proposta e não pesa contra ela. */
+let CAPOPT = null, CAPPER = null;
+let CAPABA = (() => { try { return localStorage.getItem('capaba') || 'res'; } catch { return 'res'; } })();
+window.abaCaptacao = k => { CAPABA = k; try { localStorage.setItem('capaba', k); } catch {} pintarCaptacao(); };
+window.periodoCaptacao = (k, de, ate) => { CAPPER = { ...(CAPPER||{}), per:k, ...(de ? {de} : {}), ...(ate ? {ate} : {}) }; pintarCaptacao(); };
+const MESNOME = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+const somaDiaIso = (s, n) => { const d = new Date(s+'T12:00:00Z'); d.setUTCDate(d.getUTCDate()+n); return d.toISOString().slice(0,10); };
+const difDias = (a, b) => Math.round((Date.parse(b+'T12:00:00Z') - Date.parse(a+'T12:00:00Z')) / 864e5);
+function periodoCap(){
+  const h = hoje(), y = +h.slice(0,4), m = +h.slice(5,7);
+  CAPPER ||= { per:'mes', de: h.slice(0,8)+'01', ate: h };
+  const fimMes = (yy, mm) => new Date(Date.UTC(yy, mm, 0)).toISOString().slice(0,10);
+  const P = CAPPER.per;
+  let de, ate, rot;
+  if (P === 'ant') { const a = new Date(Date.UTC(y, m-2, 1)); de = a.toISOString().slice(0,10); ate = fimMes(a.getUTCFullYear(), a.getUTCMonth()+1); rot = MESNOME[a.getUTCMonth()]; }
+  else if (P === 'tri') { de = somaDiaIso(h, -89); ate = h; rot = 'últimos 3 meses'; }
+  else if (P === 'ano') { de = y + '-01-01'; ate = h; rot = y + ' até hoje'; }
+  else if (P === 'liv') { de = CAPPER.de || h; ate = CAPPER.ate || h; if (de > ate) [de, ate] = [ate, de]; rot = 'datas escolhidas'; }
+  else { de = h.slice(0,8)+'01'; ate = h; rot = MESNOME[m-1] + ' até hoje'; }
+  /* O período de comparação: o mesmo trecho do mês anterior (1 a 28 contra 1 a 28, e não
+     contra o mês inteiro), o mês anterior inteiro, o mesmo período do ano passado, ou os
+     dias imediatamente antes, conforme o caso. */
+  let ade, aate, arot;
+  if (P === 'mes' || P === 'ant') {
+    const a = new Date(de+'T12:00:00Z'); a.setUTCMonth(a.getUTCMonth()-1);
+    ade = a.toISOString().slice(0,10); const lim = fimMes(a.getUTCFullYear(), a.getUTCMonth()+1);
+    aate = P === 'mes' ? somaDiaIso(ade, difDias(de, ate)) : lim; if (aate > lim) aate = lim;
+    arot = P === 'mes' ? 'o mesmo trecho de ' + MESNOME[a.getUTCMonth()] : MESNOME[a.getUTCMonth()];
+  } else if (P === 'ano') { ade = (y-1) + de.slice(4); aate = (y-1) + ate.slice(4); arot = 'o mesmo período de ' + (y-1); }
+  else { const n = difDias(de, ate) + 1; ade = somaDiaIso(de, -n); aate = somaDiaIso(de, -1); arot = 'os ' + n + ' dias anteriores'; }
+  return { de, ate, rot, ade, aate, arot };
+}
+const diaL = v => v ? String(v).slice(0,10) : null;
+const dentroP = (d, de, ate) => !!d && d >= de && d <= ate;
+const decisaoL = l => diaL(l.desfecho_em) || (l.etapa === 'fechado' || l.etapa === 'perdido' ? diaL(l.atualizado_em) : null);
+const contratouL = l => l.desfecho === 'contratou' || (l.etapa === 'fechado' && !l.desfecho);
+const motivoL = l => (l.desfecho_motivo || (l.resumo||'').split('PERDIDO: ')[1] || '').trim();
+function numerosCap(de, ate){
+  const chegaram = LEADS.filter(l => dentroP(diaL(l.criado_em), de, ate));
+  const consultas = LEADS.filter(l => dentroP(diaL(l.consulta_em), de, ate) && ['contratou','nao_contratou'].includes(l.desfecho));
+  const faltas = LEADS.filter(l => l.desfecho === 'nao_compareceu' && dentroP(diaL(l.consulta_em) || decisaoL(l), de, ate));
+  const decididos = LEADS.filter(l => dentroP(decisaoL(l), de, ate) && (contratouL(l) || l.desfecho === 'nao_contratou'));
+  const contratos = decididos.filter(contratouL);
+  const hon = contratos.reduce((a,l) => a + Number(l.honorario||0), 0);
+  const comHon = contratos.filter(l => Number(l.honorario) > 0);
+  return { chegaram, consultas, faltas, decididos, contratos, hon,
+    taxa: decididos.length ? Math.round(contratos.length / decididos.length * 100) : null,
+    media: comHon.length ? Math.round(comHon.reduce((a,l)=>a+Number(l.honorario),0) / comHon.length) : null };
+}
+const rsCurto = v => v >= 1e4 ? 'R$ ' + (v/1000).toLocaleString('pt-BR',{maximumFractionDigits:1}) + ' mil' : rs(v);
+function pintarCaptacao(){
+  const opt = CAPOPT;
+  const abertos = LEADS.filter(l => !['fechado','perdido'].includes(l.etapa));
+  const atrasados = abertos.filter(l => l.proximo_contato && dias(l.proximo_contato) < 0);
   const perdidos = LEADS.filter(l=>l.etapa==='perdido');
-
   app.innerHTML = menu('captacao') + `
-  <main><h1>Captação</h1>
-  <p class="meta">De quem chegou até virar caso. Quando fecha, o cliente e o caso são criados sozinhos.</p>
-  <div class="kpis">
-    <div class="kpi"><div class="n">${abertos.length}</div><div class="l">em andamento</div></div>
-    <div class="kpi"><div class="n">${doMes.length}</div><div class="l">entraram neste mês</div></div>
-    <div class="kpi"><div class="n">${conv}%</div><div class="l">fecharam, no mês</div></div>
-    <div class="kpi ${atrasados?'al':''}"><div class="n">${atrasados}</div><div class="l">com retorno atrasado</div></div>
-    <div class="kpi" title="${atendidos.length ? contratou.length + ' de ' + atendidos.length + ' consultas atendidas viraram contrato' + (faltaram ? ' · ' + faltaram + ' não compareceram' : '') : 'Aparece quando a primeira consulta atendida tiver desfecho registrado'}">
-      <div class="n">${taxaFech === null ? '—' : taxaFech + '%'}</div>
-      <div class="l">consultas que viram contrato</div></div>
-    <div class="kpi" title="${ticket.length ? 'média de ' + ticket.length + ' contrato(s) com honorário informado' : 'aparece quando houver honorário registrado'}">
-      <div class="n">${ticketMedio === null ? '—' : 'R$ ' + ticketMedio.toLocaleString('pt-BR')}</div>
-      <div class="l">honorário médio</div></div>
-  </div>
-
+  <main>
+  <div class="cab"><div><h1>Captação</h1>
+    <p class="meta">De quem chegou até virar caso. Quando fecha, o cliente e o caso são criados sozinhos.
+      ${abertos.length} em andamento${atrasados.length ? ` · <b style="color:var(--crit)">${atrasados.length} com retorno atrasado</b>` : ''}.</p></div></div>
+  <div class="abas" style="position:static"><button class="${CAPABA==='at'?'on':''}" onclick="abaCaptacao('at')">Atender${atrasados.length?`<span class="n">${atrasados.length}</span>`:''}</button>
+    <button class="${CAPABA!=='at'?'on':''}" onclick="abaCaptacao('res')">Resultados</button></div>
+  ${CAPABA === 'at' ? `
+  ${atrasados.length ? `<div class="banda crit"><span><b>${atrasados.length} retorno${atrasados.length>1?'s':''} atrasado${atrasados.length>1?'s':''}:</b>
+    ${atrasados.sort((a,b)=>String(a.proximo_contato).localeCompare(String(b.proximo_contato))).slice(0,6).map(l => esc(l.nome) + ' (desde ' + br(l.proximo_contato).slice(0,5) + ')').join(', ')}${atrasados.length>6?'…':''}</span></div>` : ''}
   <div class="card"><h2>Novo contato</h2>
     <p class="nota">Registre na hora em que a pessoa chama. Sem isso, a métrica de origem não existe.</p>
     <form onsubmit="novoLead(event)" style="display:flex;gap:8px;flex-wrap:wrap;padding:0 18px 18px;align-items:center">
@@ -4050,24 +4121,127 @@ async function telaCaptacao(){
     ${ETAPAS.map(([k,rot])=>{
       const meus = abertos.filter(l=>l.etapa===k);
       return `<div class="coluna">
-        <div class="cabcol" style="border-top:3px solid var(--serie)">${rot}
-          <span class="sub" style="display:inline;margin:0">${meus.length}</span></div>
+        <div class="cabcol"><span class="pto" style="background:var(--serie)"></span>${rot}<span class="q">${meus.length}</span></div>
         ${meus.map(cartaoLead).join('') || '<div class="sub" style="padding:10px 2px">vazio</div>'}
       </div>`;
     }).join('')}
   </div>
 
-  ${porOrigem(LEADS)}
-
-  ${perdidos.length?`<div class="card" style="margin-top:20px"><h2>Não fecharam</h2>
+  ` : resultadosCaptacao(perdidos)}
+  </main>` + rodape();
+}
+function resultadosCaptacao(perdidos){
+  const P = periodoCap();
+  /* A lista dos que não fecharam também obedece ao período: sem isso ela trazia todos, desde sempre. */
+  perdidos = perdidos.filter(l => dentroP(decisaoL(l), P.de, P.ate))
+    .sort((a,b) => String(decisaoL(b)).localeCompare(String(decisaoL(a))));
+  const N = numerosCap(P.de, P.ate), A = numerosCap(P.ade, P.aate);
+  const temAnterior = LEADS.some(l => diaL(l.criado_em) <= P.aate);
+  const delta = (a, b, fmt, menosEhMelhor) => {
+    if (!temAnterior || a === null || b === null) return '<span>sem base de comparação</span>';
+    const d = a - b; if (!d) return '<span>igual a ' + P.arot + '</span>';
+    const bom = menosEhMelhor ? d < 0 : d > 0;
+    return `<b style="color:${bom ? 'var(--good)' : 'var(--crit)'}">${d > 0 ? '+' : '−'}${fmt ? fmt(Math.abs(d)) : Math.abs(d)}</b> sobre ${P.arot}`;
+  };
+  const tile = (v, r, dl) => `<div class="tile"><div class="r">${r}</div><div class="v" style="font-size:23px;font-weight:650">${v}</div><div class="sub" style="margin-top:4px">${dl}</div></div>`;
+  /* Funil por coorte: só quem chegou no período, e até onde cada um foi. Etapa conta como
+     indício para quem é anterior às colunas de consulta e desfecho. */
+  const C = N.chegaram;
+  const marcou = C.filter(l => l.consulta_em || l.desfecho || ['consulta','documentos','proposta','fechado'].includes(l.etapa));
+  const veio = C.filter(l => ['contratou','nao_contratou'].includes(l.desfecho) || (l.etapa === 'fechado' && !l.desfecho));
+  const fechou = C.filter(contratouL);
+  const parados = C.filter(l => !['fechado','perdido'].includes(l.etapa) && !l.consulta_em && difDias(diaL(l.criado_em), hoje()) > 15);
+  const fz = (rot, v, ant) => `<div class="fz"><span>${rot}</span><div class="tr"><div class="br" style="width:${C.length ? Math.max(v/C.length*100, v ? 4 : 0) : 0}%">${v}</div></div>
+    <span class="pc">${ant === null ? '' : ant ? Math.round(v/ant*100) + '%' : '—'}</span></div>`;
+  /* Série: por semana até dois meses, por mês acima disso. */
+  const semanal = difDias(P.de, P.ate) <= 62, faixas = [];
+  if (semanal) { let s = P.de; s = somaDiaIso(s, -((new Date(s+'T12:00:00Z').getUTCDay()+6)%7));
+    for (; s <= P.ate; s = somaDiaIso(s, 7)) { const a = s < P.de ? P.de : s, b = somaDiaIso(s, 6) > P.ate ? P.ate : somaDiaIso(s, 6); faixas.push([a, b, a.slice(8)+'/'+a.slice(5,7)]); } }
+  else { const d = new Date(P.de.slice(0,7)+'-01T12:00:00Z');
+    while (d.toISOString().slice(0,10) <= P.ate) { const a0 = d.toISOString().slice(0,10), b0 = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth()+1, 0)).toISOString().slice(0,10);
+      faixas.push([a0 < P.de ? P.de : a0, b0 > P.ate ? P.ate : b0, MESNOME[d.getUTCMonth()].slice(0,3)]); d.setUTCMonth(d.getUTCMonth()+1); } }
+  const ser = faixas.map(([a,b,r]) => [r, LEADS.filter(l => dentroP(diaL(l.criado_em), a, b)).length,
+    LEADS.filter(l => contratouL(l) && dentroP(decisaoL(l), a, b)).length]);
+  const mx = Math.max(4, ...ser.map(x => Math.max(x[1], x[2])));
+  const passo = [1,2,5,10,20,25,50,100,200,500].find(p => p*4 >= mx) || Math.ceil(mx/4), topo = passo*4;
+  const W = 1000, H = 230, Lx = 34, B = 24, T = 10, ch = H-B-T, st = (W-Lx)/Math.max(1, ser.length), bw = Math.min(26, st*.3);
+  let g = '';
+  for (let i = 0; i <= 4; i++) { const y = T + ch - i*passo/topo*ch;
+    g += `<line x1="${Lx}" x2="${W}" y1="${y}" y2="${y}" stroke="var(--ln)"/><text x="${Lx-6}" y="${y+4}" text-anchor="end">${i*passo}</text>`; }
+  ser.forEach(([r,a,b], i) => { const x = Lx + i*st + st/2, ha = a/topo*ch, hb = b/topo*ch;
+    g += `<rect x="${x-bw-1}" y="${T+ch-ha}" width="${bw}" height="${ha}" rx="3" fill="var(--serie)" opacity=".35"><title>${r}: ${a} chegaram</title></rect>
+      <rect x="${x+1}" y="${T+ch-hb}" width="${bw}" height="${hb}" rx="3" fill="var(--serie)"><title>${r}: ${b} contrataram</title></rect>
+      <text x="${x}" y="${H-7}" text-anchor="middle">${r}</text>`; });
+  /* Origem e área, por coorte. Quem tem duas origens conta nas duas (ver porOrigem). */
+  const agrupa = chaves => { const m = new Map();
+    for (const l of C) for (const k of chaves(l)) { if (!k) continue; const o = m.get(k) || { n:k, e:0, c:0, h:0 };
+      o.e++; if (contratouL(l)) { o.c++; o.h += Number(l.honorario||0); } m.set(k, o); }
+    return [...m.values()].sort((a,b) => b.e - a.e); };
+  const nomeO = id => ORIGENS.find(o => o.id === id)?.nome;
+  const og = agrupa(l => [nomeO(l.origem_id), nomeO(l.origem2_id)]), ag = agrupa(l => [l.area_nome]);
+  const barras = (lista, comHon) => { const m = Math.max(1, ...lista.map(o => o.e));
+    return lista.length ? `<div class="hb">${lista.map(o => `<span class="nm" title="${esc(o.n)}">${esc(o.n)}</span>
+      <div class="tr"><div class="a" style="width:${o.e/m*100}%"></div><div class="b" style="width:${o.c/m*100}%"></div></div>
+      <span class="vl">${o.e} · ${o.c} contr.${comHon ? ' · ' + (o.h ? rsCurto(o.h) : '—') : ''}</span>`).join('')}</div>`
+      : '<div class="vazio">Ninguém chegou no período.</div>'; };
+  /* Motivos são texto livre: agrupa ignorando maiúsculas e espaços, e mostra os oito mais comuns. */
+  const mm = new Map();
+  LEADS.filter(l => (l.etapa === 'perdido' || l.desfecho === 'nao_contratou' || l.desfecho === 'nao_compareceu') && dentroP(decisaoL(l), P.de, P.ate))
+    .forEach(l => { const t = motivoL(l) || 'sem motivo anotado'; const k = t.toLowerCase().replace(/\s+/g,' ').replace(/[.!]+$/,'');
+      const o = mm.get(k) || { n: t[0].toUpperCase() + t.slice(1), v: 0 }; o.v++; mm.set(k, o); });
+  const mot = [...mm.values()].sort((a,b) => b.v - a.v), mmx = Math.max(1, ...mot.map(x => x.v));
+  const tempos = N.contratos.map(l => difDias(diaL(l.criado_em), decisaoL(l))).filter(x => x >= 0).sort((a,b)=>a-b);
+  const tMed = tempos.length ? Math.round(tempos.reduce((a,b)=>a+b,0)/tempos.length) : null;
+  const tMeio = tempos.length ? tempos[Math.floor(tempos.length/2)] : null;
+  const legenda = `<div class="leg2"><span><i style="background:color-mix(in srgb,var(--serie) 35%,transparent)"></i>chegaram</span><span><i style="background:var(--serie)"></i>contrataram</span></div>`;
+  return `
+  <div class="per"><div class="vistas">${[['mes','Este mês'],['ant','Mês passado'],['tri','Últimos 3 meses'],['ano','Este ano'],['liv','Escolher datas']]
+      .map(([k,r]) => `<button class="${CAPPER.per===k?'on':''}" onclick="periodoCaptacao('${k}')">${r}</button>`).join('')}</div>
+    ${CAPPER.per === 'liv' ? `<label class="sub" style="margin:0">de <input type="date" value="${P.de}" onchange="periodoCaptacao('liv', this.value)"></label>
+      <label class="sub" style="margin:0">até <input type="date" value="${P.ate}" max="${hoje()}" onchange="periodoCaptacao('liv', null, this.value)"></label>` : ''}
+    <span class="sub per-res">${P.rot} · ${br(P.de)} a ${br(P.ate)} · comparado com ${P.arot}</span></div>
+  <div class="tiles k6">
+    ${tile(N.chegaram.length, 'Chegaram', delta(N.chegaram.length, A.chegaram.length))}
+    ${tile(N.consultas.length, 'Consultas realizadas', delta(N.consultas.length, A.consultas.length))}
+    ${tile(N.contratos.length, 'Contratos fechados', delta(N.contratos.length, A.contratos.length))}
+    ${tile(N.taxa === null ? '—' : N.taxa + '%', 'Consultas que viram contrato', delta(N.taxa, A.taxa, v => v + ' p.p.'))}
+    ${tile(rsCurto(N.hon), 'Honorário contratado' + (N.media ? ' · média ' + rsCurto(N.media) : ''), delta(N.hon, A.hon, rsCurto))}
+    ${tile(N.faltas.length, 'Não compareceram', delta(N.faltas.length, A.faltas.length, null, true))}
+  </div>
+  ${parados.length ? `<div class="banda ser" style="color:var(--ink)"><span><b>${parados.length} atendimento${parados.length>1?'s':''} do período sem consulta há mais de 15 dias</b>
+    e ainda em andamento. Contam em "chegaram", mas não avançam no funil. Se já se resolveram, atualize na aba Atender.</span>
+    <button class="btn" onclick="abaCaptacao('at')">Ir para Atender</button></div>` : ''}
+  <div class="lado">
+    <div class="card"><h2>Funil de quem chegou no período</h2>
+      <div class="funil">${fz('Chegaram', C.length, null)}${fz('Consulta marcada', marcou.length, C.length)}${fz('Compareceram', veio.length, marcou.length)}${fz('Contrataram', fechou.length, veio.length)}</div>
+      <p class="nota" style="margin-top:10px">A porcentagem à direita é a passagem da etapa anterior para esta. Quem chegou no fim do período pode ainda estar a caminho da consulta.</p></div>
+    <div class="card"><h2>Tempo até fechar</h2>
+      <div style="display:flex;gap:28px;flex-wrap:wrap;padding:4px 18px 6px">
+        <div><div class="grande">${tMed === null ? '—' : tMed + ' dia' + (tMed === 1 ? '' : 's')}</div><div class="sub">em média, do primeiro contato ao contrato</div></div>
+        <div><div class="grande" style="font-size:22px">${tMeio === null ? '—' : tMeio + ' dia' + (tMeio === 1 ? '' : 's')}</div><div class="sub">metade fecha em até</div></div></div>
+      <p class="nota">Dos ${N.contratos.length} contrato${N.contratos.length === 1 ? '' : 's'} fechado${N.contratos.length === 1 ? '' : 's'} no período.</p></div>
+  </div>
+  <div class="card"><h2>Chegaram e contrataram, por ${semanal ? 'semana' : 'mês'}</h2>
+    <div style="padding:0 18px 16px">${legenda}<div style="overflow-x:auto"><svg class="graf-cap" viewBox="0 0 ${W} ${H}" role="img" aria-label="Chegadas e contratos no período">${g}</svg></div></div></div>
+  <div class="lado">
+    <div class="card"><h2>Por origem</h2><div style="padding:0 18px 14px">${legenda}${barras(og, true)}
+      <p class="sub" style="margin-top:10px">Quem tem duas origens conta nas duas. A tabela completa está no fim da página.</p></div></div>
+    <div class="card"><h2>Por área</h2><div style="padding:0 18px 14px">${legenda}${barras(ag, false)}</div></div>
+  </div>
+  <div class="card"><h2>Por que não fecharam</h2><div style="padding:0 18px 16px">
+    ${mot.length ? `<div class="hb">${mot.slice(0,8).map(o => `<span class="nm" title="${esc(o.n)}">${esc(o.n)}</span><div class="tr"><div class="b" style="width:${o.v/mmx*100}%;background:var(--ser)"></div></div><span class="vl">${o.v}</span>`).join('')}</div>
+      ${mot.length > 8 ? `<p class="sub" style="margin-top:8px">Mais ${mot.length-8} motivo(s) diferentes, com menos ocorrências.</p>` : ''}`
+      : '<div class="vazio">Nenhum atendimento encerrado sem contrato no período.</div>'}</div></div>
+  ${porOrigem(N.chegaram)}
+  ${perdidos.length?`<div class="card" style="margin-top:20px"><h2>Não fecharam no período</h2>
     <p class="nota">Vale reler de vez em quando: é aqui que aparece se o problema é preço, triagem ou demora.</p>
     <table><thead><tr><th>Nome</th><th>Origem</th><th>Área</th><th>Até onde foi</th><th>Motivo</th><th>Quando</th></tr></thead>
     <tbody>${perdidos.slice(0,30).map(l=>`<tr>
       <td>${esc(l.nome)}</td><td>${esc(l.origem_nome||'—')}</td><td>${esc(l.area_nome||'—')}</td>
-      <td class="sub" style="margin:0">${ { nao_contratou:'foi atendido', nao_compareceu:'não compareceu' }[l.desfecho] || 'antes da consulta' }</td>
-      <td class="sub" style="margin:0">${esc(l.desfecho_motivo || (l.resumo||'').split('PERDIDO: ')[1] || '—')}</td>
-      <td class="dt">${br(l.atualizado_em)}</td></tr>`).join('')}</tbody></table></div>`:''}
-  </main>` + rodape();
+      <td style="color:var(--i3);font-size:12.5px">${ { nao_contratou:'foi atendido', nao_compareceu:'não compareceu' }[l.desfecho] || 'antes da consulta' }</td>
+      <td style="color:var(--i3);font-size:12.5px">${esc(motivoL(l) || '—')}</td>
+      <td class="dt">${br(decisaoL(l))}</td></tr>`).join('')}</tbody></table></div>`:''}
+`;
 }
 
 /* ------------------------------------------------- de onde vem, e o que rende
