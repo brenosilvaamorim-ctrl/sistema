@@ -333,6 +333,7 @@ textarea{width:100%;resize:vertical;line-height:1.45}
 .cartao .tit .lnk{text-decoration:none}
 .cartao.u-critica{box-shadow:inset 3px 0 0 var(--crit),var(--sh)}.cartao.u-alta{box-shadow:inset 3px 0 0 var(--ser),var(--sh)}
 .cc-mais{margin-top:6px}
+.pill.auto{color:var(--serie);border-color:color-mix(in srgb,var(--serie) 45%,transparent);background:color-mix(in srgb,var(--serie) 8%,transparent);font-weight:500}
 .cc-mais summary{list-style:none;cursor:pointer;color:var(--i3);font-size:15px;line-height:1;width:max-content;padding:0 6px;border-radius:6px}
 .cc-mais summary::-webkit-details-marker{display:none}
 .cc-mais summary:hover,.cc-mais[open] summary{background:var(--s0);color:var(--ink)}
@@ -3163,8 +3164,12 @@ window.fecharLead = async (id) => {
     .insert({ escritorio_id: esc1, nome: l.nome, telefone: l.telefone, whatsapp: l.telefone, origem_id: l.origem_id, origem2_id: l.origem2_id })
     .select('id').single();
   if (e1) return alert('Erro ao criar cliente: ' + e1.message);
-  const { data: col } = await sb.from('coluna_caso')
-    .select('id').eq('nome','Iniciais/Contestações pendentes').limit(1).single();
+  /* A coluna era procurada pelo nome exato, com maiúsculas e acentos; escrito de outro jeito
+     no banco, o caso nascia sem coluna e sumia do quadro. Agora vale a palavra, e o banco
+     (banco/72) ainda põe em "Iniciais" quem chegar sem coluna. */
+  const { data: cols } = await sb.from('coluna_caso').select('id,nome').order('ordem');
+  const semAc = t => String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const col = (cols||[]).find(c => /inicia|contesta/.test(semAc(c.nome))) || null;
   const { data: caso, error: e2 } = await sb.from('caso').insert({
     escritorio_id: esc1, cliente_id: cli.id, titulo: l.nome,
     area_id: l.area_id, origem_id: l.origem_id, origem2_id: l.origem2_id, coluna_id: col?.id ?? null,
@@ -4390,6 +4395,7 @@ function cartao(c){
     ${typeof CASOPROT !== 'undefined' && CASOPROT[c.id] ? (() => { const n = dias(CASOPROT[c.id]);
       return `<span class="pill ${n <= 3 ? 'crit' : 'ser'}">protocolar ${n < 0 ? 'venceu ' + br(CASOPROT[c.id]) : 'até ' + br(CASOPROT[c.id])}</span>`; })() : ''}
     ${parado !== null && parado > 90 ? `<span class="pill ser">parado há ${parado} dias</span>` : ''}
+    ${CASOAUTO[c.id] ? `<span class="pill auto" title="O sistema moveu este cartão em ${br(CASOAUTO[c.id].quadro_auto_em)}: ${esc(CASOAUTO[c.id].quadro_auto_motivo || '')}. A marca some quando você move o cartão à mão.">↻ ${esc(CASOAUTO[c.id].quadro_auto_motivo || 'movido pelo sistema')}</span>` : ''}
     ${pillsTag(c.id)}
     <details class="cc-mais"><summary title="mover de etapa, abrir, encerrar, reordenar" aria-label="mais ações">⋯</summary>
     <div style="margin-top:8px;display:flex;gap:5px;flex-wrap:wrap">
@@ -4475,7 +4481,10 @@ async function telaCasos(){
   const [q, co, od, pp, ar, og] = await Promise.all([
     sb.from('caso_quadro').select('*'),
     sb.from('coluna_caso').select('*').order('ordem'),
-    sb.from('caso').select('id,ordem,urgencia'), /* a ordem manual e a urgência moram em caso, não na view */
+    /* a ordem manual, a urgência e a marca de "movido pelo sistema" (banco/72) moram em caso,
+       não na view; se a 72 ainda não foi aplicada, a consulta cai para a versão sem a marca */
+    sb.from('caso').select('id,ordem,urgencia,quadro_auto_em,quadro_auto_motivo')
+      .then(r => r.error ? sb.from('caso').select('id,ordem,urgencia') : r),
     sb.from('prazo').select('caso_id,data_fatal').eq('regime','protocolo').in('situacao',['sugerido','confirmado']),
     sb.from('area_atuacao').select('id,nome').eq('ativo',true).order('ordem'),
     sb.from('origem_captacao').select('id,nome').eq('ativo',true).order('nome'),
@@ -4485,7 +4494,9 @@ async function telaCasos(){
   await carregarClientes().catch(()=>{});
   if (q.error) return erro(q.error.message);
   QUADRO = q.data||[]; COLUNAS = co.data||[];
-  CASOORD = {}; CASOURG = {}; (od.data||[]).forEach(x => { CASOORD[x.id] = x.ordem; CASOURG[x.id] = x.urgencia || 'normal'; });
+  CASOORD = {}; CASOURG = {}; CASOAUTO = {};
+  (od.data||[]).forEach(x => { CASOORD[x.id] = x.ordem; CASOURG[x.id] = x.urgencia || 'normal';
+    if (x.quadro_auto_em && diasDesde(x.quadro_auto_em) <= 7) CASOAUTO[x.id] = x; });
   await carregarTags().catch(()=>{});
   if (TAGFILTRO && !TAGS.some(t=>t.id===TAGFILTRO)) TAGFILTRO = null;
   let abertos = QUADRO.filter(c=>!c.encerrado_em).sort(porOrdemCaso);
@@ -4516,7 +4527,8 @@ async function telaCasos(){
       ${SOURGENTES || SOPROTOCOLO ? `<button class="btn" onclick="SOURGENTES=false; SOPROTOCOLO=false; telaCasos()">limpar</button>` : ''}
     </div>
   </div>
-  <p class="nota" style="margin:0 0 12px">Arraste o cartão para mudar de etapa ou reordenar (no celular, use o <b>⋯</b> do cartão). A cor da borda é a urgência que você marcou no caso:
+  <p class="nota" style="margin:0 0 12px">Arraste o cartão para mudar de etapa ou reordenar (no celular, use o <b>⋯</b> do cartão).
+    O sistema também move sozinho quando há audiência, recurso, execução, protocolo ou encerramento; esses cartões trazem a marca <b>↻</b> por uma semana. A cor da borda é a urgência que você marcou no caso:
     <span style="color:var(--crit)">■</span> não pode esperar · <span style="color:var(--ser)">■</span> muito urgente.</p>
   <div class="card"><div style="padding:12px 18px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
     <button class="btn ok" onclick="abrirNovoCaso()">Abrir um caso</button>
@@ -4612,7 +4624,7 @@ async function telaCasos(){
    A ordem manual vive em caso.ordem. Quem nunca foi arrastado fica com ordem
    nula e vai para o fim da coluna, em ordem de entrada — nada muda de lugar
    sozinho só porque o recurso passou a existir. */
-let CASOORD = {}, ARRASTA = null;
+let CASOORD = {}, ARRASTA = null, CASOAUTO = {};
 function porOrdemCaso(a, b){
   const oa = CASOORD[a.id], ob = CASOORD[b.id];
   const va = (oa === null || oa === undefined) ? Infinity : Number(oa);
