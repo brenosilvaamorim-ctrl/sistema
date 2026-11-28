@@ -415,6 +415,35 @@ svg.graf-cap text{fill:var(--i3);font:11px var(--sans)}
 <script>
 const SB_URL = "https://wrdfyudabvvpvfcrvvzd.supabase.co";
 const SB_KEY = "sb_publishable_EfdAshQdw1P1-lAXtlO9Hw_O8yoP3y5";
+/* ---- Medidor de lentidão (temporário). Liga com ?medir no endereço, desliga com ?medir=0.
+   A cada troca de tela mostra, no canto, quanto levou cada consulta ao banco e quanto levou
+   o total, para achar onde está a demora sem adivinhar. Desligado, não faz nada. */
+(() => {
+  const q = new URLSearchParams(location.search);
+  try { if (q.has('medir')) localStorage.setItem('medir', q.get('medir') === '0' ? '' : '1'); } catch {}
+  let liga = false; try { liga = localStorage.getItem('medir') === '1'; } catch {}
+  if (!liga) return;
+  const REQ = []; let t0 = 0;
+  const f0 = window.fetch.bind(window);
+  window.fetch = async (url, op) => {
+    const ini = performance.now(); const u = String(url?.url || url);
+    try { return await f0(url, op); }
+    finally { const m = u.match(/\/(rest|auth|functions|storage)\/v1\/([^?]*)/);
+      REQ.push({ q: m ? m[1] + ' ' + m[2] : u.slice(0, 60), ms: Math.round(performance.now() - ini), ini: Math.round(ini - t0) }); }
+  };
+  window.__medirIni = () => { REQ.length = 0; t0 = performance.now(); };
+  window.__medirFim = () => {
+    const tot = Math.round(performance.now() - t0);
+    let el = document.getElementById('medidor');
+    if (!el) { el = document.createElement('div'); el.id = 'medidor';
+      el.style.cssText = 'position:fixed;right:10px;bottom:10px;z-index:99;max-width:min(420px,92vw);max-height:60vh;overflow:auto;background:#1b1714;color:#f1ece6;font:12px/1.45 ui-monospace,Menlo,monospace;padding:10px 12px;border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.35)';
+      document.body.appendChild(el); }
+    const lista = [...REQ].sort((a,b) => b.ms - a.ms).slice(0, 14);
+    el.innerHTML = `<b>${esc(location.hash || '#/inicio')} · total ${tot} ms · ${REQ.length} consulta(s)</b><br>` +
+      lista.map(r => `${String(r.ms).padStart(5)} ms  <span style="opacity:.6">(+${r.ini})</span>  ${esc(r.q)}`).join('<br>') +
+      `<br><span style="opacity:.6">desligar: ?medir=0 no endereço</span>`;
+  };
+})();
 const sb = window.supabase.createClient(SB_URL, SB_KEY);
 const app = document.getElementById('app');
 const br = s => s ? String(s).slice(0,10).split('-').reverse().join('/') : '—';
@@ -18018,8 +18047,14 @@ window.baixarBackup = async () => {
 
 /* ----------------------------------------------------------------- rotas */
 async function rota(){
-  const { data:{ user } } = await sb.auth.getUser();
-  if(!user) return telaLogin();
+  /* getUser() pergunta ao servidor de login a cada chamada: era uma ida e volta pela internet
+     em todo clique, antes de buscar os dados da tela. Ele continua na primeira entrada, para
+     validar o acesso; daí em diante basta a sessão guardada no navegador (que se renova
+     sozinha). Quem decide o que cada um vê é o RLS do banco, não esta conferência. */
+  const user = USER
+    ? (await sb.auth.getSession()).data.session?.user
+    : (await sb.auth.getUser()).data.user;
+  if(!user) { USER = null; return telaLogin(); }
   USER = user;
   if (!ESC_CARREGADO) {
     ESC_CARREGADO = true;
@@ -18235,7 +18270,10 @@ window.wppEnviar = async (id) => {
   } finally { if (t) t.disabled = false; }
 };
 
-window.addEventListener('hashchange', rota);
+window.addEventListener('hashchange', () => {
+  window.__medirIni?.();
+  Promise.resolve(rota()).finally(() => requestAnimationFrame(() => window.__medirFim?.()));
+});
 /* Só redesenha quando o usuário muda de fato. A renovação silenciosa do token
    disparava um redesenho no meio de operações longas e apagava o resultado da tela. */
 let USER_ATUAL = null;
